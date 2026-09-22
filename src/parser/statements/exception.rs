@@ -40,7 +40,7 @@ impl Parser {
     /// Shared parser for the body of a begin block, used by both the
     /// statement and expression forms. The opening `begin` token must
     /// already have been consumed.
-    fn parse_begin_body(&mut self) -> Result<BeginParts, MetorexError> {
+    pub(crate) fn parse_begin_body(&mut self) -> Result<BeginParts, MetorexError> {
         self.skip_whitespace();
 
         // Parse the main body
@@ -130,7 +130,7 @@ impl Parser {
     }
 }
 
-struct BeginParts {
+pub(crate) struct BeginParts {
     body: Vec<Statement>,
     rescue_clauses: Vec<RescueClause>,
     else_clause: Option<Vec<Statement>>,

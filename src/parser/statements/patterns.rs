@@ -35,7 +35,7 @@ impl Parser {
 
     /// The rest of a bracket-less array pattern, given the patterns already
     /// read from it.
-    fn parse_bare_array_pattern(
+    pub(crate) fn parse_bare_array_pattern(
         &mut self,
         parsed: Vec<MatchPattern>,
     ) -> Result<MatchPattern, MetorexError> {
@@ -79,7 +79,7 @@ impl Parser {
     }
 
     /// `pattern | pattern | …`, which matches where any one of them does.
-    fn parse_pattern_alternatives(&mut self) -> Result<MatchPattern, MetorexError> {
+    pub(crate) fn parse_pattern_alternatives(&mut self) -> Result<MatchPattern, MetorexError> {
         let opened_with = self.pattern_names.len();
         let first = self.parse_pattern_binding()?;
         self.skip_pattern_comments();
@@ -102,7 +102,7 @@ impl Parser {
 
     /// `pattern => name`, which matches the pattern and binds the whole value
     /// to the name.
-    fn parse_pattern_binding(&mut self) -> Result<MatchPattern, MetorexError> {
+    pub(crate) fn parse_pattern_binding(&mut self) -> Result<MatchPattern, MetorexError> {
         let mut held = self.parse_pattern_unit()?;
         loop {
             self.skip_pattern_comments();
@@ -123,7 +123,7 @@ impl Parser {
     }
 
     /// One pattern, without the alternatives or the binding around it.
-    fn parse_pattern_unit(&mut self) -> Result<MatchPattern, MetorexError> {
+    pub(crate) fn parse_pattern_unit(&mut self) -> Result<MatchPattern, MetorexError> {
         self.skip_pattern_comments();
         match self.peek().kind.clone() {
             TokenKind::LBracket => self.parse_bracket_array_pattern(None),
@@ -186,7 +186,7 @@ impl Parser {
 
     /// `^name`, `^@name`, `^$name`, or `^(expr)`: what the expression answers
     /// is compared against rather than a name being bound.
-    fn parse_pinned_pattern(&mut self) -> Result<MatchPattern, MetorexError> {
+    pub(crate) fn parse_pinned_pattern(&mut self) -> Result<MatchPattern, MetorexError> {
         let caret = self.advance().position;
         let held = match self.peek().kind.clone() {
             TokenKind::LParen => {
@@ -234,7 +234,7 @@ impl Parser {
     }
 
     /// The constant a pattern names, taking the whole `A::B::C` path.
-    fn parse_pattern_constant(&mut self) -> Result<Box<Expression>, MetorexError> {
+    pub(crate) fn parse_pattern_constant(&mut self) -> Result<Box<Expression>, MetorexError> {
         let token = self.advance();
         let position = token.position;
         let TokenKind::Ident(name) = token.kind else {
@@ -258,7 +258,7 @@ impl Parser {
 
     /// `Const(…)`, which holds either an array pattern or a hash pattern
     /// depending on what is written inside it.
-    fn parse_paren_constant_pattern(
+    pub(crate) fn parse_paren_constant_pattern(
         &mut self,
         constant: Box<Expression>,
     ) -> Result<MatchPattern, MetorexError> {
@@ -284,7 +284,7 @@ impl Parser {
     }
 
     /// `[…]`, with the constant it narrows where one was written.
-    fn parse_bracket_array_pattern(
+    pub(crate) fn parse_bracket_array_pattern(
         &mut self,
         constant: Option<Box<Expression>>,
     ) -> Result<MatchPattern, MetorexError> {
@@ -303,7 +303,7 @@ impl Parser {
 
     /// The patterns between the brackets, up to `closing`. Two rests make a
     /// find pattern, which looks for its middle anywhere in the value.
-    fn parse_array_pattern_body(
+    pub(crate) fn parse_array_pattern_body(
         &mut self,
         constant: Option<Box<Expression>>,
         closing: TokenKind,
@@ -367,7 +367,7 @@ impl Parser {
     }
 
     /// The name a `*` or `**` binds, or None where it names nothing.
-    fn parse_pattern_rest_name(&mut self) -> Result<Option<String>, MetorexError> {
+    pub(crate) fn parse_pattern_rest_name(&mut self) -> Result<Option<String>, MetorexError> {
         self.advance(); // consume '*' or '**'
         if let TokenKind::Ident(name) = self.peek().kind.clone()
             && !name.chars().next().is_some_and(char::is_uppercase)
@@ -380,7 +380,7 @@ impl Parser {
     }
 
     /// `{…}`, with the constant it narrows where one was written.
-    fn parse_brace_hash_pattern(
+    pub(crate) fn parse_brace_hash_pattern(
         &mut self,
         constant: Option<Box<Expression>>,
     ) -> Result<MatchPattern, MetorexError> {
@@ -392,7 +392,7 @@ impl Parser {
     }
 
     /// A hash pattern written without braces, as `in a:, b:` is.
-    fn parse_bare_hash_pattern(
+    pub(crate) fn parse_bare_hash_pattern(
         &mut self,
         constant: Option<Box<Expression>>,
     ) -> Result<MatchPattern, MetorexError> {
@@ -401,7 +401,7 @@ impl Parser {
 
     /// The `key:` entries up to `closing`, each with the pattern its value
     /// has to match or nothing where the key binds a name of its own.
-    fn parse_hash_pattern_body(
+    pub(crate) fn parse_hash_pattern_body(
         &mut self,
         constant: Option<Box<Expression>>,
         closing: TokenKind,
@@ -454,7 +454,7 @@ impl Parser {
     }
 
     /// The name a hash pattern's key is written with, without its colon.
-    fn parse_hash_pattern_key(&mut self) -> Result<String, MetorexError> {
+    pub(crate) fn parse_hash_pattern_key(&mut self) -> Result<String, MetorexError> {
         let token = self.advance();
         let key = match token.kind {
             TokenKind::Ident(name) => name,
@@ -481,14 +481,14 @@ impl Parser {
 
     /// Whether a hash pattern's entry ends here, which means the key binds a
     /// name of its own rather than naming a pattern.
-    fn ends_a_hash_entry(&self, closing: &TokenKind) -> bool {
+    pub(crate) fn ends_a_hash_entry(&self, closing: &TokenKind) -> bool {
         self.check(std::slice::from_ref(closing))
             || self.check(&[TokenKind::Comma])
             || self.ends_a_pattern()
     }
 
     /// Whether the clause's pattern ends here rather than carrying on.
-    fn ends_a_pattern(&self) -> bool {
+    pub(crate) fn ends_a_pattern(&self) -> bool {
         self.check(&[
             TokenKind::Then,
             TokenKind::If,
@@ -501,14 +501,14 @@ impl Parser {
 
     /// Pass over what stands between the pieces of a pattern without
     /// crossing the line it is written on, since a newline ends a pattern.
-    fn skip_pattern_comments(&mut self) {
+    pub(crate) fn skip_pattern_comments(&mut self) {
         while matches!(self.peek().kind, TokenKind::Comment(_)) {
             self.advance();
         }
     }
 
     /// Whether what stands here is a `key:` rather than a value.
-    fn names_a_hash_label(&self) -> bool {
+    pub(crate) fn names_a_hash_label(&self) -> bool {
         matches!(
             self.peek().kind,
             TokenKind::Ident(_)
@@ -522,7 +522,7 @@ impl Parser {
 impl Parser {
     /// Say that a pattern binds this name, so the rest of the file reads it
     /// as a local rather than as a call.
-    fn note_bound_name(&mut self, name: &str) -> Result<(), MetorexError> {
+    pub(crate) fn note_bound_name(&mut self, name: &str) -> Result<(), MetorexError> {
         self.bound_names.insert(name.to_string());
         // One pattern names each of its parts once, so a repeat has nothing
         // of its own to hold. A name opening with an underscore says it is
@@ -539,7 +539,7 @@ impl Parser {
     /// The value a pattern is written with: a literal, a constant, a regexp,
     /// a lambda, or a parenthesized expression. A pattern holds no operators
     /// of its own beyond the ranges read after it.
-    fn parse_pattern_value(&mut self) -> Result<Box<Expression>, MetorexError> {
+    pub(crate) fn parse_pattern_value(&mut self) -> Result<Box<Expression>, MetorexError> {
         // A range with no left side, as `in ..5` is written, opens here.
         if self.check(&[TokenKind::DotDot, TokenKind::DotDotDot]) {
             let exclusive = matches!(self.peek().kind, TokenKind::DotDotDot);
@@ -559,7 +559,7 @@ impl Parser {
 
     /// One value written in a pattern. A `-` in front of a number belongs to
     /// the number, which is the only sign a pattern may carry.
-    fn parse_pattern_primary(&mut self) -> Result<Expression, MetorexError> {
+    pub(crate) fn parse_pattern_primary(&mut self) -> Result<Expression, MetorexError> {
         if self.check(&[TokenKind::Minus]) {
             let position = self.advance().position;
             return match self.advance().kind {
@@ -578,7 +578,10 @@ impl Parser {
     }
 
     /// A range written after a value pattern, which may name no end at all.
-    fn range_pattern_suffix(&mut self, held: MatchPattern) -> Result<MatchPattern, MetorexError> {
+    pub(crate) fn range_pattern_suffix(
+        &mut self,
+        held: MatchPattern,
+    ) -> Result<MatchPattern, MetorexError> {
         if !self.check(&[TokenKind::DotDot, TokenKind::DotDotDot]) {
             return Ok(held);
         }
@@ -604,7 +607,7 @@ impl Parser {
 
     /// Whether a value stands here, which is what tells a range's end from
     /// the end of the pattern holding it.
-    fn opens_a_pattern_value(&self) -> bool {
+    pub(crate) fn opens_a_pattern_value(&self) -> bool {
         matches!(
             self.peek().kind,
             TokenKind::Int(_)

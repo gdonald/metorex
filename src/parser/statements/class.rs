@@ -385,7 +385,11 @@ impl Parser {
 
     /// Build the expression for a possibly qualified constant name such as
     /// `Foo::Bar::Baz`.
-    fn constant_expression(&self, qualified_name: &str, position: Position) -> Expression {
+    pub(crate) fn constant_expression(
+        &self,
+        qualified_name: &str,
+        position: Position,
+    ) -> Expression {
         let mut parts = qualified_name.split("::");
         let mut base = Expression::Identifier {
             name: parts.next().unwrap_or_default().to_string(),
@@ -404,7 +408,11 @@ impl Parser {
     /// Build an `include(...)` method-call statement so a runtime expression
     /// argument (e.g. `include Mod.dup` or `include(Mod)`) is evaluated and
     /// mixed in, rather than resolved by bare constant name.
-    fn include_call_statement(&self, arguments: Vec<Expression>, position: Position) -> Statement {
+    pub(crate) fn include_call_statement(
+        &self,
+        arguments: Vec<Expression>,
+        position: Position,
+    ) -> Statement {
         Statement::Expression {
             expression: Expression::Call {
                 callee: Box::new(Expression::Identifier {
@@ -487,7 +495,7 @@ impl Parser {
     /// One name given to `alias` or `undef`, as the expression that spells it
     /// out. A plain name is a symbol; an interpolated symbol is the string it
     /// builds, turned into a symbol when it runs.
-    fn parse_alias_name_expression(&mut self) -> Result<Expression, MetorexError> {
+    pub(crate) fn parse_alias_name_expression(&mut self) -> Result<Expression, MetorexError> {
         let position = self.peek().position;
         if self.check(&[TokenKind::Colon])
             && let TokenKind::InterpolatedString(parts) = self.peek_ahead(1).kind.clone()
@@ -543,7 +551,7 @@ impl Parser {
     /// Parse a method name accepted by `alias`: a bare identifier or a
     /// symbol literal (`:name`). Certain keywords are accepted because they
     /// are valid Ruby method names.
-    fn parse_alias_method_name(&mut self) -> Result<String, MetorexError> {
+    pub(crate) fn parse_alias_method_name(&mut self) -> Result<String, MetorexError> {
         if self.check(&[TokenKind::Colon]) {
             self.advance();
         }

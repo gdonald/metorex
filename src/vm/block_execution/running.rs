@@ -1,0 +1,474 @@
+// Running a block, with the scope it captured.
+
+use super::*;
+
+impl VirtualMachine {
+    /// Execute a block callable within the VM, handling scope capture and return semantics.
+    pub(crate) fn execute_block_callable(
+        &mut self,
+        block: &BlockStatement,
+        arguments: Vec<Object>,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        // `{ |a,| }` destructures a lone array argument across its parameters,
+        // discarding any elements it has no parameter for.
+        let mut destructured = false;
+        let arguments = match (block.destructures_single_array(), arguments.first()) {
+            (true, Some(Object::Array(elements))) if arguments.len() == 1 => {
+                destructured = true;
+                elements.borrow().clone()
+            }
+            _ => arguments,
+        };
+
+        let parameters = block.binding_parameters();
+        let expected = parameters.len();
+        // A trailing keyword-argument hash feeds the keyword parameters, so
+        // a lambda declaring one does not count it among the positionals.
+        let takes_keywords = parameters.iter().any(|name| {
+            name.starts_with("**") || name.starts_with(crate::object::KEYWORD_PARAM_PREFIX)
+        });
+        let found = if takes_keywords && matches!(arguments.last(), Some(Object::Dict(_))) {
+            arguments.len() - 1
+        } else {
+            arguments.len()
+        };
+        let has_variadic = parameters.iter().any(|p| p.starts_with('*'));
+        let has_block_param = parameters.iter().any(|p| p.starts_with('&'));
+
+        // Optional params (`|a, b = 1|`) widen the accepted count: `found`
+        // may run from `expected - defaults` up to `expected`.
+        let required = expected.saturating_sub(block.parameter_defaults.len());
+
+        // Variadic params accept any number of args; skip strict arity check.
+        // Only a lambda checks arity at all: a proc pads missing arguments
+        // with nil and drops extras.
+        if !destructured {
+            let _ = (has_variadic, has_block_param, required, expected);
+            // `|**nil|` says the block takes no keyword arguments at all,
+            // whether it is a lambda or a proc.
+            refuse_keywords_for_none_declared(block, &arguments, position)?;
+            strict_arity_check(block, found, position)?;
+        }
+
+        let frame_name = block.name().to_string();
+        let frame_location = position_to_location(position);
+        let frame_location_string = Some(format!("{}", frame_location));
+
+        let depth = self.block_nesting_depth();
+        let frame = match block.defining_method.clone() {
+            Some((callee, defined)) => CallFrame::method(
+                frame_name.clone(),
+                frame_location_string.clone(),
+                callee,
+                defined,
+            ),
+            // A block written outside any method is still entered from
+            // somewhere, and that is the call site the frame records.
+            None => CallFrame::boundary(frame_name.clone()).with_location(frame_location_string),
+        }
+        .nested_in_a_block(depth)
+        .written_in_scope(block.written_in.clone())
+        .with_source_file(self.current_source_file.clone());
+        // The body runs in the file the block was written in, which is what a
+        // backtrace entry for a call made from here has to name.
+        let body_source_file = block
+            .source_file
+            .clone()
+            .or_else(|| self.current_source_file.clone());
+        let saved_source_file = std::mem::replace(&mut self.current_source_file, body_source_file);
+        // A literal in the body is written in the encoding the block's own
+        // file names, not the one the file calling it names.
+        let saved_source_encoding = std::mem::replace(
+            &mut self.current_source_encoding,
+            self.current_source_file
+                .as_ref()
+                .and_then(|named| self.file_encodings.get(named).cloned()),
+        );
+        let execution_result =
+            self.with_call_frame(frame, move |vm| vm.execute_block_body(block, arguments));
+        self.current_source_file = saved_source_file;
+        self.current_source_encoding = saved_source_encoding;
+
+        match execution_result {
+            Ok(value) => Ok(value),
+            Err(error) => Err(error.with_stack_frame(StackFrame::new(frame_name, frame_location))),
+        }
+    }
+
+    /// Execute the statements inside a block object with its captured scope.
+    pub(crate) fn execute_block_body(
+        &mut self,
+        block: &BlockStatement,
+        arguments: Vec<Object>,
+    ) -> Result<Object, MetorexError> {
+        // A block body runs in its own scope seeded from `captured_vars`, not
+        // chained to whatever method happens to be invoking it. Ruby's block
+        // sees the locals of the scope it was written in, and nothing of its
+        // caller's.
+        self.environment_mut().push_isolated_scope();
+        // Restore the lexical class/module nesting from the block's
+        // definition site so an uppercase `Foo = ...` inside the body
+        // assigns to the same enclosing module the surrounding code would
+        // have. Saved/restored in pure stack fashion in case the caller's
+        // current def_scope_stack is non-empty (e.g. block invoked from
+        // inside a class body).
+        let saved_def_scope =
+            std::mem::replace(&mut self.def_scope_stack, block.captured_def_scope.clone());
+        // A block opened inside this body belongs to the method this one was
+        // written in, so a `return` written two blocks deep unwinds to the
+        // method holding them both.
+        let saved_lexical_home = self.lexical_home_frame.replace(block.home_frame);
+        // The body belongs to the file the block was written in, whatever
+        // file called it, and a literal in it is written in that file's
+        // encoding.
+        let body_source_file = block
+            .source_file
+            .clone()
+            .or_else(|| self.current_source_file.clone());
+        let saved_source_file = std::mem::replace(&mut self.current_source_file, body_source_file);
+        let saved_source_encoding = std::mem::replace(
+            &mut self.current_source_encoding,
+            self.current_source_file
+                .as_ref()
+                .and_then(|named| self.file_encodings.get(named).cloned()),
+        );
+        // A class variable written in the body belongs to the class or module
+        // the block was written in, which is none at the top level.
+        self.class_var_cref_stack.push(
+            block
+                .captured_nesting
+                .first()
+                .cloned()
+                .or_else(|| block.captured_def_scope.last().cloned()),
+        );
+        // The scopes open around the block are the ones it was written in,
+        // not the ones open in the method that called it, which is what
+        // `Module.nesting` in the body reports and where an `eval` written
+        // there opens what it defines.
+        self.method_nesting_stack
+            .push(block.captured_nesting.clone());
+
+        // A trace sees a block body opening and closing, and reads the
+        // parameters the block declared off either event.
+        let block_position = block
+            .body
+            .first()
+            .map(|held| held.position())
+            .unwrap_or_else(|| Position::new(0, 0, 0));
+        let declared = crate::vm::native_methods::block_parameter_list(block);
+        self.fire_event(
+            "b_call",
+            block_position,
+            vec![("parameters", declared.clone())],
+        )?;
+
+        // A lambda is something a `return` carried out of an eval can return
+        // from, so its body says while it runs that one is there.
+        if block.is_lambda {
+            self.lambda_body_depth += 1;
+        }
+        let result = (|| -> Result<Object, MetorexError> {
+            // Define captured variables using shared references
+            for (name, value_ref) in block.captured_vars() {
+                self.environment_mut()
+                    .define_captured(name.clone(), value_ref.clone());
+            }
+
+            // A lambda takes its arguments the way a method does, so the
+            // count has to match what it declared.
+            if block.is_lambda {
+                check_lambda_arity(block, &arguments, Position::new(0, 0, 0))?;
+            }
+
+            // Define parameters as regular variables (handles *args/&block prefixes)
+            let arguments = marked_keyword_tail(block, arguments);
+            bind_block_params(
+                self,
+                &block.binding_parameters(),
+                &block.parameter_defaults,
+                arguments,
+                Position::new(0, 0, 0),
+            )?;
+
+            // A name written after the `;` in the parameter list is a local
+            // of the block, which starts as nil however the outer scope reads.
+            for name in block.block_locals() {
+                self.environment_mut().define(name, Object::Nil);
+            }
+
+            // Pre-define every local syntactically assigned-to in this block
+            // body as `nil`, so a read that runs before its assignment line
+            // (e.g. inside an `ensure` clause that fires after an early raise)
+            // returns nil rather than raising NameError. Mirrors Ruby's
+            // parser-level local-variable hoisting.
+            for name in collect_assigned_locals(block.body()) {
+                if self.environment().assignment_introduces_a_local(&name) {
+                    self.environment_mut().hoist(name);
+                }
+            }
+
+            let mut last_value;
+
+            // `redo` runs the block's body again over the same arguments.
+            'again: loop {
+                last_value = Object::Nil;
+                for statement in block.body() {
+                    if let Statement::Expression { expression, .. } = statement {
+                        if !self.tracepoints.is_empty() {
+                            self.fire_line_event(statement.position())?;
+                        }
+                        last_value = self.evaluate_expression(expression)?;
+                        continue;
+                    }
+
+                    match self.execute_statement(statement)? {
+                        ControlFlow::Next => {}
+                        ControlFlow::Value(value) => {
+                            last_value = value;
+                        }
+                        // `return` in a lambda returns from the lambda. In a
+                        // proc or ordinary block it is a long return: it unwinds
+                        // to the method that lexically created the block.
+                        ControlFlow::Return { value, position } => {
+                            if block.is_lambda {
+                                last_value = value;
+                                break 'again;
+                            }
+                            // The invocation the block was written in may have
+                            // returned already, and then the return has nowhere
+                            // to go.
+                            if let Some(home) = block.home_frame
+                                && !self.live_frames.contains(&home)
+                            {
+                                return Err(orphaned_return_error(value, position));
+                            }
+                            return Err(MetorexError::NonLocalReturn {
+                                value,
+                                location: position_to_location(position),
+                                home_frame: block.home_frame,
+                            });
+                        }
+                        ControlFlow::Exception {
+                            exception,
+                            position,
+                        } => {
+                            return Err(MetorexError::UncaughtException {
+                                exception: exception.clone(),
+                                location: position_to_location(position),
+                                message: format_exception(&exception),
+                            });
+                        }
+                        ControlFlow::Break { value, position } => {
+                            // `break` in a lambda ends the lambda, the way a
+                            // `return` written there does.
+                            if block.is_lambda {
+                                last_value = value;
+                                break 'again;
+                            }
+                            // Ruby: `break <value>` inside a block unwinds to the
+                            // method that received the block, returning `value`
+                            // from that method call. Uses BlockBreak so the signal
+                            // survives `execute_method_body` (which only swallows
+                            // NonLocalReturn) and is caught at the invoke boundary.
+                            return Err(MetorexError::BlockBreak {
+                                value,
+                                location: position_to_location(position),
+                                home_frame: None,
+                            });
+                        }
+                        ControlFlow::Redo { .. } | ControlFlow::Retry { .. } => continue 'again,
+                        // `next <value>` ends this run of the block with that
+                        // value, which is what the method holding the block sees.
+                        ControlFlow::Continue { value, .. } => {
+                            last_value = value;
+                            break 'again;
+                        }
+                    }
+                }
+                break;
+            }
+
+            Ok(last_value)
+        })();
+
+        if block.is_lambda {
+            self.lambda_body_depth -= 1;
+        }
+        self.environment_mut().pop_scope();
+        self.class_var_cref_stack.pop();
+        self.method_nesting_stack.pop();
+        self.def_scope_stack = saved_def_scope;
+        self.lexical_home_frame = saved_lexical_home;
+        // The exception says where it came from while the block's own file is
+        // still the one in force, which is what a backtrace entry names.
+        if let Err(MetorexError::UncaughtException {
+            exception,
+            location,
+            ..
+        }) = &result
+        {
+            self.note_exception_location(exception, location);
+        }
+        self.current_source_file = saved_source_file;
+        self.current_source_encoding = saved_source_encoding;
+        // A `break` leaving this body belongs to the invocation that was
+        // handed the block, which is the call made from the frame the block
+        // was written in.
+        match result {
+            // A `return` carried out of an eval stops at the lambda it was
+            // written inside, and passing out of any other block leaves it
+            // looking for the invocation it belongs to.
+            Err(MetorexError::NonLocalReturn {
+                value,
+                location,
+                home_frame,
+            }) => {
+                if block.is_lambda && home_frame.is_none() {
+                    return Ok(value);
+                }
+                // Nothing is left to return from once the return has passed
+                // out of every block, with no lambda around it and no method
+                // running, which is what makes it a LocalJumpError.
+                let nowhere_to_return_to = match block.home_frame {
+                    // A block written outside any method belongs to the unit
+                    // itself, which is not something to return from.
+                    Some(home) => {
+                        home == crate::vm::core::TOP_LEVEL_FRAME
+                            || !self.live_frames.contains(&home)
+                    }
+                    None => true,
+                };
+                if home_frame.is_none() && self.lambda_body_depth == 0 && nowhere_to_return_to {
+                    return Err(escaped_return_error(value, location));
+                }
+                Err(MetorexError::NonLocalReturn {
+                    value,
+                    location,
+                    home_frame,
+                })
+            }
+            // `next` written inside an expression unwinds to here, and ends
+            // this run of the block with the value it carried.
+            Err(MetorexError::BlockNext { value, .. }) => Ok(value),
+            Err(MetorexError::BlockBreak {
+                value,
+                location,
+                home_frame: None,
+            }) => Err(MetorexError::BlockBreak {
+                value,
+                location,
+                home_frame: block.home_frame,
+            }),
+            other => other,
+        }
+    }
+
+    /// Execute a block body and return ControlFlow (for use in iterators like .each)
+    /// This version propagates Break/Continue instead of converting them to errors
+    pub(crate) fn execute_block_with_control_flow(
+        &mut self,
+        block: &BlockStatement,
+        arguments: Vec<Object>,
+        position: Position,
+    ) -> Result<ControlFlow, MetorexError> {
+        // `{ |x, y| }` handed a single array spreads it across the parameters,
+        // which is how `[[1, 2]].each { |x, y| }` binds x and y.
+        let arguments = match (block.destructures_single_array(), arguments.first()) {
+            (true, Some(Object::Array(elements))) if arguments.len() == 1 => {
+                elements.borrow().clone()
+            }
+            _ => arguments,
+        };
+        // A lambda takes its arguments the way a method does, so a yield that
+        // does not match its parameters is refused rather than padded.
+        strict_arity_check(block, arguments.len(), Position::new(0, 0, 0))?;
+        // A block body is a place of its own in a backtrace, named for the
+        // scope it was written in and for how many blocks deep it sits.
+        let frame_name = block.name().to_string();
+        let depth = self.block_nesting_depth();
+        // A block reached from a method is entered where that method was
+        // called, which is the call site the frame records.
+        let called_at = Some(format!("{}", position_to_location(position)));
+        let frame = match block.defining_method.clone() {
+            Some((callee, defined)) => {
+                CallFrame::method(frame_name.clone(), called_at, callee, defined)
+            }
+            None => CallFrame::boundary(frame_name.clone()).with_location(called_at),
+        }
+        .nested_in_a_block(depth)
+        .written_in_scope(block.written_in.clone())
+        .with_source_file(self.current_source_file.clone());
+        self.call_stack_push(frame);
+        self.environment_mut().push_isolated_scope();
+        // The body belongs to the file the block was written in.
+        let body_source_file = block
+            .source_file
+            .clone()
+            .or_else(|| self.current_source_file.clone());
+        let saved_source_file = std::mem::replace(&mut self.current_source_file, body_source_file);
+        // A literal in the body is written in the encoding the block's own
+        // file names, not the one the file calling it names.
+        let saved_source_encoding = std::mem::replace(
+            &mut self.current_source_encoding,
+            self.current_source_file
+                .as_ref()
+                .and_then(|named| self.file_encodings.get(named).cloned()),
+        );
+
+        let result = (|| -> Result<ControlFlow, MetorexError> {
+            // Define captured variables using shared references
+            for (name, value_ref) in block.captured_vars() {
+                self.environment_mut()
+                    .define_captured(name.clone(), value_ref.clone());
+            }
+
+            // Define parameters as regular variables (handles *args/&block prefixes)
+            bind_block_params(
+                self,
+                &block.binding_parameters(),
+                &block.parameter_defaults,
+                arguments,
+                Position::new(0, 0, 0),
+            )?;
+
+            // Pre-bind syntactically assigned locals to nil — see
+            // execute_block_body for the rationale.
+            for name in collect_assigned_locals(block.body()) {
+                if self.environment().assignment_introduces_a_local(&name) {
+                    self.environment_mut().hoist(name);
+                }
+            }
+
+            // `redo` runs the block's body again over the same arguments,
+            // which are already bound in this scope.
+            loop {
+                let mut again = false;
+                for statement in block.body() {
+                    match self.execute_statement(statement)? {
+                        ControlFlow::Next | ControlFlow::Value(_) => {}
+                        ControlFlow::Retry { .. } | ControlFlow::Redo { .. } => {
+                            again = true;
+                            break;
+                        }
+                        flow @ (ControlFlow::Return { .. }
+                        | ControlFlow::Break { .. }
+                        | ControlFlow::Continue { .. }
+                        | ControlFlow::Exception { .. }) => {
+                            return Ok(flow);
+                        }
+                    }
+                }
+                if !again {
+                    return Ok(ControlFlow::Next);
+                }
+            }
+        })();
+
+        self.current_source_file = saved_source_file;
+        self.current_source_encoding = saved_source_encoding;
+        self.environment_mut().pop_scope();
+        self.call_stack_pop();
+        result
+    }
+}

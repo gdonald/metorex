@@ -23,7 +23,7 @@ impl Parser {
     /// (`def obj.name`). Accepts plain identifiers, operator method names,
     /// `[]` / `[]=`, and the keywords Ruby also allows as method names
     /// (`def obj.class`). A trailing `=(` makes it a setter.
-    fn parse_singleton_method_name(&mut self) -> Result<String, MetorexError> {
+    pub(crate) fn parse_singleton_method_name(&mut self) -> Result<String, MetorexError> {
         let method_name = match self.advance().kind {
             TokenKind::Ident(method_name) => method_name,
             // `-@` and `+@` name the unary operators, spelled with the `@`
@@ -101,7 +101,7 @@ impl Parser {
     /// True when the `=` at the cursor is joined to the name just read, with
     /// no space between them. That spacing is how Ruby tells the writer
     /// method `def total= amount` from the endless `def total = amount`.
-    fn writer_equal_follows(&self, name: &str) -> bool {
+    pub(crate) fn writer_equal_follows(&self, name: &str) -> bool {
         self.check(&[TokenKind::Equal])
             && self.peek().position.offset == self.previous().position.offset + name.len()
     }
@@ -436,7 +436,7 @@ impl Parser {
     /// Distinguishes `def foo bar` (paren-less param `bar`) from `def foo;`
     /// or `def foo\n` (no params). Newline / Semicolon / End / RBrace etc.
     /// are all parameter-list terminators.
-    fn can_start_no_paren_params(&self) -> bool {
+    pub(crate) fn can_start_no_paren_params(&self) -> bool {
         matches!(
             self.peek().kind,
             TokenKind::Ident(_) | TokenKind::Star | TokenKind::StarStar | TokenKind::Ampersand
@@ -446,7 +446,7 @@ impl Parser {
     /// Parse a paren-less parameter list: `arg1, *rest, &block`. Mirrors
     /// `parse_parameters` but stops at the statement terminator (Newline /
     /// Semicolon) instead of expecting a closing RParen.
-    fn parse_parameters_no_parens(&mut self) -> Result<Vec<Parameter>, MetorexError> {
+    pub(crate) fn parse_parameters_no_parens(&mut self) -> Result<Vec<Parameter>, MetorexError> {
         let mut params = Vec::new();
 
         loop {
@@ -670,7 +670,7 @@ impl Parser {
 
 /// A `def (@name = value).method` runs the assignment before the definition,
 /// so the two travel together as one statement.
-fn with_receiver_setup(
+pub(crate) fn with_receiver_setup(
     definition: Statement,
     receiver_setup: Option<crate::ast::Expression>,
     position: crate::lexer::Position,

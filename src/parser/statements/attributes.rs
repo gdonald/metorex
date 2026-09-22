@@ -54,7 +54,7 @@ impl Parser {
     /// Parse a comma-separated list of attribute expressions. Each expression
     /// is evaluated at runtime; symbols and strings resolve directly, other
     /// values are coerced via #to_str.
-    fn parse_attribute_list(&mut self) -> Result<Vec<Expression>, MetorexError> {
+    pub(crate) fn parse_attribute_list(&mut self) -> Result<Vec<Expression>, MetorexError> {
         let mut attributes = Vec::new();
 
         attributes.push(self.parse_attribute_expression()?);
@@ -77,7 +77,7 @@ impl Parser {
     /// reserved-word symbols (e.g. `:include`, `:class`); otherwise defers to
     /// the standard expression parser so strings, identifiers, and arbitrary
     /// expressions all work.
-    fn parse_attribute_expression(&mut self) -> Result<Expression, MetorexError> {
+    pub(crate) fn parse_attribute_expression(&mut self) -> Result<Expression, MetorexError> {
         if matches!(self.peek().kind, TokenKind::Colon) {
             let next = self.peek_ahead(1).kind.clone();
             if let Some(name) = reserved_keyword_name(&next) {
@@ -93,7 +93,7 @@ impl Parser {
     }
 }
 
-fn reserved_keyword_name(kind: &TokenKind) -> Option<String> {
+pub(crate) fn reserved_keyword_name(kind: &TokenKind) -> Option<String> {
     Some(
         match kind {
             TokenKind::Include => "include",
