@@ -586,10 +586,56 @@ impl VirtualMachine {
             // is the one thing it reports on, since that is what the block
             // was given a limit for.
             "sleep" => {
+                // A fiber that is not blocking hands its waiting to the
+                // scheduler in place rather than waiting itself.
+                if let Some(scheduler) = self.fiber_scheduler.clone() {
+                    let running = self.fiber_current_handle();
+                    if !self.fiber_is_blocking(running) {
+                        let given: Vec<Object> = arguments
+                            .iter()
+                            .filter(|held| !matches!(held, Object::Nil))
+                            .cloned()
+                            .collect();
+                        self.send_to_object(scheduler, "kernel_sleep", given, position)?;
+                        return Ok(Object::Int(0));
+                    }
+                }
                 let wanted = match arguments.first() {
                     None | Some(Object::Nil) => None,
+                    // A length may be named by anything that says how to
+                    // divide itself, which is what a Rational-like value of
+                    // the program's own does.
+                    Some(held @ Object::Instance(_)) if self.responds_to(held, "divmod") => {
+                        let parts = self.send_to_object(
+                            held.clone(),
+                            "divmod",
+                            vec![Object::Int(1)],
+                            position,
+                        )?;
+                        let Object::Array(held) = parts else {
+                            return Err(crate::vm::errors::simple_exception(
+                                "TypeError",
+                                "can't convert into time interval",
+                                position,
+                            ));
+                        };
+                        let whole = held.borrow().first().cloned().unwrap_or(Object::Int(0));
+                        let rest = held.borrow().get(1).cloned().unwrap_or(Object::Int(0));
+                        Some(
+                            self.float_value_of(&whole, position)?
+                                + self.float_value_of(&rest, position)?,
+                        )
+                    }
                     Some(held) => Some(self.float_value_of(held, position)?),
                 };
+                // A length is a wait, so there is no waiting backwards.
+                if wanted.is_some_and(|seconds| seconds < 0.0) {
+                    return Err(crate::vm::errors::simple_exception(
+                        "ArgumentError",
+                        "time interval must not be negative",
+                        position,
+                    ));
+                }
                 if let Some((deadline, class, message)) = self.timeout_limits.last().cloned() {
                     let left = deadline.saturating_duration_since(std::time::Instant::now());
                     if wanted.is_none_or(|seconds| seconds > left.as_secs_f64()) {
@@ -682,10 +728,21 @@ impl VirtualMachine {
                 // Look up the method in the current environment
                 if let Some(obj) = self.environment().get(&method_name) {
                     if let Object::Method(held) = &obj {
-                        if held.owner_class.is_none()
-                            && let Some(found) = written_on_object
-                        {
-                            return Ok(found);
+                        if held.owner_class.is_none() {
+                            if let Some(found) = written_on_object {
+                                return Ok(found);
+                            }
+                            // A load wrapped in a module writes what it
+                            // defines there, which is what the receiver
+                            // answers with rather than an unowned copy.
+                            if let Some(receiver) = here.clone() {
+                                let name = Object::symbol(method_name.to_string());
+                                if let Ok(found) =
+                                    self.send_to_object(receiver, "method", vec![name], position)
+                                {
+                                    return Ok(found);
+                                }
+                            }
                         }
                         return Ok(obj);
                     }
@@ -913,7 +970,17 @@ impl VirtualMachine {
 
                 // A library metorex provides itself is already loaded, so a
                 // require of it answers false rather than looking for a file.
-                if BUILT_IN_FEATURES.contains(&require_name.trim_end_matches(".rb")) {
+                let named_plainly = require_name
+                    .strip_suffix(".rb")
+                    .or_else(|| require_name.strip_suffix(".so"))
+                    .unwrap_or(&require_name);
+                if BUILT_IN_FEATURES.contains(&named_plainly) {
+                    // What the interpreter carries is read the first time a
+                    // program names it, and it counts as having been there
+                    // all along, so the answer is that nothing was loaded.
+                    if let Some(source) = crate::vm::stdlib::embedded_library(named_plainly) {
+                        self.run_embedded_library(named_plainly, source)?;
+                    }
                     return Ok(Object::Bool(false));
                 }
                 // An absolute path, or one written relative to the working
@@ -921,33 +988,51 @@ impl VirtualMachine {
                 // searched for.
                 let mut found_path = None;
                 let direct = std::path::PathBuf::from(&require_name);
-                if direct.is_absolute()
+                // A path written from the working directory or from the root
+                // names the file outright. Ruby does not look for it on the
+                // load path as well, which is what keeps `./name` meaning the
+                // one file it spells.
+                let named_outright = direct.is_absolute()
                     || require_name.starts_with("./")
-                    || require_name.starts_with("../")
-                {
-                    for candidate in [
-                        std::path::PathBuf::from(format!("{}.rb", require_name)),
-                        direct.clone(),
-                    ] {
+                    || require_name.starts_with("../");
+                if named_outright {
+                    for candidate in require_candidates(&require_name) {
                         if candidate.is_file() {
                             found_path = Some(candidate);
                             break;
                         }
                     }
                 }
+                // A name already answered from somewhere on the load path is
+                // loaded, whatever the load path holds by now: the file it
+                // was answered by is listed, and the directory it sits in is
+                // still one the search would reach.
+                if !named_outright {
+                    let listed = require_candidates(&require_name);
+                    for dir in &search_dirs {
+                        let base = std::path::PathBuf::from(dir);
+                        let base = base.canonicalize().unwrap_or(base);
+                        for candidate in &listed {
+                            let named = base.join(candidate);
+                            if self.feature_is_listed(&named.to_string_lossy()) {
+                                return Ok(Object::Bool(false));
+                            }
+                        }
+                    }
+                }
                 for dir in &search_dirs {
-                    if found_path.is_some() {
+                    if named_outright || found_path.is_some() {
                         break;
                     }
+                    // A directory on the load path is named by the file it
+                    // points at, while the name asked for is left as written.
                     let base = std::path::PathBuf::from(dir);
+                    let base = base.canonicalize().unwrap_or(base);
                     // Prefer `.rb` file over a directory of the same name.
-                    let candidates = [
-                        base.join(format!("{}.rb", require_name)),
-                        base.join(&require_name),
-                    ];
-                    for candidate in &candidates {
+                    for candidate in require_candidates(&require_name) {
+                        let candidate = base.join(candidate);
                         if candidate.is_file() {
-                            found_path = Some(candidate.clone());
+                            found_path = Some(candidate);
                             break;
                         }
                     }
@@ -955,10 +1040,53 @@ impl VirtualMachine {
                         break;
                     }
                 }
+                // A file built for the machine rather than written in Ruby is
+                // not something metorex can run. Ruby reports what the loader
+                // said rather than the path it was looking for, so the error
+                // names no path at all.
+                let mut named_a_native_extension = false;
+                if found_path
+                    .as_ref()
+                    .is_some_and(|held| names_a_native_extension(held))
+                {
+                    found_path = None;
+                    named_a_native_extension = true;
+                }
+                // A path with no extension of its own may still name one of
+                // those files, and naming it is refused the same way.
+                if found_path.is_none() && !named_a_native_extension {
+                    named_a_native_extension =
+                        ["so", "bundle", "dylib", "dll"].iter().any(|held| {
+                            std::path::PathBuf::from(format!("{}.{}", require_name, held)).is_file()
+                        });
+                }
+                // A file another thread is part-way through loading is waited
+                // for, so what it defines is there to read.
+                if let Some(held) = &found_path
+                    && let Ok(canonical) = held.canonicalize()
+                {
+                    self.wait_for_the_file_being_loaded(&canonical);
+                }
 
+                // A feature listed under the very name asked for has been
+                // loaded, however that name reads as a path from here.
+                if require_candidates(&require_name).iter().any(|candidate| {
+                    let named = candidate.to_string_lossy();
+                    named.ends_with(".rb") && self.feature_is_listed(&named)
+                }) {
+                    return Ok(Object::Bool(false));
+                }
                 let resolved = match found_path {
                     Some(p) => p,
                     None => {
+                        // A name with no ending of its own counts too once
+                        // there is no file of that name to be found.
+                        if require_candidates(&require_name)
+                            .iter()
+                            .any(|candidate| self.feature_is_listed(&candidate.to_string_lossy()))
+                        {
+                            return Ok(Object::Bool(false));
+                        }
                         // A library metorex carries is used when the load path
                         // holds no file of that name.
                         if let Some(source) = crate::vm::stdlib::embedded_library(&require_name) {
@@ -966,10 +1094,17 @@ impl VirtualMachine {
                             return Ok(Object::Bool(already));
                         }
                         // Raise a LoadError exception so Ruby-level rescue LoadError catches it.
-                        let exc = crate::vm::errors::load_error(
-                            format!("cannot load such file -- {}", require_name),
-                            &require_name,
-                        );
+                        let exc = if named_a_native_extension {
+                            crate::vm::errors::load_error_without_path(format!(
+                                "cannot load such file -- {}",
+                                require_name
+                            ))
+                        } else {
+                            crate::vm::errors::load_error(
+                                format!("cannot load such file -- {}", require_name),
+                                &require_name,
+                            )
+                        };
                         return Err(MetorexError::UncaughtException {
                             exception: exc.clone(),
                             location: crate::vm::utils::position_to_location(position),
@@ -993,14 +1128,27 @@ impl VirtualMachine {
                 // restores it expects the next require to load the file again
                 // and answer true.
                 let canonical_str = canonical_path.to_string_lossy().into_owned();
+                // An entry written from the working directory, or with `..`
+                // left in it, names the same file as the path it expands to,
+                // which is what decides whether the file is loaded already.
+                let standing_for = expanded_feature_path(&resolved);
                 let was_already_loaded = match self.globals().get("\"") {
-                    Some(Object::Array(features)) => features
-                        .borrow()
-                        .iter()
-                        .any(|feature| matches!(feature, Object::String(name) if *name.as_str() == *canonical_str)),
+                    Some(Object::Array(features)) => features.borrow().iter().any(|feature| {
+                        let Object::String(name) = feature else {
+                            return false;
+                        };
+                        *name.as_str() == *canonical_str
+                            || expanded_feature_path(std::path::Path::new(&*name.as_str()))
+                                == standing_for
+                    }),
                     _ => self.is_file_loaded(&canonical_path),
                 };
 
+                // A file the feature list already names is not run again,
+                // whatever spelling it is listed under.
+                if was_already_loaded {
+                    return Ok(Object::Bool(false));
+                }
                 self.load_call_site = self
                     .current_source_file
                     .clone()
@@ -1033,18 +1181,9 @@ impl VirtualMachine {
                     ));
                 }
 
-                let relative_path = match &arguments[0] {
-                    Object::String(path) => path.as_ref(),
-                    _ => {
-                        return Err(MetorexError::runtime_error(
-                            format!(
-                                "require_relative() expects a String argument, got {}",
-                                arguments[0].type_name()
-                            ),
-                            crate::vm::utils::position_to_location(position),
-                        ));
-                    }
-                };
+                // A path may be named by anything that says how to read
+                // itself as one, the way `require` takes it.
+                let relative_path = self.coerce_load_path(&arguments[0], position)?;
 
                 // Ruby resolves the path against the file the call was
                 // written in, which is not the file being loaded when a
@@ -1062,25 +1201,35 @@ impl VirtualMachine {
                     )
                 })?;
 
+                // A file reached through a symlink counts as being written
+                // where the link points, so what it asks for relative to
+                // itself is found beside the real file.
+                let current_file = current_file
+                    .canonicalize()
+                    .unwrap_or_else(|_| current_file.to_path_buf());
+                let current_file = &current_file;
                 // Resolve the relative path
-                let resolved_path = crate::file_loader::resolve_relative_path(
-                    current_file,
-                    &relative_path.as_str(),
-                )
-                .map_err(|e| {
-                    MetorexError::runtime_error(
-                        format!(
-                            "require_relative('{}') — cannot resolve path: {}",
-                            relative_path,
-                            e.message()
-                        ),
-                        crate::vm::utils::position_to_location(position),
-                    )
-                })?;
+                let resolved_path =
+                    crate::file_loader::resolve_relative_path(current_file, &relative_path)
+                        .map_err(|e| {
+                            MetorexError::runtime_error(
+                                format!(
+                                    "require_relative('{}') — cannot resolve path: {}",
+                                    relative_path,
+                                    e.message()
+                                ),
+                                crate::vm::utils::position_to_location(position),
+                            )
+                        })?;
+                // Ruby names the file by the path it expands to, with no
+                // `.` or `..` left in it, which is what a LoadError reports
+                // and what `$LOADED_FEATURES` lists.
+                let resolved_path = crate::vm::loading::without_dot_components(&resolved_path);
 
                 // Find the actual file path with extension auto-detection. A
                 // missing file is a LoadError, the way Ruby reports one.
-                let actual_path = match crate::file_loader::find_file_path(&resolved_path) {
+                let actual_path = match crate::file_loader::find_required_file_path(&resolved_path)
+                {
                     Ok(path) => path,
                     Err(_) => {
                         let feature = resolved_path.display().to_string();
@@ -1110,8 +1259,19 @@ impl VirtualMachine {
                     )
                 })?;
 
-                // Check if file was already loaded BEFORE executing
-                let was_already_loaded = self.is_file_loaded(&canonical_path);
+                // `$LOADED_FEATURES` is the source of truth, the way it is
+                // for `require`: a spec that restores it expects the next
+                // call to load the file again and answer true.
+                let listed = crate::vm::loading::without_dot_components(&actual_path)
+                    .display()
+                    .to_string();
+                let was_already_loaded = match self.globals().get("\"") {
+                    Some(Object::Array(features)) => features
+                        .borrow()
+                        .iter()
+                        .any(|feature| matches!(feature, Object::String(name) if *name.as_str() == *listed)),
+                    _ => self.is_file_loaded(&canonical_path),
+                };
 
                 // Execute the file (it will handle its own deduplication)
                 self.load_call_site = self
@@ -1123,7 +1283,7 @@ impl VirtualMachine {
                             .map(|file| file.display().to_string())
                     })
                     .map(|file| (file, position));
-                self.execute_file(&resolved_path).map_err(|e| {
+                self.execute_file(&actual_path).map_err(|e| {
                     crate::vm::errors::keep_exception(e, |message| {
                         MetorexError::runtime_error(
                             format!("require_relative('{}') — {}", relative_path, message),
@@ -2107,6 +2267,7 @@ impl VirtualMachine {
                         class: None,
                         instance_vars: indexmap::IndexMap::new(),
                         message_given: true,
+                        cause_settled: false,
                     },
                 )));
                 Err(MetorexError::UncaughtException {
@@ -2140,6 +2301,7 @@ impl VirtualMachine {
                         class: None,
                         instance_vars: indexmap::IndexMap::new(),
                         message_given: true,
+                        cause_settled: false,
                     },
                 )));
                 Err(MetorexError::UncaughtException {
@@ -2671,7 +2833,7 @@ impl VirtualMachine {
         let refuse = |vm: &mut Self, value: &Object| {
             let message = format!(
                 "no implicit conversion of {} into String",
-                vm.builtins().class_of(value).name()
+                vm.conversion_name(value)
             );
             MetorexError::UncaughtException {
                 exception: Object::exception("TypeError", message.clone()),
@@ -3548,7 +3710,20 @@ fn chomped(line: &str, separator: Option<&str>) -> String {
 
 /// Libraries metorex provides itself, which `require` answers for without
 /// looking for a file.
-const BUILT_IN_FEATURES: &[&str] = &["stringio", "set", "enumerator", "prettyprint"];
+/// What the interpreter carries itself, which `$LOADED_FEATURES` lists from
+/// the start and which a `require` of answers false.
+const BUILT_IN_FEATURES: &[&str] = &[
+    "complex",
+    "enumerator",
+    "fiber",
+    "pathname",
+    "prettyprint",
+    "rational",
+    "ruby2_keywords",
+    "set",
+    "stringio",
+    "thread",
+];
 
 impl VirtualMachine {
     /// The Math module's functions. Each takes its arguments as Floats, which
@@ -4078,7 +4253,7 @@ pub(crate) fn write_to_standard_stream(stream: &str, text: &str) {
 /// End the program the way a signal would when the other end of the standard
 /// stream has gone. Ruby lets SIGPIPE through for the standard streams, and a
 /// program in a pipeline is told to stop that way.
-fn die_of_a_broken_pipe() -> ! {
+pub(crate) fn die_of_a_broken_pipe() -> ! {
     // SAFETY: both calls name a signal this process may send itself, and the
     // disposition restored is the one every program starts with.
     unsafe {
@@ -4155,4 +4330,37 @@ fn findable_program(program: &str) -> Option<std::path::PathBuf> {
     std::env::split_paths(&path)
         .map(|held| held.join(program))
         .find(|held| runnable(held))
+}
+
+/// The files a `require` of `named` may mean, in the order Ruby tries them.
+/// A path already ending in `.rb` is taken as written rather than having
+/// another `.rb` added to it.
+fn require_candidates(named: &str) -> Vec<std::path::PathBuf> {
+    if named.ends_with(".rb") {
+        return vec![std::path::PathBuf::from(named)];
+    }
+    vec![
+        std::path::PathBuf::from(format!("{}.rb", named)),
+        std::path::PathBuf::from(named),
+    ]
+}
+
+/// Whether a path names a file built for the machine rather than one written
+/// in Ruby.
+fn names_a_native_extension(path: &std::path::Path) -> bool {
+    matches!(
+        path.extension().and_then(|held| held.to_str()),
+        Some("so" | "bundle" | "dylib" | "dll")
+    )
+}
+
+/// The path a feature entry names, with a relative one read from the working
+/// directory and any `.` or `..` in it taken out.
+fn expanded_feature_path(path: &std::path::Path) -> std::path::PathBuf {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir().unwrap_or_default().join(path)
+    };
+    crate::vm::loading::without_dot_components(&absolute)
 }

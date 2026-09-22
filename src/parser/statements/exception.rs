@@ -338,12 +338,17 @@ impl Parser {
             self.advance();
             let arguments = self.parse_arguments()?;
             // `raise(*args)` names what to raise in a list built at run time,
-            // so the list is handed to Kernel's own `raise` rather than read
-            // here as a single exception.
-            if arguments
+            // and `cause:` alongside the rest is more than a class and a
+            // message, so either is handed to Kernel's own `raise` rather
+            // than read here as a single exception.
+            let handed_over = arguments
                 .iter()
                 .any(|given| matches!(given, Expression::Splat { .. }))
-            {
+                || arguments.len() > 2
+                || arguments
+                    .iter()
+                    .any(|given| matches!(given, Expression::Dictionary { .. }));
+            if handed_over {
                 let call = Expression::Call {
                     callee: Box::new(Expression::Identifier {
                         name: "raise".to_string(),
@@ -370,6 +375,27 @@ impl Parser {
                     position: start_pos,
                 }),
             }
+        } else if crate::parser::expressions::primary::groups::keyword_symbol_key(&self.peek().kind)
+            .is_some()
+            && matches!(self.peek_ahead(1).kind, TokenKind::Colon)
+            && !self.peek_ahead(1).had_leading_space
+        {
+            // `raise cause: held` names no exception of its own, so the whole
+            // list goes to Kernel's own `raise`, which says as much.
+            let arguments = self.parse_arguments_without_parens()?;
+            let call = Expression::Call {
+                callee: Box::new(Expression::Identifier {
+                    name: "raise".to_string(),
+                    position: start_pos,
+                }),
+                arguments,
+                trailing_block: None,
+                position: start_pos,
+            };
+            return self.wrap_with_modifier(Statement::Expression {
+                expression: call,
+                position: start_pos,
+            });
         } else {
             let expr = self.parse_expression()?;
             // Check for `raise ExceptionClass, message` form

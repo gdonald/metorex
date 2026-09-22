@@ -764,6 +764,17 @@ impl VirtualMachine {
         eprintln!("{}", msg);
     }
 
+    /// The name a conversion error calls a value by. Ruby names `nil`,
+    /// `true` and `false` outright, and everything else by its class.
+    pub(crate) fn conversion_name(&self, value: &Object) -> String {
+        match value {
+            Object::Nil => "nil".to_string(),
+            Object::Bool(true) => "true".to_string(),
+            Object::Bool(false) => "false".to_string(),
+            other => self.builtins().class_of(other).name().to_string(),
+        }
+    }
+
     /// Coerce an object into a method-name `String`. Strings and symbols are
     /// taken at face value; for other receivers we invoke `to_str` (matching
     /// Ruby's implicit type coercion). A receiver that lacks `to_str` raises

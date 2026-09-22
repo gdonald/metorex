@@ -166,12 +166,21 @@ impl VirtualMachine {
         // Get the current self (must be an instance)
         let instance = match self.environment().get("self") {
             Some(Object::Instance(instance_rc)) => instance_rc,
-            // An exception's built-in behaviour already ran, so `super` from
-            // an override of one of these has nothing left to reach.
-            Some(Object::Exception(_))
+            // `super` from an exception subclass's own `initialize` is what
+            // gives the exception its message, the way Exception#initialize
+            // does. `initialize_copy` has nothing left to reach.
+            Some(held @ Object::Exception(_))
                 if matches!(method_name.as_str(), "initialize" | "initialize_copy") =>
             {
-                return Ok(Object::Nil);
+                if method_name == "initialize_copy" {
+                    return Ok(Object::Nil);
+                }
+                let evaluated_args = if forward_args {
+                    self.method_arg_stack.last().cloned().unwrap_or_default()
+                } else {
+                    self.evaluate_arguments(arguments)?
+                };
+                return self.exception_initialize(&held, &evaluated_args, position);
             }
             // `self` is a built-in value, so the running method was written
             // on a reopened core class or on a module prepended to one.
@@ -589,7 +598,38 @@ impl VirtualMachine {
             );
             return Ok(Object::Nil);
         }
+        if matches!(receiver, Object::Exception(_)) {
+            return self.exception_initialize(&receiver, arguments, position);
+        }
         Self::object_initialize(arguments, position)
+    }
+
+    /// Exception#initialize, which a subclass's own `initialize` reaches
+    /// through `super`. The argument it is handed is the message.
+    fn exception_initialize(
+        &mut self,
+        receiver: &Object,
+        arguments: &[Object],
+        position: crate::lexer::Position,
+    ) -> Result<Object, MetorexError> {
+        let Object::Exception(details) = receiver else {
+            return Ok(Object::Nil);
+        };
+        match arguments.first() {
+            None => {}
+            Some(Object::Nil) => {
+                let mut held = details.borrow_mut();
+                held.message = String::new();
+                held.message_given = false;
+            }
+            Some(given) => {
+                let spelled = self.coerce_name_argument(given, position)?;
+                let mut held = details.borrow_mut();
+                held.message = spelled;
+                held.message_given = true;
+            }
+        }
+        Ok(Object::Nil)
     }
 
     /// Object#initialize, which every `super` from a constructor with nothing

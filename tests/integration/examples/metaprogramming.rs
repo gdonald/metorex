@@ -1158,3 +1158,23 @@ fn test_metaprogramming_alias_definee_parens_execution() {
     let output = run_example("metaprogramming/alias_definee_parens.rb");
     assert_eq!(output, ALIAS_DEFINEE_OUTPUT);
 }
+
+/// The expected output of both `metaprogramming/instance_exec/reading_a_string` variants,
+/// which differ only in whether the calls are written with parentheses.
+const READING_A_STRING: &str = concat!(
+    ":singleton_class\n:caller\n:assigned\n",
+    "\"a_file:10:in '<main>'\"\n",
+    "true\n1\n:block_scope\n"
+);
+
+#[test]
+fn test_metaprogramming_instance_exec_reading_a_string_execution() {
+    let output = run_example("metaprogramming/instance_exec/reading_a_string.rb");
+    assert_eq!(output, READING_A_STRING);
+}
+
+#[test]
+fn test_metaprogramming_instance_exec_reading_a_string_no_parens_execution() {
+    let output = run_example("metaprogramming/instance_exec/reading_a_string_no_parens.rb");
+    assert_eq!(output, READING_A_STRING);
+}

@@ -904,8 +904,23 @@ pub(super) fn register_special_globals(globals: &mut GlobalRegistry) {
     globals.set_variable(":", load_path.clone());
     globals.set_variable("LOAD_PATH", load_path);
 
-    // $LOADED_FEATURES / $" — shared array
-    let loaded_features = Object::Array(Rc::new(RefCell::new(Vec::new())));
+    // $LOADED_FEATURES / $" — shared array. What the interpreter carries
+    // itself is listed from the start, so a program that asks for one of
+    // them is told it has it already.
+    let carried: Vec<Object> = [
+        "complex.so",
+        "enumerator.so",
+        "fiber.so",
+        "pathname.so",
+        "rational.so",
+        "ruby2_keywords.rb",
+        "set.rb",
+        "thread.rb",
+    ]
+    .iter()
+    .map(|named| Object::string((*named).to_string()))
+    .collect();
+    let loaded_features = Object::Array(Rc::new(RefCell::new(carried)));
     globals.set_variable("\"", loaded_features.clone());
     globals.set_variable("LOADED_FEATURES", loaded_features);
 

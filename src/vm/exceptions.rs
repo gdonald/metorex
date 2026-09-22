@@ -74,6 +74,11 @@ impl VirtualMachine {
         };
         // Capture stack trace and add source location to exception
         let exception_obj = self.add_stack_trace_to_exception(exception_obj, position);
+        // The cause is settled where the exception is raised, so raising it
+        // again leaves it with the one it was raised with the first time.
+        if let Object::Exception(cell) = &exception_obj {
+            cell.borrow_mut().cause_settled = true;
+        }
         // A trace sees the exception on its way up, before anything has had
         // the chance to handle it.
         self.fire_event(
@@ -100,26 +105,87 @@ impl VirtualMachine {
         // `cause:` names the exception this one is being raised on top of,
         // and it is not one of the positional arguments.
         let mut named_cause = None;
+        let mut cause_settled = false;
         let mut arguments = arguments;
         let without_keywords: Vec<Object>;
         if let Some(Object::Dict(pairs)) = arguments.last()
             && pairs.borrow().contains_key("__MX_KWARGS__")
         {
+            cause_settled = pairs.borrow().contains_key(":cause");
             named_cause = pairs.borrow().get(":cause").cloned();
-            without_keywords = arguments[..arguments.len() - 1].to_vec();
+            // Ruby leaves every other keyword alone: they belong to the
+            // exception's own constructor, which is handed the hash.
+            let named_anything_else = pairs
+                .borrow()
+                .keys()
+                .any(|key| key != ":cause" && key != "__MX_KWARGS__");
+            let mut rest = arguments[..arguments.len() - 1].to_vec();
+            if named_anything_else {
+                let held = pairs.borrow().clone();
+                let carried: indexmap::IndexMap<String, Object> = held
+                    .into_iter()
+                    .filter(|(key, _)| key != ":cause" && key != "__MX_KWARGS__")
+                    .collect();
+                rest.push(Object::Dict(Rc::new(std::cell::RefCell::new(carried))));
+            }
+            without_keywords = rest;
             arguments = &without_keywords;
         }
+        // `cause:` on its own names nothing to raise.
+        if cause_settled && arguments.is_empty() {
+            let msg = "only cause is given with no arguments".to_string();
+            return Err(MetorexError::UncaughtException {
+                exception: Object::exception("ArgumentError", msg.clone()),
+                location: position_to_location(position),
+                message: msg,
+            });
+        }
+        // A message reads as one only when it stands alone. Anything after it
+        // means the first argument was meant to name the exception.
+        if arguments.len() > 1 && matches!(arguments.first(), Some(Object::String(_))) {
+            let msg = "exception class/object expected".to_string();
+            return Err(MetorexError::UncaughtException {
+                exception: Object::exception("TypeError", msg.clone()),
+                location: position_to_location(position),
+                message: msg,
+            });
+        }
+        // The cause names an exception, or nothing at all.
+        if !matches!(
+            named_cause,
+            None | Some(Object::Nil) | Some(Object::Exception(_))
+        ) {
+            let msg = "exception object expected".to_string();
+            return Err(MetorexError::UncaughtException {
+                exception: Object::exception("TypeError", msg.clone()),
+                location: position_to_location(position),
+                message: msg,
+            });
+        }
         let message = arguments.get(1).cloned();
+        // Whether the exception being raised is one that was raised before,
+        // which keeps the cause it was raised with then.
+        let mut re_raised = false;
         let exception = match arguments.first() {
             None => match self.environment().get("$!") {
-                Some(exception @ Object::Exception(_)) => exception,
+                // An exception raised again keeps the cause it was raised
+                // with the first time, and takes on no other.
+                Some(exception @ Object::Exception(_)) => {
+                    re_raised = true;
+                    if let Object::Exception(cell) = &exception {
+                        cell.borrow_mut().cause_settled = true;
+                    }
+                    exception
+                }
                 _ => Object::exception("RuntimeError", ""),
             },
             Some(Object::Exception(cell)) => {
+                re_raised = true;
                 let existing = Object::Exception(Rc::clone(cell));
                 if let Some(Object::String(text)) = &message {
                     cell.borrow_mut().message = text.as_str().to_string();
                 }
+                cell.borrow_mut().cause_settled = true;
                 existing
             }
             Some(Object::String(text)) => {
@@ -159,23 +225,77 @@ impl VirtualMachine {
         if let Some(Object::Array(entries)) = written_trace
             && let Object::Exception(cell) = &exception
         {
-            let listed: Vec<String> = entries
-                .borrow()
-                .iter()
-                .map(|held| match held {
-                    Object::String(text) => text.as_str().to_string(),
-                    other => other.to_string(),
-                })
-                .collect();
-            cell.borrow_mut().backtrace = Some(listed);
+            // A list of Locations names where the exception came from the way
+            // `caller_locations` does, and the exception hands those back
+            // rather than lines of text.
+            let all_locations = !entries.borrow().is_empty()
+                && entries
+                    .borrow()
+                    .iter()
+                    .all(|held| matches!(held, Object::Instance(_)));
+            if all_locations {
+                let listed: Vec<String> = entries
+                    .borrow()
+                    .iter()
+                    .map(|held| self.backtrace_location_text(held))
+                    .collect();
+                let mut held = cell.borrow_mut();
+                held.backtrace = Some(listed);
+                held.backtrace_locations_array = Some(Object::Array(Rc::clone(&entries)));
+            } else {
+                let listed: Vec<String> = entries
+                    .borrow()
+                    .iter()
+                    .map(|held| match held {
+                        Object::String(text) => text.as_str().to_string(),
+                        other => other.to_string(),
+                    })
+                    .collect();
+                cell.borrow_mut().backtrace = Some(listed);
+            }
         }
-        if let (Some(cause), Object::Exception(cell)) = (named_cause, &exception) {
-            cell.borrow_mut().cause = match cause {
-                Object::Nil => None,
-                held => Some(Box::new(held)),
-            };
+        if let Object::Exception(cell) = &exception {
+            if cause_settled {
+                cell.borrow_mut().cause_settled = true;
+            }
+            match named_cause {
+                // An exception is not its own cause, so naming itself names
+                // nothing.
+                Some(Object::Exception(held)) if Rc::ptr_eq(&held, cell) => {
+                    cell.borrow_mut().cause = None;
+                }
+                Some(Object::Exception(held)) => {
+                    if causes_run_in_a_circle(&held, cell) {
+                        let msg = "circular causes".to_string();
+                        return Err(MetorexError::UncaughtException {
+                            exception: Object::exception("ArgumentError", msg.clone()),
+                            location: position_to_location(position),
+                            message: msg,
+                        });
+                    }
+                    cell.borrow_mut().cause = Some(Box::new(Object::Exception(held)));
+                }
+                // `cause: nil` asks for no cause to be set. An exception
+                // raised before keeps the one it already had.
+                Some(_) if !re_raised => {
+                    cell.borrow_mut().cause = None;
+                }
+                Some(_) | None => {}
+            }
+        }
+        if let Object::Exception(cell) = &exception {
+            cell.borrow_mut().cause_settled = true;
         }
         Ok(exception)
+    }
+
+    /// How a Location writes itself, which is the line a backtrace shows for
+    /// it.
+    fn backtrace_location_text(&mut self, held: &Object) -> String {
+        match self.send_to_object(held.clone(), "to_s", Vec::new(), Position::new(0, 0, 0)) {
+            Ok(Object::String(text)) => text.as_str().to_string(),
+            _ => held.to_string(),
+        }
     }
 
     /// Add stack trace and source location to an exception object
@@ -190,6 +310,7 @@ impl VirtualMachine {
             // Ruby sets `#cause` from the exception a rescue clause is
             // handling, once, and never to the exception itself.
             if exc.cause.is_none()
+                && !exc.cause_settled
                 && let Some(active) = self.globals().get("!")
                 && let Object::Exception(active_ref) = &active
                 && !Rc::ptr_eq(&exc_ref, active_ref)
@@ -253,10 +374,25 @@ impl VirtualMachine {
                 sites.push((path, line, label));
             }
 
+            // The raise site reads as the line the source says it is on,
+            // which for code counted from a line of its own is shifted from
+            // the one the lexer counted.
+            let shift = self.source_line_shift;
             exc.backtrace = Some(
                 sites
                     .iter()
-                    .map(|(path, line, label)| entry(path, *line, label))
+                    .enumerate()
+                    .map(|(at, (path, line, label))| {
+                        if at == 0 && shift != 0 {
+                            let counted = *line as i64 + shift;
+                            return if label.is_empty() {
+                                format!("{}:{}", path, counted)
+                            } else {
+                                format!("{}:{}:in '{}'", path, counted, label)
+                            };
+                        }
+                        entry(path, *line, label)
+                    })
                     .collect(),
             );
             exc.backtrace_sites = Some(sites);
@@ -715,4 +851,23 @@ impl VirtualMachine {
 
         false
     }
+}
+
+/// Whether naming `cause` as the cause of `raised` would make the chain of
+/// causes run back to `raised` itself.
+fn causes_run_in_a_circle(
+    cause: &Rc<std::cell::RefCell<crate::object::Exception>>,
+    raised: &Rc<std::cell::RefCell<crate::object::Exception>>,
+) -> bool {
+    let mut walked = Some(Rc::clone(cause));
+    while let Some(held) = walked {
+        if Rc::ptr_eq(&held, raised) {
+            return true;
+        }
+        walked = match held.borrow().cause.as_deref() {
+            Some(Object::Exception(next)) => Some(Rc::clone(next)),
+            _ => None,
+        };
+    }
+    false
 }

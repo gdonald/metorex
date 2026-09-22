@@ -674,12 +674,9 @@ impl VirtualMachine {
                 .is_some_and(|initialize| !initialize.is_undefined && !initialize.body.is_empty())
             {
                 // A subclass writing its own `initialize` decides what the
-                // extra arguments mean. What it passes to `super` is the
-                // message, and the first argument is what that reaches for.
-                match &arguments[0] {
-                    Object::String(text) => text.as_str().to_string(),
-                    _ => String::new(),
-                }
+                // arguments mean, and the message is whatever it hands to
+                // `super`, which is nothing until it does.
+                String::new()
             } else {
                 return Err(MetorexError::runtime_error(
                     format!(
@@ -695,8 +692,12 @@ impl VirtualMachine {
             if let Object::Exception(details) = &exception {
                 let mut details = details.borrow_mut();
                 details.class = Some(Rc::clone(&class));
-                details.message_given =
-                    !arguments.is_empty() && !matches!(arguments.first(), Some(Object::Nil));
+                let writes_its_own_initialize = class
+                    .find_method("initialize")
+                    .is_some_and(|held| !held.is_undefined && !held.body.is_empty());
+                details.message_given = !writes_its_own_initialize
+                    && !arguments.is_empty()
+                    && !matches!(arguments.first(), Some(Object::Nil));
                 if let Some(value) = named_receiver {
                     details.receiver = Some(Box::new(value));
                 }

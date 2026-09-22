@@ -89,7 +89,6 @@ pub(crate) fn signal_from_object(value: &Object) -> Option<(String, i32)> {
 pub(crate) fn handler_name(command: &Object) -> Option<String> {
     let text = match command {
         Object::Symbol(name) | Object::String(name) => name.as_str().to_string(),
-        Object::Nil => "IGNORE".to_string(),
         _ => return None,
     };
     Some(match text.as_str() {
@@ -175,9 +174,18 @@ impl crate::vm::VirtualMachine {
         position: crate::lexer::Position,
     ) -> Result<Object, crate::error::MetorexError> {
         let block = self.pending_block.take();
-        let Some((name, _)) = arguments.first().and_then(signal_from_object) else {
-            let given = arguments.first().cloned().unwrap_or(Object::Nil);
-            return Err(self.signal_name_error(&given, position));
+        let given = arguments.first().cloned().unwrap_or(Object::Nil);
+        // `EXIT` is not a signal the operating system sends: it names what to
+        // run as the program ends.
+        let exiting = matches!(&given, Object::Symbol(held) | Object::String(held) if *held.as_str() == *"EXIT");
+        let name = if exiting {
+            "EXIT".to_string()
+        } else {
+            let (name, _) = self.signal_named_by(&given, position)?;
+            if let Some(refused) = self.refuse_to_trap(&name, position) {
+                return Err(refused);
+            }
+            name
         };
         let command = match (block, arguments.get(1)) {
             (Some(block), _) => block,
@@ -187,10 +195,12 @@ impl crate::vm::VirtualMachine {
             },
             (None, None) => Object::string("DEFAULT"),
         };
+        // A signal nothing was ever written for is answered for by the
+        // operating system, which is what Ruby says of it.
         let previous = self
             .signal_handlers
             .insert(name, command)
-            .unwrap_or_else(|| Object::string("DEFAULT"));
+            .unwrap_or_else(|| Object::string("SYSTEM_DEFAULT"));
         Ok(previous)
     }
 
@@ -209,10 +219,8 @@ impl crate::vm::VirtualMachine {
                 position,
             ));
         }
-        let Some((name, number)) = arguments.first().and_then(signal_from_object) else {
-            let given = arguments.first().cloned().unwrap_or(Object::Nil);
-            return Err(self.signal_name_error(&given, position));
-        };
+        let given = arguments.first().cloned().unwrap_or(Object::Nil);
+        let (name, number) = self.signal_named_by(&given, position)?;
         let own_pid = std::process::id() as i64;
         let mut delivered = 0;
         for target in &arguments[1..] {
@@ -231,7 +239,16 @@ impl crate::vm::VirtualMachine {
             // `Signal.trap` left in force. Everything else, and every signal
             // sent to another process, goes to the operating system.
             if *pid == own_pid && !matches!(name.as_str(), "KILL" | "STOP") {
-                self.run_signal_handler(&name, number, position)?;
+                // A signal a program sends itself arrives inside the call
+                // that sent it, which is what a report of it names.
+                let frame = crate::vm::CallFrame::method(
+                    "Process.kill".to_string(),
+                    Some(format!("{}:{}", position.line, position.column)),
+                    "Process.kill".to_string(),
+                    "Process.kill".to_string(),
+                )
+                .with_source_file(self.current_source_file.clone());
+                self.with_call_frame(frame, |vm| vm.run_signal_handler(&name, number, position))?;
                 continue;
             }
             // A signal this process sends to itself is delivered before the
@@ -279,8 +296,13 @@ impl crate::vm::VirtualMachine {
                 "IGNORE" => Ok(()),
                 _ => Err(self.signal_exception(name, number, position)),
             },
-            Some(callable) => {
-                self.invoke_callable(callable, vec![Object::Int(number as i64)], position)?;
+            // Nothing at all is written for a signal set aside with nil,
+            // which is the same as ignoring it.
+            Some(Object::Nil) => Ok(()),
+            Some(held) => {
+                // Anything that answers to `call` when the signal arrives
+                // runs, whether it could when it was written down or not.
+                self.send_to_object(held, "call", vec![Object::Int(number as i64)], position)?;
                 Ok(())
             }
             None => Err(self.signal_exception(name, number, position)),
@@ -308,6 +330,9 @@ impl crate::vm::VirtualMachine {
                 .instance_vars
                 .insert(SIGNO_KEY.to_string(), Object::Int(number as i64));
         }
+        // The signal was sent from somewhere, and that is where a report says
+        // the program was when it arrived.
+        let exception = self.add_stack_trace_to_exception(exception, position);
         crate::error::MetorexError::UncaughtException {
             exception,
             location: crate::vm::utils::position_to_location(position),
@@ -316,6 +341,71 @@ impl crate::vm::VirtualMachine {
     }
 
     /// The ArgumentError Ruby raises for a signal it cannot name.
+    /// The signal an argument names, taken the way Ruby takes it: a Symbol,
+    /// a String, or an Integer, and anything else only through `to_str`.
+    /// A number with no signal behind it, a name nothing answers to, and a
+    /// value of any other kind are each refused in their own words.
+    pub(crate) fn signal_named_by(
+        &mut self,
+        given: &Object,
+        position: crate::lexer::Position,
+    ) -> Result<(String, i32), crate::error::MetorexError> {
+        let refuse = |message: String| crate::error::MetorexError::UncaughtException {
+            exception: Object::exception("ArgumentError", message.clone()),
+            location: crate::vm::utils::position_to_location(position),
+            message,
+        };
+        let named = match given {
+            Object::Symbol(_) | Object::String(_) | Object::Int(_) => given.clone(),
+            other if self.responds_to(other, "to_str") => {
+                self.send_to_object(other.clone(), "to_str", Vec::new(), position)?
+            }
+            other => {
+                // Ruby names nil, true and false outright rather than by the
+                // class they belong to.
+                return Err(refuse(format!(
+                    "bad signal type {}",
+                    match other {
+                        Object::Nil => "NilClass".to_string(),
+                        Object::Bool(true) => "TrueClass".to_string(),
+                        Object::Bool(false) => "FalseClass".to_string(),
+                        held => self.builtins().class_of(held).name().to_string(),
+                    }
+                )));
+            }
+        };
+        if let Object::Int(number) = &named
+            && crate::vm::signals::name_for_number(number.unsigned_abs() as i32).is_none()
+        {
+            return Err(refuse(format!("invalid signal number ({})", number)));
+        }
+        match signal_from_object(&named) {
+            Some(held) => Ok(held),
+            None => Err(self.signal_name_error(&named, position)),
+        }
+    }
+
+    /// Whether a signal is one the interpreter keeps for itself, or one the
+    /// operating system does not let a program answer for.
+    fn refuse_to_trap(
+        &mut self,
+        name: &str,
+        position: crate::lexer::Position,
+    ) -> Option<crate::error::MetorexError> {
+        let message = match name {
+            "KILL" | "STOP" => format!("Signal already used by VM or OS: SIG{}", name),
+            "SEGV" | "BUS" | "ILL" | "FPE" | "VTALRM" => {
+                format!("can't trap reserved signal: SIG{}", name)
+            }
+            _ => return None,
+        };
+        Some(crate::error::MetorexError::UncaughtException {
+            exception: Object::exception("ArgumentError", message.clone()),
+            location: crate::vm::utils::position_to_location(position),
+            message,
+        })
+    }
+
     fn signal_name_error(
         &mut self,
         given: &Object,

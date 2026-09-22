@@ -186,6 +186,15 @@ fn closed_error(position: Position) -> MetorexError {
 }
 
 impl VirtualMachine {
+    /// Whether a broken pipe is the operating system's to answer for, which
+    /// is what `Signal.trap('PIPE', 'SYSTEM_DEFAULT')` asks for.
+    fn leaves_a_broken_pipe_to_the_system(&self) -> bool {
+        matches!(
+            self.signal_handlers.get("PIPE"),
+            Some(Object::String(held)) if *held.as_str() == *"SYSTEM_DEFAULT"
+        )
+    }
+
     /// The bridge the Ruby side of IO reaches its descriptors through, called
     /// as `IO.__stream__(action, handle, text, count)`.
     pub(crate) fn stream_action(
@@ -405,11 +414,16 @@ impl VirtualMachine {
                     libc::write(number, bytes.as_ptr() as *const libc::c_void, bytes.len())
                 };
                 if written < 0 {
-                    return Err(stream_error(
-                        &std::io::Error::last_os_error(),
-                        "write",
-                        position,
-                    ));
+                    let trouble = std::io::Error::last_os_error();
+                    // Writing where nothing is left to read is a signal, and
+                    // a program that leaves that signal to the operating
+                    // system ends by it rather than hearing about it.
+                    if trouble.raw_os_error() == Some(libc::EPIPE)
+                        && self.leaves_a_broken_pipe_to_the_system()
+                    {
+                        crate::vm::native_functions::die_of_a_broken_pipe();
+                    }
+                    return Err(stream_error(&trouble, "write", position));
                 }
                 Ok(Object::Int(written as i64))
             }

@@ -247,6 +247,7 @@ fn test_require_load_semantics_execution() {
         "true\n",
         "false\n",
         "wrapped\n",
+        "false\n",
         "true\n"
     );
     let output = run_example("require/load_semantics.rb");
@@ -268,6 +269,7 @@ fn test_require_load_semantics_parens_execution() {
         "true\n",
         "false\n",
         "wrapped\n",
+        "false\n",
         "true\n"
     );
     let output = run_example("require/load_semantics_parens.rb");
@@ -318,4 +320,61 @@ fn test_file_loader_own_top_level_locals_execution() {
 fn test_file_loader_own_top_level_locals_no_parens_execution() {
     let output = run_example("file_loader/own_top_level_locals_no_parens.rb");
     assert_eq!(output, OWN_TOP_LEVEL_LOCALS_OUTPUT);
+}
+
+/// The expected output of both `file_loader/wrapped_load` variants, which differ only in
+/// whether the calls are written with parentheses.
+const WRAPPED_LOAD_OUTPUT: &str =
+    "String\ntrue\n\"main\"\nfalse\ntrue\ntrue\ntrue\n:wrapped_top_method\n";
+
+#[test]
+fn test_file_loader_wrapped_load_execution() {
+    let output = run_example("file_loader/wrapped_load.rb");
+    assert_eq!(output, WRAPPED_LOAD_OUTPUT);
+}
+
+#[test]
+fn test_file_loader_wrapped_load_no_parens_execution() {
+    let output = run_example("file_loader/wrapped_load_no_parens.rb");
+    assert_eq!(output, WRAPPED_LOAD_OUTPUT);
+}
+
+/// The expected output of both `file_loader/required_as_ruby` variants, which differ only in
+/// whether the calls are written with parentheses.
+const REQUIRED_AS_RUBY_OUTPUT: &str = concat!(
+    "true\nfalse\ntrue\ntrue\n",
+    "\"no implicit conversion of Integer into String\"\n",
+    "true\nfalse\n"
+);
+
+#[test]
+fn test_file_loader_required_as_ruby_execution() {
+    let output = run_example("file_loader/required_as_ruby.rb");
+    assert_eq!(output, REQUIRED_AS_RUBY_OUTPUT);
+}
+
+#[test]
+fn test_file_loader_required_as_ruby_no_parens_execution() {
+    let output = run_example("file_loader/required_as_ruby_no_parens.rb");
+    assert_eq!(output, REQUIRED_AS_RUBY_OUTPUT);
+}
+
+/// The expected output of both `file_loader/required_by_name` variants, which differ only in
+/// whether the calls are written with parentheses.
+const REQUIRED_BY_NAME_OUTPUT: &str = concat!(
+    "true\nfalse\n1\n",
+    "\"./not_beside_the_working_directory\"\n",
+    "false\nfalse\n"
+);
+
+#[test]
+fn test_file_loader_required_by_name_execution() {
+    let output = run_example("file_loader/required_by_name.rb");
+    assert_eq!(output, REQUIRED_BY_NAME_OUTPUT);
+}
+
+#[test]
+fn test_file_loader_required_by_name_no_parens_execution() {
+    let output = run_example("file_loader/required_by_name_no_parens.rb");
+    assert_eq!(output, REQUIRED_BY_NAME_OUTPUT);
 }

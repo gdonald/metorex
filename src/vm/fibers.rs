@@ -59,6 +59,11 @@ pub(crate) struct FiberContext {
     call_stack: Vec<crate::vm::CallFrame>,
     def_scope_stack: Vec<std::rc::Rc<crate::class::Class>>,
     method_nesting_stack: Vec<Vec<std::rc::Rc<crate::class::Class>>>,
+    /// The invocation a `return` written here belongs to. It travels with the
+    /// fiber, so a method the interrupted side is part-way through still
+    /// returns to itself once control comes back to it.
+    current_method_frame: Option<u64>,
+    lexical_home_frame: Option<Option<u64>>,
 }
 
 /// One fiber the program made, and the coroutine it runs on.
@@ -226,7 +231,22 @@ impl VirtualMachine {
                     if self.blocking_in_fiber {
                         self.blocking_in_fiber = false;
                         self.wait_for_other_threads(position);
-                        self.raise_if_thread_killed(position)?;
+                        if let Err(stopping) = self.raise_if_thread_killed(position) {
+                            // The fiber the thread is waiting inside unwinds
+                            // first, so the `ensure` clauses it sits inside
+                            // run before the thread itself is gone.
+                            if self
+                                .fibers
+                                .get(running_handle)
+                                .is_some_and(|state| !state.finished)
+                            {
+                                self.fibers[running_handle].killing = true;
+                                let carried = self.fiber_object(running_handle);
+                                let _ =
+                                    self.fiber_step(running_handle, carried, Vec::new(), position);
+                            }
+                            return Err(stopping);
+                        }
                         running_fiber = self.fiber_object(running_handle);
                         running_given = Vec::new();
                         continue;
@@ -473,6 +493,8 @@ impl VirtualMachine {
                 call_stack: Vec::new(),
                 def_scope_stack: Vec::new(),
                 method_nesting_stack: Vec::new(),
+                current_method_frame: Some(crate::vm::core::TOP_LEVEL_FRAME),
+                lexical_home_frame: None,
             }
         });
         FiberContext {
@@ -482,6 +504,14 @@ impl VirtualMachine {
             method_nesting_stack: std::mem::replace(
                 &mut self.method_nesting_stack,
                 taken.method_nesting_stack,
+            ),
+            current_method_frame: std::mem::replace(
+                &mut self.current_method_frame,
+                taken.current_method_frame,
+            ),
+            lexical_home_frame: std::mem::replace(
+                &mut self.lexical_home_frame,
+                taken.lexical_home_frame,
             ),
         }
     }
@@ -806,6 +836,53 @@ impl VirtualMachine {
     /// Give every thread that has not finished one turn, answering whether
     /// any of them ran. A thread that finishes records the value its block
     /// answered and leaves the queue.
+    /// End every thread still running when the program does. Each one
+    /// unwinds where it waits, so the `ensure` clauses the fiber it is on
+    /// sits inside run. A fiber it left suspended stays that way, and its
+    /// own `ensure` clauses do not run.
+    pub(crate) fn end_live_threads(&mut self) {
+        let position = Position::new(0, 0, 0);
+        for thread in self.pending_threads.clone() {
+            let Object::Instance(held) = thread else {
+                continue;
+            };
+            // A thread waiting inside a fiber of its own unwinds that fiber,
+            // which is the one whose `ensure` clauses are its to run.
+            let waiting_on = match held.borrow().get_var("__thread_on_fiber") {
+                Some(Object::Int(handle)) => Some(*handle as usize),
+                _ => None,
+            };
+            let root = match held.borrow().get_var("__thread_fiber") {
+                Some(Object::Int(handle)) => Some(*handle as usize),
+                _ => None,
+            };
+            {
+                let mut held = held.borrow_mut();
+                held.set_var("__thread_killed".to_string(), Object::Bool(true));
+                held.set_var("__thread_waiting".to_string(), Object::Bool(false));
+            }
+            // A thread waiting inside a fiber of its own says so, and that
+            // fiber is stopped where it waits when the thread next has a
+            // turn, so the `ensure` clauses it sits inside run.
+            if let Some(handle) = waiting_on
+                && Some(handle) != root
+                && let Some(state) = self.fibers.get_mut(handle)
+                && !state.finished
+            {
+                state.killing = true;
+            }
+        }
+        let waited_enough = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !self.pending_threads.is_empty() {
+            if std::time::Instant::now() >= waited_enough {
+                return;
+            }
+            if !self.step_pending_threads(position) {
+                return;
+            }
+        }
+    }
+
     pub(crate) fn step_pending_threads(&mut self, position: Position) -> bool {
         if self.pending_threads.is_empty() || self.stepping_threads {
             return false;
@@ -943,6 +1020,15 @@ impl VirtualMachine {
                     .iter()
                     .any(|frame| self.thread_body_fibers.contains(&frame.handle))
             {
+                // Which fiber of the thread's own is waiting here, so a
+                // program that ends while it waits unwinds that one.
+                let on_fiber = self.fiber_current_handle();
+                if let Some(Object::Instance(held)) = self.thread_current_stack.last().cloned() {
+                    held.borrow_mut().set_var(
+                        "__thread_on_fiber".to_string(),
+                        Object::Int(on_fiber as i64),
+                    );
+                }
                 self.blocking_in_fiber = true;
                 self.fiber_suspend(Object::Nil, position)?;
                 return self.raise_if_thread_killed(position);
@@ -954,9 +1040,18 @@ impl VirtualMachine {
             self.fiber_suspend(Object::Nil, position)?;
             return Ok(());
         };
-        instance
-            .borrow_mut()
-            .set_var("__thread_in".to_string(), Object::string("sleep"));
+        // Which fiber of the thread's own is waiting here, so a program that
+        // ends while it waits unwinds that one rather than another the thread
+        // left suspended earlier.
+        let on_fiber = self.fiber_current_handle();
+        {
+            let mut held = instance.borrow_mut();
+            held.set_var("__thread_in".to_string(), Object::string("sleep"));
+            held.set_var(
+                "__thread_on_fiber".to_string(),
+                Object::Int(on_fiber as i64),
+            );
+        }
         let deadline = std::time::Instant::now() + limit;
         let mut outcome = Ok(());
         loop {

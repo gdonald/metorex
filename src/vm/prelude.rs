@@ -10599,6 +10599,9 @@ class Thread
   def __report_terminated__(error)
     return nil unless report_on_exception
     return nil unless error.is_a?(Exception)
+    # A thread ending the program carries the word to the main thread rather
+    # than dying of it, so there is nothing to report.
+    return nil if error.is_a?(SystemExit)
     written = "#{inspect} terminated with exception (report_on_exception is true):\n"
     written += error.full_message(highlight: false, order: :top)
     $stderr.write written

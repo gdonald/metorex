@@ -56,6 +56,10 @@ pub struct Exception {
     /// Whether a message was supplied. An exception built without one reports
     /// its class name instead, which an explicitly empty message does not.
     pub message_given: bool,
+    /// Whether the exception's cause was settled when it was raised. It is
+    /// decided once, so an exception raised again keeps what it had and one
+    /// raised with `cause:` is not chained onto anything else.
+    pub cause_settled: bool,
 }
 
 impl Exception {
@@ -92,6 +96,7 @@ impl Exception {
             class: None,
             instance_vars: indexmap::IndexMap::new(),
             message_given: true,
+            cause_settled: false,
         }
     }
 
@@ -112,6 +117,7 @@ impl Exception {
             class: None,
             instance_vars: indexmap::IndexMap::new(),
             message_given: true,
+            cause_settled: false,
         }
     }
 
@@ -136,6 +142,7 @@ impl Exception {
             class: None,
             instance_vars: indexmap::IndexMap::new(),
             message_given: true,
+            cause_settled: false,
         }
     }
 
@@ -156,6 +163,7 @@ impl Exception {
             class: None,
             instance_vars: indexmap::IndexMap::new(),
             message_given: true,
+            cause_settled: false,
         }
     }
 
@@ -182,6 +190,7 @@ impl Exception {
             class: None,
             instance_vars: indexmap::IndexMap::new(),
             message_given: true,
+            cause_settled: false,
         }
     }
 

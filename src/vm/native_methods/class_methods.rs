@@ -1901,6 +1901,32 @@ impl VirtualMachine {
                 "current" => {
                     return Ok(Some(self.fiber_current()));
                 }
+                // The scheduler a fiber that is not blocking hands its
+                // waiting over to. Setting nil takes it away again.
+                "set_scheduler" if arguments.len() == 1 => {
+                    self.fiber_scheduler = match &arguments[0] {
+                        Object::Nil => None,
+                        held => {
+                            // A scheduler has to answer for everything a
+                            // fiber hands over to it, which Ruby checks here
+                            // rather than when the fiber waits.
+                            for wanted in ["block", "unblock", "kernel_sleep", "io_wait"] {
+                                if !self.responds_to(held, wanted) {
+                                    return Err(crate::vm::errors::simple_exception(
+                                        "ArgumentError",
+                                        &format!("Scheduler must implement #{}", wanted),
+                                        position,
+                                    ));
+                                }
+                            }
+                            Some(held.clone())
+                        }
+                    };
+                    return Ok(Some(arguments[0].clone()));
+                }
+                "scheduler" => {
+                    return Ok(Some(self.fiber_scheduler.clone().unwrap_or(Object::Nil)));
+                }
                 // `Fiber.blocking { |f| ... }` runs the block with the
                 // running fiber blocking, and puts back what it was after.
                 "blocking" if self.pending_block.is_some() => {
@@ -2863,6 +2889,22 @@ impl VirtualMachine {
                 {
                     return Ok(Some(Object::Bool(method_name == "private_method_defined?")));
                 }
+                // Kernel carries its functions as module functions as well,
+                // and those are public methods of Kernel itself.
+                if found.is_none()
+                    && class_rc.is_singleton_class()
+                    && matches!(
+                        class_rc.get_class_var("__attached__"),
+                        Some(Object::Module(held) | Object::Class(held)) if held.ruby_name() == "Kernel"
+                    )
+                    && (KERNEL_PRIVATE_FUNCTIONS.contains(&name.as_str())
+                        || crate::vm::native_methods::is_native_kernel_method(&name))
+                {
+                    return Ok(Some(Object::Bool(matches!(
+                        method_name,
+                        "method_defined?" | "public_method_defined?"
+                    ))));
+                }
                 // The public ones live there too, so Kernel reports them the
                 // same way rather than answering that it has none.
                 if matches!(class_rc.name(), "Kernel" | "Object")
@@ -3409,6 +3451,7 @@ impl VirtualMachine {
                 }
                 let mut value = Object::Nil;
                 for (i, seg) in segments.iter().enumerate() {
+                    self.settle_pending_autoload(&current, seg);
                     let entry = self.const_entry_on(&current, seg, inherit, i == 0);
                     let resolved = match entry {
                         Some((_, Some(v))) => Some(v),

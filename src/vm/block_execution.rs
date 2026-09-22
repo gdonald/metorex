@@ -494,33 +494,100 @@ impl VirtualMachine {
     /// Run Ruby source with `self` bound to `receiver`, which is what the
     /// String form of `instance_eval` does. The source sees the receiver's
     /// instance variables and defines methods on its singleton class.
-    pub(crate) fn evaluate_source_with_receiver(
+    /// Run Ruby source against `receiver`, counted as written in `named` from
+    /// `lineno` on. The code sees the locals of the scope it was written in,
+    /// so an assignment there reaches the caller's own name.
+    pub(crate) fn evaluate_source_named_with_receiver(
         &mut self,
         source: &str,
         receiver: Object,
+        named: Option<String>,
+        lineno: i64,
         position: Position,
     ) -> Result<Object, MetorexError> {
-        let tokens = crate::lexer::Lexer::new(source).tokenize();
+        let tokens =
+            crate::lexer::Lexer::with_start_line(source, lineno.max(1) as usize).tokenize();
         let statements = crate::parser::Parser::new(tokens)
             .parse()
             .map_err(|errors| {
-                MetorexError::runtime_error(
-                    format!(
-                        "instance_eval: parse error: {}",
-                        errors
-                            .iter()
-                            .map(|error| error.to_string())
-                            .collect::<Vec<_>>()
-                            .join("; ")
-                    ),
-                    position_to_location(position),
+                let reported = errors
+                    .iter()
+                    .map(|error| error.to_string())
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                let file = named.clone().unwrap_or_default();
+                crate::vm::errors::syntax_error(
+                    format!("{file}: {reported}"),
+                    Some(&file),
+                    position,
                 )
             })?;
         let singleton = self.singleton_class_of(&receiver);
+        // The code runs in a scope of its own that sees the caller's locals,
+        // so a name it assigns is the caller's own name.
+        let carried: Vec<(String, std::rc::Rc<std::cell::RefCell<Object>>)> = self
+            .environment()
+            .binding_variable_names()
+            .into_iter()
+            .filter_map(|name| self.environment().get_ref(&name).map(|cell| (name, cell)))
+            .collect();
+        let previous_file = self.current_file.clone();
+        let previous_source_file = self.current_source_file.clone();
+        // Code with no file named for it is counted as written where the
+        // call was made, which is what `__FILE__` answers inside it.
+        let named = named.or_else(|| {
+            let written_in = previous_source_file
+                .clone()
+                .or_else(|| {
+                    previous_file
+                        .as_ref()
+                        .map(|held| held.display().to_string())
+                })
+                .unwrap_or_default();
+            Some(format!(
+                "{}{}:{})",
+                crate::vm::EVAL_FILE_PREFIX,
+                written_in,
+                position.line
+            ))
+        });
+        if let Some(file) = &named {
+            self.current_file = Some(std::path::PathBuf::from(file));
+            self.current_source_file = Some(file.clone());
+        }
         self.environment_mut().push_isolated_scope();
+        for (name, cell) in carried {
+            self.environment_mut().define_inherited(name, cell);
+        }
         self.environment_mut()
             .define("self".to_string(), receiver.clone());
+        // A line counted from below one is still counted from there, which a
+        // backtrace reports rather than the line the lexer could start at.
+        let previous_shift = std::mem::replace(&mut self.source_line_shift, lineno.min(1) - 1);
+        // The code reads constants from the receiver's singleton class first
+        // and from the receiver's own class next, ahead of the scopes the
+        // caller was written in.
+        let receiver_class = match &receiver {
+            Object::Class(held) | Object::Module(held) => Some(std::rc::Rc::clone(held)),
+            Object::Instance(held) => Some(std::rc::Rc::clone(&held.borrow().class)),
+            _ => None,
+        };
+        let mut opened = 1;
+        let mut nesting = Vec::new();
+        nesting.push(std::rc::Rc::clone(&singleton));
+        if let Some(held) = receiver_class {
+            nesting.push(std::rc::Rc::clone(&held));
+            self.def_scope_stack.push(held);
+            opened += 1;
+        }
         self.def_scope_stack.push(singleton);
+        // The scopes open around the code are the receiver's, ahead of the
+        // ones the caller was written in, which is the order a name written
+        // there is looked up through.
+        if let Some(held) = self.method_nesting_stack.last() {
+            nesting.extend(held.iter().map(std::rc::Rc::clone));
+        }
+        self.method_nesting_stack.push(nesting);
         let mut last = Object::Nil;
         let result = (|| -> Result<(), MetorexError> {
             for statement in &statements {
@@ -531,14 +598,33 @@ impl VirtualMachine {
                     last = self.evaluate_expression(expression)?;
                     continue;
                 }
-                if let ControlFlow::Value(value) = self.execute_statement(statement)? {
-                    last = value;
+                match self.execute_statement(statement)? {
+                    ControlFlow::Value(value) => last = value,
+                    // An exception raised here is the caller's to handle,
+                    // rather than something the run swallows.
+                    ControlFlow::Exception {
+                        exception,
+                        position,
+                    } => {
+                        return Err(MetorexError::UncaughtException {
+                            message: crate::vm::utils::format_exception(&exception),
+                            exception,
+                            location: position_to_location(position),
+                        });
+                    }
+                    _ => {}
                 }
             }
             Ok(())
         })();
-        self.def_scope_stack.pop();
+        for _ in 0..opened {
+            self.def_scope_stack.pop();
+        }
+        self.method_nesting_stack.pop();
         self.environment_mut().pop_scope();
+        self.source_line_shift = previous_shift;
+        self.current_file = previous_file;
+        self.current_source_file = previous_source_file;
         result?;
         Ok(last)
     }
@@ -587,11 +673,11 @@ impl VirtualMachine {
         // The class or module the block was written in. A block written in a
         // method body belongs to the class holding that method, whatever
         // scope was open where the method was called from.
-        let lexical = self
-            .method_owner_stack
-            .last()
+        let lexical = block
+            .captured_nesting
+            .first()
             .cloned()
-            .flatten()
+            .or_else(|| self.method_owner_stack.last().cloned().flatten())
             .or_else(|| block.captured_def_scope.last().cloned())
             .or_else(|| {
                 self.method_nesting_stack
@@ -608,6 +694,15 @@ impl VirtualMachine {
         if let Some(home) = lexical {
             self.class_var_home.push(home);
         }
+        // A class variable written in the body belongs to the class or
+        // module the block was written in, whatever it runs against.
+        self.class_var_cref_stack.push(
+            block
+                .captured_nesting
+                .first()
+                .cloned()
+                .or_else(|| block.captured_def_scope.last().cloned()),
+        );
         // The scopes open around the body are the ones the block was written
         // in, whatever the receiver it runs against, which is what
         // `Module.nesting` there reports.
@@ -758,6 +853,7 @@ impl VirtualMachine {
             result
         });
         self.method_nesting_stack.pop();
+        self.class_var_cref_stack.pop();
         if carried {
             self.class_var_home.pop();
         }
@@ -809,8 +905,13 @@ impl VirtualMachine {
         );
         // A class variable written in the body belongs to the class or module
         // the block was written in, which is none at the top level.
-        self.class_var_cref_stack
-            .push(block.captured_def_scope.last().cloned());
+        self.class_var_cref_stack.push(
+            block
+                .captured_nesting
+                .first()
+                .cloned()
+                .or_else(|| block.captured_def_scope.last().cloned()),
+        );
         // The scopes open around the block are the ones it was written in,
         // not the ones open in the method that called it, which is what
         // `Module.nesting` in the body reports and where an `eval` written

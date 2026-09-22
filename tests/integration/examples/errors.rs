@@ -1147,3 +1147,27 @@ fn test_errors_exception_reports_parens_execution() {
     let output = run_example("errors/exception_reports_parens.rb");
     assert_eq!(output, EXCEPTION_REPORTS_OUTPUT);
 }
+
+/// The expected output of both `errors/cause/named` variants, which differ only in whether
+/// the calls are written with parentheses.
+const CAUSE_NAMED_OUTPUT: &str = concat!(
+    "RuntimeError: the new one <- #<StandardError: named instead>\n",
+    "RuntimeError: the new one <- nil\n",
+    "ArgumentError: only cause is given with no arguments <- nil\n",
+    "TypeError: exception object expected <- nil\n",
+    "StandardError: itself <- nil\n",
+    "ArgumentError: circular causes <- #<RuntimeError: three>\n",
+    "RuntimeError: one <- nil\n"
+);
+
+#[test]
+fn test_errors_cause_named_execution() {
+    let output = run_example("errors/cause/named.rb");
+    assert_eq!(output, CAUSE_NAMED_OUTPUT);
+}
+
+#[test]
+fn test_errors_cause_named_no_parens_execution() {
+    let output = run_example("errors/cause/named_no_parens.rb");
+    assert_eq!(output, CAUSE_NAMED_OUTPUT);
+}

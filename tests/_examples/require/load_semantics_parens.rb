@@ -41,3 +41,5 @@ load(File.expand_path("load_lib/wrapped.rb", __dir__), wrapper)
 puts(Object.const_defined?(:WRAPPED_CONSTANT))
 puts(wrapper.const_get(:WRAPPED_CONSTANT))
 puts(wrapper.instance_methods.include?(:wrapped_method))
+# A method written at the top level of a wrapped load is private there.
+puts(wrapper.private_instance_methods.include?(:wrapped_method))

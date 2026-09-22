@@ -139,10 +139,12 @@ fn execute_file_with_unreadable_file_fails_at_read() {
     let _ = fs::set_permissions(&file_path, Permissions::from_mode(0o644));
     let _ = fs::remove_dir_all(&dir);
 
+    // A file that is there but cannot be read is one the program cannot
+    // load, which is what Ruby reports it as.
     let err = result.expect_err("should fail to read unreadable file");
     let msg = err.to_string();
     assert!(
-        msg.contains("Failed to load file") || msg.contains("Permission") || msg.contains("denied"),
+        msg.contains("cannot load such file"),
         "unexpected error: {}",
         msg
     );

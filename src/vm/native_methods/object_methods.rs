@@ -2351,10 +2351,10 @@ impl VirtualMachine {
                     self.call_stack_pop();
                     return result.map(Some);
                 }
-                // The String form runs source in the receiver's context. The
-                // trailing file and line arguments only shape the positions
-                // recorded for the code, which metorex takes from the source
-                // it parses.
+                // The String form runs source in the receiver's context. A
+                // second argument names the file the code is counted as being
+                // written in, which `__FILE__` answers and which a
+                // `require_relative` written there resolves against.
                 if method_name == "instance_eval" {
                     if positional.is_empty() || positional.len() > 3 {
                         return Err(crate::vm::errors::argument_count_error(
@@ -2364,8 +2364,42 @@ impl VirtualMachine {
                         ));
                     }
                     let source = self.coerce_name_argument(&positional[0], position)?;
+                    // The file and the line are taken the way any other
+                    // String and Integer argument is.
+                    let named = match positional.get(1) {
+                        None | Some(Object::Nil) => None,
+                        Some(Object::String(text)) => Some(text.as_str().to_string()),
+                        Some(held) => {
+                            if !self.responds_to(held, "to_str") {
+                                let message = format!(
+                                    "no implicit conversion of {} into String",
+                                    self.conversion_name(held)
+                                );
+                                return Err(crate::vm::errors::simple_exception(
+                                    "TypeError",
+                                    &message,
+                                    position,
+                                ));
+                            }
+                            Some(self.coerce_name_argument(held, position)?)
+                        }
+                    };
+                    let lineno: i64 = match positional.get(2) {
+                        None | Some(Object::Nil) => 1,
+                        Some(Object::Int(held)) => *held,
+                        Some(held) => {
+                            let counted = self.coerce_integer_argument(held, position)?;
+                            counted.try_into().unwrap_or(1)
+                        }
+                    };
                     return self
-                        .evaluate_source_with_receiver(&source, receiver.clone(), position)
+                        .evaluate_source_named_with_receiver(
+                            &source,
+                            receiver.clone(),
+                            named,
+                            lineno,
+                            position,
+                        )
                         .map(Some);
                 }
                 // `instance_exec` yields, so without a block Ruby reports the
@@ -3541,6 +3575,15 @@ impl VirtualMachine {
         let Object::Instance(held) = receiver else {
             return false;
         };
+        // A wrapped load runs against a main of its own, which stands for
+        // main the way the program's own does.
+        if held
+            .borrow()
+            .get_var(crate::vm::loading::MAIN_STAND_IN)
+            .is_some()
+        {
+            return true;
+        }
         match self.globals().get("__main__") {
             Some(Object::Instance(main)) => std::rc::Rc::ptr_eq(held, &main),
             _ => false,

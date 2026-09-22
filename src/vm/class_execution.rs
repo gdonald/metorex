@@ -1612,6 +1612,13 @@ impl VirtualMachine {
         if let Some(definee) = self.def_scope_stack.last().cloned() {
             definee.define_method(name, Rc::clone(&function));
             apply_current_visibility(&definee, name);
+            // A method written at the top level of a wrapped load belongs to
+            // the module the load was wrapped in, and a top-level method is
+            // private, so it is reached through that module rather than by
+            // anything that mixes the module in.
+            if self.load_wrap_depth > 0 && self.def_scope_stack.len() == 1 {
+                definee.set_method_private(name);
+            }
             let hook = Self::method_added_hook_for(&definee);
             self.invoke_class_hook(&definee, hook, name, position)?;
             if module_function_is_active(&definee) {

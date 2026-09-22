@@ -3,7 +3,7 @@
 
 mod binary;
 pub(crate) mod call;
-mod primary;
+pub(crate) mod primary;
 mod unary;
 
 use crate::ast::{Expression, Statement};

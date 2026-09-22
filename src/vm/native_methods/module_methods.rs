@@ -162,14 +162,9 @@ impl VirtualMachine {
                     position,
                 ));
             }
-            let path = match &arguments[0] {
-                Object::String(s) => s.as_str().to_string(),
-                other => {
-                    return Err(method_argument_type_error(
-                        "require", "String", other, position,
-                    ));
-                }
-            };
+            // A path may be named by anything that says how to read itself
+            // as one, which the bare form takes too.
+            let path = self.coerce_load_path(&arguments[0], position)?;
             return self
                 .call_native_function("require", vec![Object::string(path)], position)
                 .map(Some);

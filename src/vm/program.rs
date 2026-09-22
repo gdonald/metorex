@@ -563,6 +563,23 @@ impl VirtualMachine {
         if let Some(exception) = ending {
             self.set_current_exception(exception);
         }
+        // A program that is ending takes its threads with it, and each one
+        // unwinds where it stands.
+        self.end_live_threads();
+        // `Signal.trap(:EXIT, ...)` names what to run as the program ends,
+        // ahead of everything `at_exit` left.
+        if let Some(held) = self.signal_handlers.get("EXIT").cloned()
+            && !matches!(&held, Object::String(text) if matches!(
+                &*text.as_str(),
+                "DEFAULT" | "SYSTEM_DEFAULT" | "IGNORE"
+            ))
+            && !matches!(held, Object::Nil)
+        {
+            let position = crate::lexer::Position::new(0, 0, 0);
+            let _ = self.send_to_object(held, "call", Vec::new(), position);
+            use std::io::Write as _;
+            let _ = std::io::stdout().flush();
+        }
         let mut status = status;
         while let Some(handler) = self.at_exit_handlers.pop() {
             let Object::Block(block) = handler else {

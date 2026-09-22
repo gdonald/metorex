@@ -461,7 +461,18 @@ impl VirtualMachine {
                         Object::String(text) => text.as_str().to_string(),
                         other => other.to_string(),
                     };
-                    rendered.push_str(&format!("{}\n", reported));
+                    // A cause is reported the way the exception itself is:
+                    // where it was raised, then what it was raised through.
+                    let held = details.borrow().backtrace.clone().unwrap_or_default();
+                    match held.first() {
+                        Some(first) => {
+                            rendered.push_str(&format!("{}: {}\n", first, reported));
+                            for entry in held.iter().skip(1) {
+                                rendered.push_str(&format!("\tfrom {}\n", entry));
+                            }
+                        }
+                        None => rendered.push_str(&format!("{}\n", reported)),
+                    }
                     cause = details.borrow().cause.clone();
                 }
                 Ok(Some(Object::string(rendered)))
@@ -621,7 +632,14 @@ impl VirtualMachine {
                 let rendered = if exc.message_given {
                     exc.message.clone()
                 } else {
-                    exc.exception_type.clone()
+                    // An exception built with no message says what class it
+                    // is, which for an anonymous one is how that class writes
+                    // itself rather than the name of an ancestor.
+                    match &exc.class {
+                        Some(class) if class.ruby_name().is_empty() => class.inspect_name(),
+                        Some(class) => class.ruby_name(),
+                        None => exc.exception_type.clone(),
+                    }
                 };
                 Ok(Some(Object::string(rendered)))
             }

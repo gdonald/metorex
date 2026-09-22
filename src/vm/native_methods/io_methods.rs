@@ -107,14 +107,48 @@ impl VirtualMachine {
             }
         };
         child.stdin(std::process::Stdio::piped());
-        child.stdout(std::process::Stdio::piped());
-        child.stderr(std::process::Stdio::inherit());
+        // A command told to point its error stream at its output writes both
+        // into one stream, which is what keeps the two interleaved the way
+        // they were written. The command runs without a shell either way, so
+        // a command ended by a signal is reported as ended by that signal.
+        let merged = arguments
+            .iter()
+            .skip(1)
+            .any(child_out_redirect)
+            .then(one_stream_for_both)
+            .flatten();
+        match &merged {
+            Some((_, writer)) => {
+                let held = writer.try_clone().map_err(|error| {
+                    MetorexError::runtime_error(
+                        format!("Failed to run {}: {}", arguments[0], error),
+                        position_to_location(position),
+                    )
+                })?;
+                child.stdout(std::process::Stdio::from(held));
+                child.stderr(std::process::Stdio::from(writer.try_clone().map_err(
+                    |error| {
+                        MetorexError::runtime_error(
+                            format!("Failed to run {}: {}", arguments[0], error),
+                            position_to_location(position),
+                        )
+                    },
+                )?));
+            }
+            None => {
+                child.stdout(std::process::Stdio::piped());
+                child.stderr(std::process::Stdio::inherit());
+            }
+        }
         let spawned = child.spawn().map_err(|error| {
             MetorexError::runtime_error(
                 format!("Failed to run {}: {}", arguments[0], error),
                 position_to_location(position),
             )
         })?;
+        // The command holds a copy of whatever it was told to write into, so
+        // letting go of it is what leaves the writing end to the child alone.
+        drop(child);
         let pid = spawned.id() as i64;
 
         // The child stays alive behind the handle so the block can write to
@@ -122,6 +156,12 @@ impl VirtualMachine {
         let handle_id = self.next_popen_id;
         self.next_popen_id += 1;
         self.popen_children.insert(handle_id, spawned);
+        if let Some((reader, writer)) = merged {
+            // The writing end belongs to the child alone now, so letting go
+            // of this copy is what tells the reader when the child is done.
+            drop(writer);
+            self.popen_merged.insert(handle_id, reader);
+        }
 
         let handle_class = self.memoized_class("__IO_popen_class", "IO", &["close", "closed?"]);
         let instance = Rc::new(RefCell::new(Instance::new(handle_class)));
@@ -168,16 +208,22 @@ impl VirtualMachine {
             _ => return Object::Nil,
         };
         let mut collected = held;
-        if let Some(child) = self.popen_children.get_mut(&handle_id)
-            && let Some(stream) = child.stdout.as_mut()
         {
-            use std::io::Read as _;
-            let mut byte = [0u8; 1];
-            while stream.read(&mut byte).unwrap_or(0) == 1 {
-                collected.push(byte[0] as char);
-                if byte[0] == b'\n' {
-                    break;
+            let mut take_a_line = |stream: &mut dyn std::io::Read| {
+                let mut byte = [0u8; 1];
+                while stream.read(&mut byte).unwrap_or(0) == 1 {
+                    collected.push(byte[0] as char);
+                    if byte[0] == b'\n' {
+                        break;
+                    }
                 }
+            };
+            if let Some(stream) = self.popen_merged.get_mut(&handle_id) {
+                take_a_line(stream);
+            } else if let Some(child) = self.popen_children.get_mut(&handle_id)
+                && let Some(stream) = child.stdout.as_mut()
+            {
+                take_a_line(stream);
             }
         }
         instance
@@ -230,6 +276,23 @@ impl VirtualMachine {
                 crate::error::SourceLocation::new(0, 0, 0),
             )
         };
+        // A command writing both of its streams into one is read from that
+        // stream rather than from the child's own.
+        if let Some(mut stream) = self.popen_merged.remove(&handle_id) {
+            let mut written = Vec::new();
+            if keep_output {
+                use std::io::Read as _;
+                let _ = stream.read_to_end(&mut written);
+            }
+            drop(stream);
+            let finished = child.wait().map_err(complain)?;
+            let output = String::from_utf8_lossy(&written).to_string();
+            self.record_last_status(&finished, Some(child_pid));
+            instance
+                .borrow_mut()
+                .set_var(POPEN_OUTPUT.to_string(), Object::string(output.clone()));
+            return Ok(output);
+        }
         let (finished, output) = if keep_output {
             let held = child.wait_with_output().map_err(complain)?;
             let text = String::from_utf8_lossy(&held.stdout).to_string();
@@ -684,5 +747,25 @@ impl VirtualMachine {
             borrowed.set_var(STATUS_PID.to_string(), Object::Int(pid));
         }
         Object::Instance(instance)
+    }
+}
+
+/// One stream for a child to write both of its own into: the end it writes
+/// to, and the end this process reads from.
+fn one_stream_for_both() -> Option<(std::fs::File, std::fs::File)> {
+    use std::os::fd::FromRawFd as _;
+    let mut ends = [0 as libc::c_int; 2];
+    // SAFETY: `pipe` fills the two descriptors it is given and touches
+    // nothing else.
+    if unsafe { libc::pipe(ends.as_mut_ptr()) } != 0 {
+        return None;
+    }
+    // SAFETY: each end is a descriptor this process just made and nothing
+    // else holds.
+    unsafe {
+        Some((
+            std::fs::File::from_raw_fd(ends[0]),
+            std::fs::File::from_raw_fd(ends[1]),
+        ))
     }
 }

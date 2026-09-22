@@ -68,8 +68,15 @@ impl VirtualMachine {
         if name.chars().next().is_some_and(|c| c.is_ascii_uppercase())
             && !self.lexical_scope_reaches_top_level()
         {
-            for enclosing in self.def_scope_stack.iter().rev() {
+            for enclosing in self.def_scope_stack.clone().iter().rev() {
                 if let Some(val) = enclosing.get_class_var(name) {
+                    return Ok(val);
+                }
+                // A name this scope registered an autoload for is loaded
+                // here rather than looked for further out.
+                if enclosing.lookup_autoload(name).is_some()
+                    && let Some(val) = self.try_autoload_constant(enclosing, name)?
+                {
                     return Ok(val);
                 }
                 if enclosing.name() == name {
@@ -235,11 +242,68 @@ impl VirtualMachine {
         // walking the superclass chain — Ruby makes constants inherited from
         // superclasses visible at the child level too.
         if name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
-            let class_opt = match &receiver {
-                Object::Class(c) | Object::Module(c) => Some(Rc::clone(c)),
-                Object::Instance(inst) => Some(Rc::clone(&inst.borrow().class)),
-                _ => None,
-            };
+            // Walk the lexical def-scope stack (outer class/module bodies) so a
+            // nested class/module can reference sibling constants defined in an
+            // enclosing module without qualifying them, and so a module can
+            // reference itself by name before it has been bound in globals.
+            for enclosing in self.def_scope_stack.iter().rev() {
+                if let Some(val) = enclosing.get_class_var(name) {
+                    return Ok(val);
+                }
+                if enclosing.name() == name {
+                    return Ok(Object::Module(Rc::clone(enclosing)));
+                }
+            }
+            // Inside a method body the lexical scope is the one open where the
+            // method was defined, which is what `Module.nesting` reports. A
+            // method on a nested class reaches its own name and its enclosing
+            // module's constants through it.
+            if let Some(nesting) = self.method_nesting_stack.last().cloned() {
+                for enclosing in nesting {
+                    if enclosing.name() == name {
+                        return Ok(if enclosing.is_module() {
+                            Object::Module(enclosing)
+                        } else {
+                            Object::Class(enclosing)
+                        });
+                    }
+                    if let Some(val) = enclosing.get_class_var(name) {
+                        return Ok(val);
+                    }
+                    if enclosing.lookup_autoload(name).is_some()
+                        && let Some(val) = self.try_autoload_constant(&enclosing, name)?
+                    {
+                        return Ok(val);
+                    }
+                }
+            }
+            // What the name is looked up through after the open scopes: the
+            // ancestors of the innermost scope the code was written in. Code
+            // written in no scope at all reads through whatever it is
+            // running against.
+            let class_opt = self
+                .method_nesting_stack
+                .last()
+                .and_then(|nesting| nesting.first().cloned())
+                .or_else(|| self.def_scope_stack.last().cloned())
+                .or_else(|| match &receiver {
+                    Object::Class(c) | Object::Module(c) => Some(Rc::clone(c)),
+                    Object::Instance(inst) => Some(Rc::clone(&inst.borrow().class)),
+                    _ => None,
+                })
+                // A singleton class stands for whatever it is attached to,
+                // whose ancestors are the ones the name is looked up through.
+                .map(|held| match held.get_class_var("__attached__") {
+                    Some(Object::Class(attached) | Object::Module(attached))
+                        if held.is_singleton_class() =>
+                    {
+                        attached
+                    }
+                    _ => match (held.is_singleton_class(), &receiver) {
+                        (true, Object::Instance(inst)) => Rc::clone(&inst.borrow().class),
+                        _ => held,
+                    },
+                });
             if let Some(class) = class_opt {
                 let mut current = Some(class);
                 while let Some(cls) = current {
@@ -269,36 +333,6 @@ impl VirtualMachine {
                         return Ok(val);
                     }
                     current = cls.superclass();
-                }
-            }
-            // Inside a method body the lexical scope is the one open where the
-            // method was defined, which is what `Module.nesting` reports. A
-            // method on a nested class reaches its own name and its enclosing
-            // module's constants through it.
-            if let Some(nesting) = self.method_nesting_stack.last() {
-                for enclosing in nesting.clone() {
-                    if enclosing.name() == name {
-                        return Ok(if enclosing.is_module() {
-                            Object::Module(enclosing)
-                        } else {
-                            Object::Class(enclosing)
-                        });
-                    }
-                    if let Some(val) = enclosing.get_class_var(name) {
-                        return Ok(val);
-                    }
-                }
-            }
-            // Walk the lexical def-scope stack (outer class/module bodies) so a
-            // nested class/module can reference sibling constants defined in an
-            // enclosing module without qualifying them, and so a module can
-            // reference itself by name before it has been bound in globals.
-            for enclosing in self.def_scope_stack.iter().rev() {
-                if let Some(val) = enclosing.get_class_var(name) {
-                    return Ok(val);
-                }
-                if enclosing.name() == name {
-                    return Ok(Object::Module(Rc::clone(enclosing)));
                 }
             }
             // Constants defined in `class Object` are globally accessible (Ruby semantics).

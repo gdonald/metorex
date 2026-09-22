@@ -128,6 +128,21 @@ fn levenshtein_distance(a: &str, b: &str) -> usize {
     prev[n]
 }
 
+/// The file `require` and `require_relative` name. Ruby reads either as
+/// naming a `.rb` file: a path written without that ending has it added,
+/// whatever other ending it carries, and a file of the name as written is
+/// only reached when no `.rb` file stands beside it.
+pub fn find_required_file_path(path: &Path) -> Result<PathBuf, MetorexError> {
+    let named = path.to_string_lossy().into_owned();
+    if !named.ends_with(".rb") {
+        let with_rb = PathBuf::from(format!("{}.rb", named));
+        if with_rb.is_file() {
+            return Ok(with_rb);
+        }
+    }
+    find_file_path(path)
+}
+
 /// Finds the actual file path with extension auto-detection.
 ///
 /// This function supports Ruby's file loading conventions:
@@ -255,6 +270,11 @@ pub fn resolve_relative_path(
     base_file: &Path,
     relative_path: &str,
 ) -> Result<PathBuf, MetorexError> {
+    // The root directory is its own parent, which is what a file named `/`
+    // is counted as being written in.
+    if base_file == Path::new("/") {
+        return Ok(base_file.join(relative_path));
+    }
     // Get the parent directory of the base file
     let base_dir = base_file.parent().ok_or_else(|| {
         MetorexError::runtime_error(

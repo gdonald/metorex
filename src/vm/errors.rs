@@ -382,7 +382,7 @@ pub(super) fn binary_type_error(
 /// Produce a divide-by-zero runtime error.
 /// A LoadError that remembers the feature it could not load, which `#path`
 /// answers.
-pub(super) fn load_error(message: String, feature: &str) -> Object {
+pub(crate) fn load_error(message: String, feature: &str) -> Object {
     let exception = Object::exception("LoadError", message);
     if let Object::Exception(details) = &exception {
         details.borrow_mut().instance_vars.insert(
@@ -391,6 +391,12 @@ pub(super) fn load_error(message: String, feature: &str) -> Object {
         );
     }
     exception
+}
+
+/// A LoadError naming no path. Ruby reports what the loader said rather than
+/// the file it was looking for when the file is there but cannot be loaded.
+pub(super) fn load_error_without_path(message: String) -> Object {
+    Object::exception("LoadError", message)
 }
 
 /// A SyntaxError carrying the file the unparsable code came from, which

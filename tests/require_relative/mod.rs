@@ -42,23 +42,31 @@ fn require_relative_with_non_string_argument() {
     let temp_dir = std::env::temp_dir();
     let test_file = temp_dir.join("require_test_type.rb");
 
-    // Test with integer
+    // A value that says nothing about how to read itself as a path is
+    // refused the way any other conversion is.
     fs::write(&test_file, "require_relative(42)").unwrap();
     let mut vm = VirtualMachine::new();
     let result = vm.execute_file(Path::new(&test_file));
     let _ = fs::remove_file(&test_file);
     assert!(result.is_err());
     let err_msg = format!("{}", result.unwrap_err());
-    assert!(err_msg.contains("expects a String argument"));
+    assert!(
+        err_msg.contains("no implicit conversion of Integer into String"),
+        "Got: {}",
+        err_msg
+    );
 
-    // Test with boolean
     fs::write(&test_file, "require_relative(true)").unwrap();
     let mut vm = VirtualMachine::new();
     let result = vm.execute_file(Path::new(&test_file));
     let _ = fs::remove_file(&test_file);
     assert!(result.is_err());
     let err_msg = format!("{}", result.unwrap_err());
-    assert!(err_msg.contains("expects a String argument"));
+    assert!(
+        err_msg.contains("no implicit conversion of true into String"),
+        "Got: {}",
+        err_msg
+    );
 }
 
 #[test]

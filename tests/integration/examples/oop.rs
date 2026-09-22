@@ -1212,7 +1212,9 @@ fn test_oop_prepend_ancestry_execution() {
         "Logging\n",
         "Report\n",
         "true\n",
-        "logging\n",
+        // A constant read inside `def self.channel` is the one the class
+        // itself holds, not the one the prepended module does.
+        "report\n",
         "true\n",
         "detailed: logged: report\n",
         "2\n",
@@ -1230,7 +1232,9 @@ fn test_oop_prepend_ancestry_parens_execution() {
         "Logging\n",
         "Report\n",
         "true\n",
-        "logging\n",
+        // A constant read inside `def self.channel` is the one the class
+        // itself holds, not the one the prepended module does.
+        "report\n",
         "true\n",
         "detailed: logged: report\n",
         "2\n",

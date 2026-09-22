@@ -15,7 +15,7 @@ use std::rc::Rc;
 /// An absolute path with `.` and `..` components resolved the way
 /// `File.expand_path` resolves them, without touching the filesystem. A
 /// symlink therefore keeps the name it was reached through.
-fn without_dot_components(path: &std::path::Path) -> std::path::PathBuf {
+pub(crate) fn without_dot_components(path: &std::path::Path) -> std::path::PathBuf {
     use std::path::Component;
     let mut built = std::path::PathBuf::new();
     for component in path.components() {
@@ -476,6 +476,130 @@ impl VirtualMachine {
         }
     }
 
+    /// The object a wrapped load runs against: an Object of its own that
+    /// answers the way the top-level main does, carrying the module the load
+    /// was wrapped in ahead of whatever main itself was extended with.
+    fn a_main_of_its_own(&mut self, wrapper: &Rc<crate::class::Class>) -> Option<Object> {
+        let Some(Object::Instance(main)) = self.globals().get("__main__") else {
+            return None;
+        };
+        let object_class = Rc::clone(&main.borrow().class);
+        let stand_in = Object::Instance(Rc::new(std::cell::RefCell::new(
+            crate::object::Instance::new(object_class),
+        )));
+        // The copy is a main of the program's own, which is what decides
+        // whether `using` written on it is allowed.
+        if let Object::Instance(held) = &stand_in {
+            held.borrow_mut()
+                .set_var(MAIN_STAND_IN.to_string(), Object::Bool(true));
+        }
+        let singleton = self.singleton_class_of(&stand_in);
+        // What main says of itself, which the copy says too, and whatever
+        // main was extended with, which the copy carries after the wrapper.
+        let main_singleton = main.borrow().singleton_class.borrow().clone();
+        if let Some(held) = main_singleton {
+            for name in held.method_names() {
+                if let Some(method) = held.find_own_method(&name) {
+                    // The copy owns what it answers with, so `method(:to_s)`
+                    // names the copy's own singleton class rather than the
+                    // one it was taken from.
+                    let mut carried = (*method).clone();
+                    carried.owner = None;
+                    carried.owner_class = None;
+                    singleton.define_method(name, Rc::new(carried));
+                }
+            }
+            for module in held.mixin_chain().into_iter().rev() {
+                singleton.add_mixin(module);
+            }
+        }
+        singleton.add_mixin(Rc::clone(wrapper));
+        Some(stand_in)
+    }
+
+    /// Whether `named` is listed in `$LOADED_FEATURES` as it stands.
+    pub(crate) fn feature_is_listed(&self, named: &str) -> bool {
+        match self.globals().get("\"") {
+            Some(Object::Array(features)) => features
+                .borrow()
+                .iter()
+                .any(|held| matches!(held, Object::String(text) if *text.as_str() == *named)),
+            _ => false,
+        }
+    }
+
+    /// Hand control over while another thread is part-way through loading
+    /// `path`. A load that never finishes, because the thread running it was
+    /// killed, gives up after a while rather than holding this thread.
+    pub(crate) fn wait_for_the_file_being_loaded(&mut self, path: &std::path::Path) {
+        let named = path.to_string_lossy().into_owned();
+        let here = self.running_thread();
+        let waited_enough = std::time::Instant::now() + AUTOLOAD_WAIT_CEILING;
+        while self
+            .loading_paths
+            .iter()
+            .any(|(held, thread)| held == &named && !on_the_same_thread(thread, &here))
+        {
+            if std::time::Instant::now() >= waited_enough {
+                return;
+            }
+            self.wait_for_other_threads(crate::lexer::Position::new(0, 0, 0));
+        }
+    }
+
+    /// Wait while another thread is part-way through the autoload of `name`,
+    /// so the name reads as what the load defines rather than as the half
+    /// built module the load has reached so far.
+    pub(crate) fn settle_pending_autoload(
+        &mut self,
+        class_rc: &Rc<crate::class::Class>,
+        name: &str,
+    ) {
+        if self.autoload_loading.is_empty() {
+            return;
+        }
+        let here = self
+            .thread_current_stack
+            .last()
+            .cloned()
+            .unwrap_or(Object::Nil);
+        let loading_elsewhere = self.autoload_loading.iter().any(|(cls, n, thread)| {
+            Rc::ptr_eq(cls, class_rc) && n == name && !on_the_same_thread(thread, &here)
+        });
+        if loading_elsewhere {
+            self.wait_for_the_autoload(class_rc, name);
+        }
+    }
+
+    /// Hand control over until the thread loading `name` has finished, so
+    /// what the load defines is there to read. A load that never finishes,
+    /// because the thread running it was killed, gives up after a while
+    /// rather than holding this thread forever.
+    fn wait_for_the_autoload(&mut self, class_rc: &Rc<crate::class::Class>, name: &str) {
+        let waited_enough = std::time::Instant::now() + AUTOLOAD_WAIT_CEILING;
+        while self
+            .autoload_loading
+            .iter()
+            .any(|(cls, n, _)| Rc::ptr_eq(cls, class_rc) && n == name)
+        {
+            if std::time::Instant::now() >= waited_enough {
+                return;
+            }
+            self.wait_for_other_threads(crate::lexer::Position::new(0, 0, 0));
+        }
+    }
+
+    /// What an autoload left behind for `name`, which for a name written at
+    /// the top level of the loaded file is a global rather than a class
+    /// variable of Object.
+    fn autoloaded_value(&self, class_rc: &Rc<crate::class::Class>, name: &str) -> Option<Object> {
+        class_rc.get_class_var(name).or_else(|| {
+            (class_rc.name() == "Object")
+                .then(|| self.globals().get(name))
+                .flatten()
+        })
+    }
+
     /// If `class_rc` (or an ancestor) has an autoload registration for
     /// `name`, fire it: load the file, drop the registration on success, and
     /// return the now-defined constant. On load failure, restore the
@@ -495,11 +619,24 @@ impl VirtualMachine {
         // keeping the entry alive for other threads' visibility. The
         // `try_autoload_constant` invocation that started the load is
         // responsible for cleaning up after the load completes.
-        let already_loading = self
+        let loading_on = self
             .autoload_loading
             .iter()
-            .any(|(cls, n, _)| Rc::ptr_eq(cls, class_rc) && n == name);
-        if already_loading {
+            .find(|(cls, n, _)| Rc::ptr_eq(cls, class_rc) && n == name)
+            .map(|(_, _, thread)| thread.clone());
+        if let Some(loader) = loading_on {
+            let here = self
+                .thread_current_stack
+                .last()
+                .cloned()
+                .unwrap_or(Object::Nil);
+            // A thread that asks for a name another thread is part-way
+            // through loading waits for that load to finish, so it reads a
+            // module that is built rather than one that is half built.
+            if !on_the_same_thread(&loader, &here) {
+                self.wait_for_the_autoload(class_rc, name);
+                return Ok(self.autoloaded_value(class_rc, name));
+            }
             return Ok(class_rc.get_class_var(name));
         }
         // If the registered file has already been loaded *and* it
@@ -542,8 +679,8 @@ impl VirtualMachine {
                 .map(|p| p.to_string_lossy().into_owned());
             let in_progress = canonical_str
                 .as_ref()
-                .is_some_and(|c| self.loading_paths.iter().any(|p| p == c))
-                || self.loading_paths.iter().any(|p| p == &path);
+                .is_some_and(|c| self.loading_paths.iter().any(|(held, _)| held == c))
+                || self.loading_paths.iter().any(|(held, _)| held == &path);
             if in_progress {
                 return Ok(None);
             }
@@ -830,6 +967,12 @@ impl VirtualMachine {
         let named_path = std::path::absolute(&actual_path)
             .map(|absolute| without_dot_components(&absolute))
             .unwrap_or_else(|_| canonical_path.clone());
+        // A file another thread is part-way through loading is waited for,
+        // so the second thread reads what the load defined rather than a
+        // half-built file, and answers that it loaded nothing itself.
+        if record {
+            self.wait_for_the_file_being_loaded(&canonical_path);
+        }
         let listed_str = named_path.to_string_lossy().into_owned();
         let already_in_features = if let Some(Object::Array(arr)) = self.globals().get("\"") {
             arr.borrow()
@@ -839,6 +982,19 @@ impl VirtualMachine {
             false
         };
         if record && already_in_features {
+            // A file that asks for itself while it is still running gets
+            // nothing back, and a verbose run says so.
+            let in_progress = self
+                .loading_paths
+                .iter()
+                .any(|(held, _)| held == &canonical_path.to_string_lossy());
+            if in_progress && matches!(self.globals().get("VERBOSE"), Some(Object::Bool(true))) {
+                let message = format!(
+                    "warning: loading in progress, circular require considered harmful - {}",
+                    named_path.display()
+                );
+                self.emit_warning_to_stderr(&message, crate::lexer::Position::new(0, 0, 0));
+            }
             // Keep loaded_files in sync — once $" lists the path, the
             // internal set should agree.
             self.mark_file_loaded(canonical_path.clone());
@@ -873,6 +1029,20 @@ impl VirtualMachine {
 
         // Load file source with error context
         let source = load_file_source(&canonical_path).map_err(|e| {
+            // A file that is there but cannot be read is one the program
+            // cannot load, which Ruby reports as a LoadError rather than as
+            // an error of its own.
+            let message = format!("cannot load such file -- {}", canonical_path.display());
+            if e.message().contains("Permission denied") {
+                return MetorexError::UncaughtException {
+                    exception: crate::vm::errors::load_error(
+                        message.clone(),
+                        &canonical_path.to_string_lossy(),
+                    ),
+                    location: SourceLocation::new(0, 0, 0),
+                    message,
+                };
+            }
             MetorexError::runtime_error(
                 format!("Failed to load file '{}': {}", canonical_path.display(), e),
                 SourceLocation::new(0, 0, 0),
@@ -916,8 +1086,9 @@ impl VirtualMachine {
 
         // Mark this path as actively executing so autoload can tell
         // "file is mid-load" apart from "file already loaded".
+        let loading_on = self.running_thread();
         self.loading_paths
-            .push(canonical_path.to_string_lossy().into_owned());
+            .push((canonical_path.to_string_lossy().into_owned(), loading_on));
 
         // A loaded file's statements run at top level, whatever method the
         // load was called from, so `Module.nesting` inside it follows the
@@ -932,16 +1103,15 @@ impl VirtualMachine {
             self.def_scope_stack.push(Rc::clone(wrapper));
         }
         // A wrapped load runs with a copy of the top-level main as `self`,
-        // which is what the file sees and what its `to_s` reports.
-        let previous_self = wrapped.as_ref().and_then(|_| {
-            let main = match self.globals().get("TOPLEVEL_BINDING") {
-                Some(Object::Binding(binding)) => binding.receiver.clone(),
-                _ => None,
-            }?;
-            let saved = self.environment().get("self");
-            self.environment_mut().define("self".to_string(), main);
-            Some(saved)
-        });
+        // which is what the file sees and what its `to_s` reports. It is
+        // bound once the file's own scope is open, below, so the scope the
+        // load was called from keeps the self it had.
+        let stand_in = wrapped
+            .as_ref()
+            .and_then(|wrapper| self.a_main_of_its_own(wrapper));
+        // What the scope the load was called from had as `self`, put back
+        // once the file has run.
+        let previous_self = stand_in.as_ref().map(|_| self.environment().get("self"));
         // The same goes for `__callee__` and `__method__`: a loaded file runs
         // at top level, so neither reports the method that ran the load.
         let load_site = self.load_call_site.take();
@@ -963,6 +1133,9 @@ impl VirtualMachine {
         if own_locals {
             self.environment_mut().push_isolated_scope();
         }
+        if let Some(held) = stand_in {
+            self.environment_mut().define("self".to_string(), held);
+        }
         let result = self.execute_program(&statements);
         if own_locals {
             self.environment_mut().pop_scope();
@@ -982,6 +1155,16 @@ impl VirtualMachine {
         self.loading_paths.pop();
         self.current_file = previous_file;
         self.current_source_encoding = previous_source_encoding;
+        // A file that fails part-way through was never loaded, so the
+        // feature list is left as it stood before the attempt.
+        if record && result.is_err() {
+            self.loaded_files.remove(&canonical_path);
+            if let Some(Object::Array(arr)) = self.globals().get("\"") {
+                arr.borrow_mut().retain(
+                    |held| !matches!(held, Object::String(name) if *name.as_str() == *listed_str),
+                );
+            }
+        }
         let value = result.map_err(|e| {
             let rendered = e.to_string();
             keep_exception(e, |_| {
@@ -1053,5 +1236,24 @@ impl VirtualMachine {
             return None;
         }
         Some(named)
+    }
+}
+
+/// The instance variable that marks the main a wrapped load runs against, so
+/// it is taken for main the way the program's own is.
+pub(crate) const MAIN_STAND_IN: &str = "__main_stand_in__";
+
+/// How long a thread waits for another thread's autoload before carrying on
+/// without it, so a load whose thread was killed does not hold it forever.
+const AUTOLOAD_WAIT_CEILING: std::time::Duration = std::time::Duration::from_secs(20);
+
+/// Whether two values name the same Thread.
+fn on_the_same_thread(one: &Object, other: &Object) -> bool {
+    match (one, other) {
+        (Object::Instance(held), Object::Instance(here)) => Rc::ptr_eq(held, here),
+        // Neither names a thread of its own, so both are the thread the
+        // program started on.
+        (Object::Nil, Object::Nil) => true,
+        _ => false,
     }
 }

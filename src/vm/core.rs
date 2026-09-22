@@ -114,6 +114,9 @@ pub struct VirtualMachine {
     /// Children spawned by `IO.popen` that have not been waited for, keyed by
     /// the id their handle carries.
     pub(crate) popen_children: HashMap<u64, std::process::Child>,
+    /// The one stream a child writes both of its own into, for a command run
+    /// with its error stream pointed at its output.
+    pub(crate) popen_merged: HashMap<u64, std::fs::File>,
     /// The listeners and connections a program holds open.
     pub(crate) open_sockets: crate::vm::native_methods::OpenSockets,
     /// The file descriptors an IO object of this program stands over.
@@ -201,7 +204,16 @@ pub struct VirtualMachine {
     /// recursive requires; this stack tells autoload "the constant
     /// hasn't been defined yet because the file is mid-execution, don't
     /// re-load."
-    pub(crate) loading_paths: Vec<String>,
+    /// How far the lines of the source running now are shifted from the ones
+    /// the lexer counted, which is what lets code counted from a line of its
+    /// own report the numbers it was given.
+    pub(crate) source_line_shift: i64,
+    /// The scheduler `Fiber.set_scheduler` put in place, which a fiber that
+    /// is not blocking hands its waiting over to.
+    pub(crate) fiber_scheduler: Option<Object>,
+    /// The files being loaded right now, each with the thread loading it, so
+    /// a thread that asks for a file another is part-way through waits for it.
+    pub(crate) loading_paths: Vec<(String, Object)>,
     /// Autoloads currently being loaded, with the thread that initiated
     /// the load. Stored as `(class, name, loading_thread)` triples.
     /// `effective_autoload` consults this list to differentiate the
@@ -434,6 +446,7 @@ impl VirtualMachine {
             deduped_strings: HashMap::new(),
             allocation_counts: HashMap::new(),
             popen_children: HashMap::new(),
+            popen_merged: HashMap::new(),
             open_sockets: Default::default(),
             open_streams: Default::default(),
             next_popen_id: 0,
@@ -456,6 +469,8 @@ impl VirtualMachine {
             blocking_in_fiber: false,
             thread_abort: None,
             taken_mutexes: Vec::new(),
+            source_line_shift: 0,
+            fiber_scheduler: None,
             loading_paths: Vec::new(),
             autoload_loading: Vec::new(),
             pending_block: None,
@@ -483,7 +498,16 @@ impl VirtualMachine {
             load_call_site: None,
             pattern_encodings: HashMap::new(),
             collection_variables: HashMap::new(),
-            signal_handlers: HashMap::new(),
+            // The interpreter answers for an interrupt itself, so that one
+            // reads as written for from the start while every other signal
+            // is still the operating system's to answer.
+            signal_handlers: HashMap::from([
+                ("INT".to_string(), Object::string("DEFAULT".to_string())),
+                // A broken pipe is set aside at the start, which is what
+                // makes a write to one an error the program hears about
+                // rather than the end of it.
+                ("PIPE".to_string(), Object::Nil),
+            ]),
             traced_globals: HashMap::new(),
             seeded_global_names,
             load_wrap_depth: 0,
@@ -524,7 +548,10 @@ impl VirtualMachine {
         let (Object::Exception(raised_ref), Object::Exception(cause_ref)) = (raised, cause) else {
             return;
         };
-        if Rc::ptr_eq(raised_ref, cause_ref) || raised_ref.borrow().cause.is_some() {
+        if Rc::ptr_eq(raised_ref, cause_ref)
+            || raised_ref.borrow().cause.is_some()
+            || raised_ref.borrow().cause_settled
+        {
             return;
         }
         raised_ref.borrow_mut().cause = Some(Box::new(cause.clone()));
@@ -601,6 +628,7 @@ impl VirtualMachine {
         // records what it followed. Set once, and never to itself.
         if let Object::Exception(details) = &exception
             && details.borrow().cause.is_none()
+            && !details.borrow().cause_settled
             && let Some(active) = self.globals().get("!")
             && let Object::Exception(active_ref) = &active
             && !Rc::ptr_eq(details, active_ref)
