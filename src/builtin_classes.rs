@@ -526,6 +526,25 @@ pub fn init_string_methods(string_class: &Class) {
     // String#to_str, which is how a String says it already is one.
     let to_str_method = Rc::new(Method::new("to_str".to_string(), vec![], vec![]));
     string_class.define_method("to_str", to_str_method);
+
+    // The next String in order, which a Range walks with. A stub carrying the
+    // name is what lets `respond_to?` report it, and a walk asks before it
+    // counts rather than adding.
+    for name in ["succ", "next"] {
+        let mut stub = Method::new(name.to_string(), vec![], vec![]);
+        stub.native_alias = Some(name.to_string());
+        string_class.define_method(name, Rc::new(stub));
+    }
+}
+
+/// The next Symbol in order, which a Range walks with. Naming it here is what
+/// lets `respond_to?` report it, so a walk asks before it counts.
+pub fn init_symbol_methods(symbol_class: &Class) {
+    for name in ["succ", "next"] {
+        let mut stub = Method::new(name.to_string(), vec![], vec![]);
+        stub.native_alias = Some(name.to_string());
+        symbol_class.define_method(name, Rc::new(stub));
+    }
 }
 
 /// Initialize built-in methods for the Array class

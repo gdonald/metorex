@@ -2,12 +2,24 @@ pub(super) const SOURCE: &str = r##"
 class Numeric
   # `1.step(10, 3)` walks 1, 4, 7, 10. Without a block it answers the
   # sequence itself, which is what carries the walk about.
-  def step(limit = nil, by = nil, to: nil, by_named: nil, &block)
-    named_by = by_named
+  def step(limit = nil, by = nil, **options, &block)
+    unknown = options.keys - [:to, :by]
+    raise ArgumentError, "unknown keyword: #{unknown[0].inspect}" unless unknown.empty?
+    raise ArgumentError, "to is given twice" if !limit.nil? && options.key?(:to)
+    raise ArgumentError, "step is given twice" if !by.nil? && options.key?(:by)
+    named_by = options[:by]
     step_given = !by.nil? || !named_by.nil?
     walked_by = by.nil? ? (named_by.nil? ? 1 : named_by) : by
     raise ArgumentError, "step can\'t be 0" if walked_by == 0
-    walked_to = limit.nil? ? to : limit
+    walked_to = limit.nil? ? options[:to] : limit
+    unless walked_by.is_a?(Numeric)
+      # Ruby reads the step's direction by comparing it against zero, so a
+      # step that cannot be compared is refused in those words, and refused
+      # at the point the walk is asked for rather than when it is built.
+      refusal = "comparison of #{walked_by.class} with 0 failed"
+      raise ArgumentError, refusal unless block.nil?
+      return Enumerator.over(self, :step, [walked_to, walked_by]).__refuse_size__(refusal)
+    end
     sequence = Enumerator::ArithmeticSequence.send(
       :new, self, walked_to, walked_by, false, nil, "step", step_given
     )
@@ -115,15 +127,110 @@ class Range
   private :reverse_walk_size
 
   def stepped(by, written_as, &block)
+    first = self.begin
+    last = self.end
+    return numeric_stepped(first, last, by, written_as, &block) if numeric_ends?(first, last)
+    if first.nil?
+      raise ArgumentError, "step is required for non-numeric ranges" if by.nil?
+      raise ArgumentError, "#step for non-numeric beginless ranges is meaningless"
+    end
+    counts = first.respond_to?(:succ) && (by.nil? || by.is_a?(Integer))
+    raise ArgumentError, "step is required for non-numeric ranges" if by.nil? && !counts
+    return Enumerator.over(self, written_as.to_sym, [by]) if block.nil?
+    if counts
+      walk_by_succ(last, by.nil? ? 1 : by, &block)
+    else
+      walk_by_sum(first, last, by, &block)
+    end
+    self
+  end
+  private :stepped
+
+  # Whether the walk counts its way along, which is what a range over numbers
+  # does. A range with nothing at either end names no numbers to count.
+  def numeric_ends?(first, last)
+    return false if first.nil? && last.nil?
+    (first.nil? || first.is_a?(Numeric)) && (last.nil? || last.is_a?(Numeric))
+  end
+  private :numeric_ends?
+
+  def numeric_stepped(first, last, by, written_as, &block)
+    unless by.nil? || by.is_a?(Numeric)
+      # A step of some other kind is read through `coerce`, and only where the
+      # walk is about to run, so asking for the walk alone refuses nothing.
+      return Enumerator.over(self, written_as.to_sym, [by]) if block.nil?
+      by = coerced_step(first, by)
+    end
     raise ArgumentError, "step can\'t be 0" if by == 0
     sequence = Enumerator::ArithmeticSequence.send(
-      :new, self.begin, self.end, by.nil? ? 1 : by, exclude_end?, self, written_as, !by.nil?
+      :new, first, last, by.nil? ? 1 : by, exclude_end?, self, written_as, !by.nil?
     )
     return sequence if block.nil?
     sequence.each { |value| block.call(value) }
     self
   end
-  private :stepped
+  private :numeric_stepped
+
+  # The number a step of another kind stands for, which it names by answering
+  # `coerce` with the walk's own beginning alongside it.
+  def coerced_step(first, by)
+    unless by.respond_to?(:coerce)
+      raise TypeError, "#{by.class} can\'t be coerced into #{first.class}"
+    end
+    by.coerce(first)[1]
+  end
+  private :coerced_step
+
+  # A walk over anything with a `succ`, handing out every step\'th value it
+  # reaches. A step of none or less hands out the first and no more, since the
+  # count it waits on never comes round again.
+  def walk_by_succ(last, count, &block)
+    value = self.begin
+    remaining = 0
+    loop do
+      unless last.nil?
+        comparison = value <=> last
+        break if comparison.nil?
+        break if comparison > 0
+        break if comparison == 0 && exclude_end?
+      end
+      if remaining == 0
+        block.call(value)
+        remaining = count
+      end
+      remaining = remaining - 1
+      value = value.succ
+    end
+  end
+  private :walk_by_succ
+
+  # A walk over anything answering `+`, which is what a step that is not a
+  # count is added with. The range\'s direction is read first, and a step
+  # running against it reaches nothing at all.
+  def walk_by_sum(first, last, by, &block)
+    if last.nil?
+      value = first
+      loop do
+        block.call(value)
+        value = value + by
+      end
+    end
+    return if (first <=> last).nil?
+    direction = first <=> last
+    return unless direction == 0 || (first <=> first + by) == direction
+    value = first
+    loop do
+      comparison = value <=> last
+      break if comparison.nil?
+      break if direction < 0 && comparison > 0
+      break if direction > 0 && comparison < 0
+      break if comparison == 0 && exclude_end?
+      block.call(value)
+      break if comparison == 0
+      value = value + by
+    end
+  end
+  private :walk_by_sum
 end
 
 class Array

@@ -9,6 +9,7 @@ pub(crate) fn initialize_builtin_methods(builtins: &BuiltinClasses) {
     builtin_classes::init_set_methods(builtins.set_class.as_ref());
     builtin_classes::init_regexp_methods(builtins.regexp_class.as_ref());
     builtin_classes::init_string_methods(builtins.string_class.as_ref());
+    builtin_classes::init_symbol_methods(builtins.symbol_class.as_ref());
     builtin_classes::init_array_methods(builtins.array_class.as_ref());
     builtin_classes::init_integer_methods(builtins.integer_class.as_ref());
     builtin_classes::init_float_methods(builtins.float_class.as_ref());

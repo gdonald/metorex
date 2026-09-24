@@ -221,21 +221,20 @@ class Enumerator::ArithmeticSequence < Enumerator
     return self if block.nil?
     if walks_as_floats?
       counted = float_step_count
-      if counted == Float::INFINITY
-        value = @from.to_f
-        loop { block.call(value) }
-        return self
-      end
       # A step of no width at all reaches nowhere, so the walk stands where
       # it started rather than counting from it.
       if @by.to_f.infinite?
         block.call(@from.to_f) if counted > 0
         return self
       end
+      endless = counted == Float::INFINITY
       place = 0
-      while place < counted
+      while endless || place < counted
         value = place * @by + @from
-        value = @to if @by >= 0 ? @to < value : value < @to
+        # The last value a counted walk reaches can land past its end by the
+        # rounding the multiplication carries, so it is pulled back to the end
+        # it was counted to.
+        value = @to if !endless && (@by >= 0 ? @to < value : value < @to)
         block.call(value.to_f)
         place = place + 1
       end
@@ -252,7 +251,7 @@ class Enumerator::ArithmeticSequence < Enumerator
   # Whether the walk counts in floats, where the steps are found by counting
   # rather than by adding one to the last, so rounding does not build up.
   def walks_as_floats?
-    return false if @to.nil? || @from.nil?
+    return false if @from.nil?
     @from.is_a?(Float) || @to.is_a?(Float) || @by.is_a?(Float)
   end
   private :walks_as_floats?
@@ -261,23 +260,38 @@ class Enumerator::ArithmeticSequence < Enumerator
   # span divided by the step, widened by the rounding the division carries.
   def float_step_count
     first = @from.to_f
-    last = @to.to_f
+    last = @to.nil? ? Float::INFINITY : @to.to_f
     by = @by.to_f
     if by.infinite?
       return (by > 0 ? first <= last : first >= last) ? 1 : 0
     end
     return Float::INFINITY if by == 0
     steps = (last - first) / by
+    # A walk from one infinity to the same one has a span that is no number,
+    # so the count is none either. It is handed back as it stands: a walk
+    # counted that way yields nothing, and asking its size is refused.
+    return steps if steps.nan?
+    # A span no number of steps can cross is not rounded, since rounding an
+    # infinity is refused. Counting up from it never ends, and counting down
+    # from it reaches nowhere.
+    return steps if steps == Float::INFINITY
+    return 0 if steps == -Float::INFINITY
     slack = (first.abs + last.abs + (last - first).abs) / by.abs * Float::EPSILON
     slack = 0.5 if slack > 0.5
     if @exclude_end
       return 0 if steps <= 0
-      steps = steps < 1 ? 0 : (steps - slack).floor
+      counted = steps < 1 ? 0 : (steps - slack).floor
     else
       return 0 if steps < 0
-      steps = (steps + slack).floor
+      counted = (steps + slack).floor
     end
-    steps + 1
+    # One more step can still land inside the end once the rounding above has
+    # been taken off, so where it does, it is counted.
+    reach = (counted + 1) * by + first
+    inside = by > 0 ? (@exclude_end ? reach < last : reach <= last) :
+      (@exclude_end ? reach > last : reach >= last)
+    counted = counted + 1 if inside
+    counted + 1
   end
   private :float_step_count
 
@@ -295,8 +309,11 @@ class Enumerator::ArithmeticSequence < Enumerator
 
   def size
     return Float::INFINITY if @to.nil? || @from.nil?
-    return Float::INFINITY if @to == Float::INFINITY || @to == -Float::INFINITY
-    return float_step_count if walks_as_floats?
+    if walks_as_floats?
+      counted = float_step_count
+      raise FloatDomainError, "NaN" if counted.is_a?(Float) && counted.nan?
+      return counted
+    end
     span = @to - @from
     steps = (span / @by).floor
     counted = steps + 1

@@ -84,3 +84,38 @@ fn test_symbols_and_ranges_allocated_range_parens_execution() {
     let output = run_example("symbols_and_ranges/allocated_range_parens.rb");
     assert_eq!(output, ALLOCATED_RANGE_OUTPUT);
 }
+
+/// The expected output of both `symbols_and_ranges/stepped_walks` variants,
+/// which differ only in whether the calls are written with parentheses.
+const STEPPED_WALKS_OUTPUT: &str = concat!(
+    "[1, 4, 7, 10]\n",
+    "Enumerator::ArithmeticSequence\n",
+    "[1.0, 19.2, 37.4, 55.599999999999994]\n",
+    "4\n",
+    "[\"A\", \"C\", \"E\", \"G\"]\n",
+    "[\"A\", \"B\", \"C\", \"D\", \"E\"]\n",
+    "[:a, :c, :e]\n",
+    "[\"A\"]\n",
+    "[\"A\", \"AA\", \"AAA\"]\n",
+    "Enumerator\n",
+    "nil\n",
+    "[]\n",
+    "no implicit conversion of Array into String\n",
+    "#step for non-numeric beginless ranges is meaningless\n",
+    "step is required for non-numeric ranges\n",
+    "[1, 3, 5]\n",
+    "Enumerator\n",
+    "Object can't be coerced into Integer\n"
+);
+
+#[test]
+fn test_symbols_and_ranges_stepped_walks_execution() {
+    let output = run_example("symbols_and_ranges/stepped_walks.rb");
+    assert_eq!(output, STEPPED_WALKS_OUTPUT);
+}
+
+#[test]
+fn test_symbols_and_ranges_stepped_walks_parens_execution() {
+    let output = run_example("symbols_and_ranges/stepped_walks_parens.rb");
+    assert_eq!(output, STEPPED_WALKS_OUTPUT);
+}

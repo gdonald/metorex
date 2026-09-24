@@ -647,3 +647,51 @@ fn test_basics_exact_powers_parens_execution() {
     let output = run_example("basics/exact_powers_parens.rb");
     assert_eq!(output, EXACT_POWERS_OUTPUT);
 }
+
+#[test]
+fn test_basics_integer_stepping_execution() {
+    let expected = concat!(
+        "[1, 5, 9]\n",
+        "[1, 5, 9]\n",
+        "[1, 5, 9]\n",
+        "[1, 5, 9]\n",
+        "Infinity\n",
+        "Infinity\n",
+        "1\n",
+        "1\n",
+        "to is given twice\n",
+        "step is given twice\n",
+        "unknown keyword: :step\n",
+        "comparison of String with 0 failed\n",
+        "Enumerator\n",
+        "comparison of String with 0 failed\n",
+        "[]\n",
+        "NaN\n"
+    );
+    let output = run_example("basics/integers/stepping.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_integer_stepping_parens_execution() {
+    let expected = concat!(
+        "[1, 5, 9]\n",
+        "[1, 5, 9]\n",
+        "[1, 5, 9]\n",
+        "[1, 5, 9]\n",
+        "Infinity\n",
+        "Infinity\n",
+        "1\n",
+        "1\n",
+        "to is given twice\n",
+        "step is given twice\n",
+        "unknown keyword: :step\n",
+        "comparison of String with 0 failed\n",
+        "Enumerator\n",
+        "comparison of String with 0 failed\n",
+        "[]\n",
+        "NaN\n"
+    );
+    let output = run_example("basics/integers/stepping_parens.rb");
+    assert_eq!(output, expected);
+}
