@@ -413,7 +413,7 @@ run_spec "$SPEC_DIR/core/enumerator/with_object_spec.rb"
 run_spec "$SPEC_DIR/core/enumerator/rewind_spec.rb"
 run_spec "$SPEC_DIR/core/enumerator/feed_spec.rb"
 run_spec "$SPEC_DIR/core/enumerator/lazy/zip_spec.rb"
-# run_spec "$SPEC_DIR/core/enumerator"  # the other 13 files are enabled one at a time as they pass
+run_spec "$SPEC_DIR/core/enumerator"
 run_spec "$SPEC_DIR/core/enumerator/arithmetic_sequence/begin_spec.rb"
 run_spec "$SPEC_DIR/core/enumerator/arithmetic_sequence/each_spec.rb"
 run_spec "$SPEC_DIR/core/enumerator/arithmetic_sequence/end_spec.rb"

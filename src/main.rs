@@ -7,15 +7,62 @@ mod bin_support;
 
 use bin_support::*;
 
+/// The stack a deeply nested program such as mspec runs in.
+const PROGRAM_STACK_BYTES: usize = 64 * 1024 * 1024;
+
 fn main() {
-    // Use a larger stack for deeply nested Ruby programs (mspec, etc.)
-    let builder = std::thread::Builder::new().stack_size(64 * 1024 * 1024); // 64 MB
-    let handler = builder
-        .spawn(move || {
-            real_main();
-        })
-        .expect("Failed to spawn main thread");
-    handler.join().expect("Main thread panicked");
+    run_with_program_stack(real_main);
+}
+
+/// On Linux the program stays on the first thread, since a second thread
+/// makes glibc's `setgroups` and `setuid` signal it to repeat the call, and
+/// that signal crashed the process now and then. The first thread's stack is
+/// sized by the stack limit, so a limit below what the program needs is
+/// raised and the binary started again under it. Raising it without starting
+/// again is not enough under Rosetta, which sizes the stack at start.
+#[cfg(target_os = "linux")]
+fn run_with_program_stack(program: fn()) {
+    use std::os::unix::process::CommandExt;
+
+    let mut limit = libc::rlimit {
+        rlim_cur: 0,
+        rlim_max: 0,
+    };
+    let wanted = PROGRAM_STACK_BYTES as libc::rlim_t;
+    // SAFETY: both calls read or write the one struct passed to them.
+    let raised = unsafe {
+        libc::getrlimit(libc::RLIMIT_STACK, &mut limit) == 0
+            && limit.rlim_cur != libc::RLIM_INFINITY
+            && limit.rlim_cur < wanted
+            && limit.rlim_cur < limit.rlim_max
+            && {
+                limit.rlim_cur = wanted.min(limit.rlim_max);
+                libc::setrlimit(libc::RLIMIT_STACK, &limit) == 0
+            }
+    };
+    if raised && let Ok(binary) = std::env::current_exe() {
+        let mut arguments = std::env::args_os();
+        let mut command = std::process::Command::new(binary);
+        if let Some(name) = arguments.next() {
+            command.arg0(name);
+        }
+        // `exec` returns only when the binary could not be started again, and
+        // the program then runs in the stack it has.
+        let _ = command.args(arguments).exec();
+    }
+    program();
+}
+
+/// macOS fixes the first thread's stack when the process starts, so the
+/// program runs on a thread of its own.
+#[cfg(not(target_os = "linux"))]
+fn run_with_program_stack(program: fn()) {
+    std::thread::Builder::new()
+        .stack_size(PROGRAM_STACK_BYTES)
+        .spawn(program)
+        .expect("Failed to spawn main thread")
+        .join()
+        .expect("Main thread panicked");
 }
 
 fn real_main() {

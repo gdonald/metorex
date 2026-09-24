@@ -14,18 +14,6 @@
 #
 #   LINUX_ARCH=amd64 scripts/linux.sh cargo test
 #
-# One flake shows up here and not on macOS: a syscall that changes the
-# process's credentials (setuid, setgid, setgroups and their kin) segfaults
-# now and then. `stdlib_libraries/process_identity` is the example that makes
-# those calls. Under emulation it fails this way on roughly one run in three,
-# and on the host's own architecture it has been seen once, while the suite
-# was running everything at once, and never in thirty runs of the example on
-# its own. Ruby makes the same calls from its first thread and does not show
-# it. Reaching for the system call rather than the C library's wrapper does
-# not settle it, and neither does running the interpreter on the first thread,
-# so the emulator's own handling of these calls is what is left. CI runs on
-# real amd64 hardware.
-#
 # A test that hangs on Linux is named by running the suite one test at a time,
 # since the name is printed before the test runs and the last line without an
 # `ok` after it is the one that stopped:

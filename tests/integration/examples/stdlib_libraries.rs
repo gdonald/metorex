@@ -585,6 +585,20 @@ fn test_stdlib_libraries_process_identity_no_parens_execution() {
     assert_eq!(output, PROCESS_IDENTITY_OUTPUT);
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn test_stdlib_libraries_first_thread_execution() {
+    let output = run_example("stdlib_libraries/first_thread.rb");
+    assert_eq!(output, "1\n");
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn test_stdlib_libraries_first_thread_no_parens_execution() {
+    let output = run_example("stdlib_libraries/first_thread_no_parens.rb");
+    assert_eq!(output, "1\n");
+}
+
 /// The expected output of both `stdlib_libraries/build_settings` variants.
 const BUILD_SETTINGS_OUTPUT: &str = "true\ntrue\ntrue\ntrue\nnil\n64\n[4, 8]\ntrue\n[-32768, 32767]\n\"127.0.0.1\"\ntrue\nResolv::ResolvError\n{verbose: true, require: \"optparse\"}\n[\"leftover\"]\ntrue\n";
 
