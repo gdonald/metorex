@@ -83,12 +83,7 @@ impl VirtualMachine {
                 unreachable!("the match above admits only classes and modules")
             };
             let self_class = Rc::clone(self_class);
-            let evaluated_args = if forward_args {
-                self.method_arg_stack.last().cloned().unwrap_or_default()
-            } else {
-                self.evaluate_arguments(arguments)?
-            };
-            self.pending_block = super_block.clone();
+            let evaluated_args = self.super_arguments(arguments, forward_args, &super_block)?;
             // A module extended with another module reaches that module's
             // copy through `super`: the extended copy sits just above the
             // receiver's own module-level method in the singleton chain.
@@ -273,12 +268,7 @@ impl VirtualMachine {
             found
         };
         if let Some((owner, method)) = next_in_chain {
-            let evaluated_args = if forward_args {
-                self.method_arg_stack.last().cloned().unwrap_or_default()
-            } else {
-                self.evaluate_arguments(arguments)?
-            };
-            self.pending_block = super_block.clone();
+            let evaluated_args = self.super_arguments(arguments, forward_args, &super_block)?;
             drop(instance_borrowed);
             return self.invoke_method(
                 owner,
@@ -360,12 +350,7 @@ impl VirtualMachine {
                 // that overrides one (a `def load` calling `super`) has to
                 // reach them here.
                 drop(instance_borrowed);
-                let evaluated_args = if forward_args {
-                    self.method_arg_stack.last().cloned().unwrap_or_default()
-                } else {
-                    self.evaluate_arguments(arguments)?
-                };
-                self.pending_block = super_block.clone();
+                let evaluated_args = self.super_arguments(arguments, forward_args, &super_block)?;
                 let self_val = self.environment().get("self").unwrap_or(Object::Nil);
                 if let Some(result) =
                     self.call_object_method(&self_val, &method_name, &evaluated_args, position)?
@@ -450,12 +435,7 @@ impl VirtualMachine {
 
         // Evaluate the arguments (or forward the enclosing method's args for
         // bare `super`).
-        let evaluated_args = if forward_args {
-            self.method_arg_stack.last().cloned().unwrap_or_default()
-        } else {
-            self.evaluate_arguments(arguments)?
-        };
-        self.pending_block = super_block.clone();
+        let evaluated_args = self.super_arguments(arguments, forward_args, &super_block)?;
 
         // Drop the borrow before invoking the method
         drop(instance_borrowed);
@@ -475,6 +455,31 @@ impl VirtualMachine {
     /// method written on a module prepended to Integer. Walks the receiver's
     /// ancestors past the defining class, then falls through to the native
     /// implementation the core class carries.
+    /// The arguments a `super` call hands on, with the block it carries made
+    /// pending. A written `&arg` names the block itself, so the one the
+    /// enclosing method was called with stands in only when there is none.
+    fn super_arguments(
+        &mut self,
+        arguments: &[Expression],
+        forward_args: bool,
+        super_block: &Option<Object>,
+    ) -> Result<Vec<Object>, MetorexError> {
+        if forward_args {
+            self.pending_block = super_block.clone();
+            return Ok(self.method_arg_stack.last().cloned().unwrap_or_default());
+        }
+        if arguments
+            .iter()
+            .any(|argument| matches!(argument, Expression::BlockArg { .. }))
+        {
+            self.pending_block = None;
+            return self.evaluate_arguments(arguments);
+        }
+        let evaluated = self.evaluate_arguments(arguments)?;
+        self.pending_block = super_block.clone();
+        Ok(evaluated)
+    }
+
     fn eval_super_on_builtin(
         &mut self,
         receiver: Object,
@@ -506,12 +511,7 @@ impl VirtualMachine {
             .filter(|owner| chain.iter().any(|c| Rc::ptr_eq(c, owner)))
             .or_else(|| chain.iter().find(|c| c.name() == class_name).cloned());
 
-        let evaluated_args = if forward_args {
-            self.method_arg_stack.last().cloned().unwrap_or_default()
-        } else {
-            self.evaluate_arguments(arguments)?
-        };
-        self.pending_block = super_block.clone();
+        let evaluated_args = self.super_arguments(arguments, forward_args, &super_block)?;
 
         if let Some(defining_class) = &defining_class
             && let Some(index) = chain.iter().position(|c| Rc::ptr_eq(c, defining_class))

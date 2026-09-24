@@ -63,14 +63,21 @@ class Enumerator::Lazy < Enumerator
     Enumerator.over(self, :each, [], @lazy_size)
   end
 
-  # A block names the count the walk will hand out, which the enumerator
-  # asks for only when something wants to know.
+  # A block names the count the walk will hand out.
   def to_enum(method_name = :each, *args, &size)
-    Enumerator.over(self, method_name, args, size)
+    Enumerator::Lazy.build(Enumerator::MethodWalk.new(self, method_name, args), size.nil? ? nil : size.call)
   end
 
   def enum_for(method_name = :each, *args, &size)
     to_enum(method_name, *args, &size)
+  end
+
+  # Enumerable's own methods answer a lazy walk here when given no block.
+  [:each_with_index, :each_with_object, :with_object, :each_slice, :each_entry, :each_cons].each do |name|
+    define_method(name) do |*args, &block|
+      return to_enum(name, *args) if block.nil?
+      super(*args, &block)
+    end
   end
 
   # Hand each element the step it stands for, and stop the walk as soon as

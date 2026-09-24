@@ -47,6 +47,7 @@ pub(crate) mod glob;
 pub(crate) mod normalization_table;
 mod set_methods;
 pub(crate) mod shift_jis_table;
+pub(crate) mod string_element_set;
 pub(crate) mod string_methods;
 pub(crate) mod string_mutation;
 mod string_sets;

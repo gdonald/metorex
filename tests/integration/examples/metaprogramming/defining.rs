@@ -186,3 +186,20 @@ fn test_metaprogramming_alias_definee_parens_execution() {
     let output = run_example("metaprogramming/alias_definee_parens.rb");
     assert_eq!(output, ALIAS_DEFINEE_OUTPUT);
 }
+
+/// The expected output of both `metaprogramming/define_method_super_block`
+/// variants, which differ only in whether the calls are written with parentheses.
+const DEFINE_METHOD_SUPER_BLOCK_OUTPUT: &str =
+    ":no_block\n[1, 10]\n[2, 20]\n[3, 30]\n[1, 2]\n[2, 3]\n[3, 4]\n";
+
+#[test]
+fn test_metaprogramming_define_method_super_block_execution() {
+    let output = run_example("metaprogramming/define_method_super_block.rb");
+    assert_eq!(output, DEFINE_METHOD_SUPER_BLOCK_OUTPUT);
+}
+
+#[test]
+fn test_metaprogramming_define_method_super_block_no_parens_execution() {
+    let output = run_example("metaprogramming/define_method_super_block_no_parens.rb");
+    assert_eq!(output, DEFINE_METHOD_SUPER_BLOCK_OUTPUT);
+}

@@ -117,3 +117,35 @@ fn test_enumerable_walking_over_again_no_parens_execution() {
     let output = run_example("enumerable/walking_over_again_no_parens.rb");
     assert_eq!(output, WALKING_OVER_AGAIN_OUTPUT);
 }
+
+/// The expected output of both `enumerable/lazy_enum_for` variants, which
+/// differ only in whether the calls are written with parentheses.
+const LAZY_ENUM_FOR_OUTPUT: &str = "true\ntrue\nfalse\nnil\n30\n[[0, 10], [1, 11], [2, 12]]\n[0, 6, 20, 42]\neach_with_index true\nwith_index true\ncycle true\neach_with_object true\nwith_object true\neach_slice true\neach_entry true\neach_cons true\n[[0, 0], [1, 1], [2, 2], [3, 3], [4, 4]]\n[[0, 0], [1, 1], [2, 2], [3, 3], [4, 4]]\n";
+
+#[test]
+fn test_enumerable_lazy_enum_for_execution() {
+    let output = run_example("enumerable/lazy_enum_for.rb");
+    assert_eq!(output, LAZY_ENUM_FOR_OUTPUT);
+}
+
+#[test]
+fn test_enumerable_lazy_enum_for_no_parens_execution() {
+    let output = run_example("enumerable/lazy_enum_for_no_parens.rb");
+    assert_eq!(output, LAZY_ENUM_FOR_OUTPUT);
+}
+
+/// The expected output of both `enumerable/lazy_enum_for_dispatch` variants,
+/// which differ only in whether the calls are written with parentheses.
+const LAZY_ENUM_FOR_DISPATCH_OUTPUT: &str = "Enumerator::Lazy\n[[2, 7], [4, 7], [6, 7]]\n[9, 11]\nEnumerator::Lazy\n[[1, 0], [2, 1]]\n[[1, 0], [3, 2]]\n99\n[[1, 2, 3], [4, 5, 6]]\n[1, 2, 3]\n[4, 5, 6]\n[7]\n[1, 0]\n[2, 1]\n[3, 2]\n";
+
+#[test]
+fn test_enumerable_lazy_enum_for_dispatch_execution() {
+    let output = run_example("enumerable/lazy_enum_for_dispatch.rb");
+    assert_eq!(output, LAZY_ENUM_FOR_DISPATCH_OUTPUT);
+}
+
+#[test]
+fn test_enumerable_lazy_enum_for_dispatch_no_parens_execution() {
+    let output = run_example("enumerable/lazy_enum_for_dispatch_no_parens.rb");
+    assert_eq!(output, LAZY_ENUM_FOR_DISPATCH_OUTPUT);
+}

@@ -378,7 +378,9 @@ impl Parser {
         } else {
             // Handle &expr (block-to-proc conversion)
             self.match_token(&[TokenKind::Ampersand]);
-            let first = self.parse_expression()?;
+            // An argument may assign, which answers what it assigned:
+            // `puts text[0] = "y"` passes "y".
+            let first = self.parse_expression_with_assignment()?;
             // A `key => value` pair gathers into a Hash the same way a
             // `name: value` one does, which is what `held.update "a" => 1`
             // passes.
@@ -468,7 +470,7 @@ impl Parser {
                     position,
                 });
             } else {
-                let held = self.parse_expression()?;
+                let held = self.parse_expression_with_assignment()?;
                 if self.match_token(&[TokenKind::FatArrow]) {
                     self.skip_whitespace();
                     let value = self.parse_expression()?;

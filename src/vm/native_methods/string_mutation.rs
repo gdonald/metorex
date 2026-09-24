@@ -306,29 +306,9 @@ impl VirtualMachine {
             }
             "bytesplice" => self.splice_string_bytes(receiver, arguments, position),
             "slice!" => self.cut_from_string(receiver, arguments, position),
-            // `str[at] = text` puts text where the part named by the index
-            // stood, which is the same reading `slice` takes.
-            "[]=" => {
-                let Some((value, chosen)) = arguments.split_last() else {
-                    return Err(method_argument_error(method_name, 2, 0, position));
-                };
-                let replacement = self.one_string_value(method_name, value, position)?;
-                let held = target.to_text();
-                let letters: Vec<char> = held.chars().collect();
-                let Some((start, width)) = self.string_span(&held, chosen, position)? else {
-                    let message = "index out of string".to_string();
-                    return Err(crate::vm::errors::simple_exception(
-                        "IndexError",
-                        &message,
-                        position,
-                    ));
-                };
-                let mut made: String = letters[..start.min(letters.len())].iter().collect();
-                made.push_str(&replacement);
-                made.extend(letters[(start + width).min(letters.len())..].iter());
-                target.replace_text(made);
-                Ok(Some(Object::string(replacement)))
-            }
+            "[]=" => self
+                .assign_string_part(receiver, target, arguments, position)
+                .map(Some),
             // These answer the string itself rather than nil, and the tag
             // the answer carries comes back with the text.
             "encode!" | "scrub!" | "unicode_normalize!" => {
@@ -493,54 +473,6 @@ impl VirtualMachine {
             ));
         }
         self.one_string_value(method_name, &arguments[0], position)
-    }
-
-    /// Where the part an index names starts and how wide it is, counted in
-    /// characters. None when the index names nothing at all.
-    fn string_span(
-        &mut self,
-        held: &str,
-        chosen: &[Object],
-        position: Position,
-    ) -> Result<Option<(usize, usize)>, MetorexError> {
-        let letters = held.chars().count();
-        let settled = |index: i64| -> Option<usize> {
-            let at = if index < 0 {
-                index + letters as i64
-            } else {
-                index
-            };
-            usize::try_from(at).ok().filter(|at| *at <= letters)
-        };
-        match chosen {
-            [Object::Int(index)] => Ok(settled(*index).map(|at| (at, 1.min(letters - at)))),
-            [Object::Int(index), Object::Int(width)] => Ok(settled(*index)
-                .map(|at| (at, (*width).max(0) as usize).min((at, letters - at)))
-                .map(|(at, width)| (at, width.min(letters - at)))),
-            [Object::String(wanted)] => {
-                let wanted = wanted.to_text();
-                Ok(held
-                    .find(&wanted)
-                    .map(|byte| (held[..byte].chars().count(), wanted.chars().count())))
-            }
-            [only] => {
-                // A Range names a run, which `slice` already reads.
-                let taken = self.call_string_method(
-                    &Object::string(held.to_string()),
-                    "slice",
-                    std::slice::from_ref(only),
-                    position,
-                )?;
-                let Some(Object::String(part)) = taken else {
-                    return Ok(None);
-                };
-                let part = part.to_text();
-                Ok(held
-                    .find(&part)
-                    .map(|byte| (held[..byte].chars().count(), part.chars().count())))
-            }
-            _ => Ok(None),
-        }
     }
 
     /// `slice!` takes the part `slice` would answer out of the string and

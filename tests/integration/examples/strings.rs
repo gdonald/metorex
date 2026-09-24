@@ -387,3 +387,48 @@ fn test_strings_short_interpolation_and_escapes_parens_execution() {
     let output = run_example("strings/short_interpolation_and_escapes_parens.rb");
     assert_eq!(output, SHORT_INTERPOLATION_AND_ESCAPES_OUTPUT);
 }
+
+/// The expected output of both `strings/element_assignment` variants.
+const STRING_ELEMENT_ASSIGNMENT_OUTPUT: &str = concat!(
+    "Jello\n",
+    "JELLo\n",
+    "JEllo\n",
+    "JEll0\n",
+    "Jal0\n",
+    "Jars\n",
+    "Bars\n",
+    "y\n",
+    "2024-07-01\n",
+    "2025-07-01\n",
+    "2025-07-15\n",
+    "2025-07-20\n",
+    "IndexError: regexp not matched\n",
+    "IndexError: index 2 out of regexp\n",
+    "IndexError: index -2 out of regexp\n",
+    "IndexError: regexp group 2 not matched\n",
+    "IndexError: string not matched\n",
+    "IndexError: index 5 out of string\n",
+    "IndexError: negative length -1\n",
+    "RangeError: -4..-2 out of range\n",
+    "RangeError: 4..5 out of range\n",
+    "TypeError: no implicit conversion of Integer into String\n",
+    "ArgumentError: wrong number of arguments (given 1, expected 2..3)\n",
+    "ASCII-8BIT\n",
+    "Encoding::CompatibilityError: incompatible character encodings: UTF-8 and EUC-JP\n",
+    "atagb\n",
+    "first\n",
+    "z\n",
+    "ztagb\n",
+);
+
+#[test]
+fn test_strings_element_assignment_execution() {
+    let output = run_example("strings/element_assignment.rb");
+    assert_eq!(output, STRING_ELEMENT_ASSIGNMENT_OUTPUT);
+}
+
+#[test]
+fn test_strings_element_assignment_no_parens_execution() {
+    let output = run_example("strings/element_assignment_no_parens.rb");
+    assert_eq!(output, STRING_ELEMENT_ASSIGNMENT_OUTPUT);
+}

@@ -7,6 +7,30 @@ class Enumerator::EmptyWalk
   end
 end
 
+# The source behind `lazy.to_enum(:name, *args)`, which walks what the lazy
+# enumerator's own `name` hands its block.
+class Enumerator::MethodWalk
+  def initialize(receiver, method_name, arguments)
+    @receiver = receiver
+    @method_name = method_name
+    @arguments = arguments
+  end
+
+  def each(&walker)
+    yielded = false
+    answered = @receiver.send(@method_name, *@arguments) do |*values|
+      yielded = true
+      walker.call(*values)
+    end
+    # A lazy method given a block adds a step instead of walking, so the step
+    # it answers without one is walked in its place.
+    unless yielded || !answered.is_a?(Enumerator::Lazy)
+      @receiver.send(@method_name, *@arguments).each { |*values| walker.call(*values) }
+    end
+    self
+  end
+end
+
 # The block behind `Enumerator.new { |y| ... }`, held as an object of its own
 # so a walk can be built from one and asked to run it again.
 class Enumerator::Generator
