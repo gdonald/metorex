@@ -87,6 +87,9 @@ pub struct BlockStatement {
     /// The scope the block was written in, which is what a backtrace names it
     /// by however far from there it is called.
     pub written_in: Option<String>,
+    /// How many blocks deep the block was written, counting itself, which
+    /// is the depth a backtrace names it by however it is called.
+    pub written_depth: Option<u32>,
     /// Whether `ruby2_keywords` was called on the Proc this block stands for,
     /// so a trailing keyword hash gathered into its splat is marked. The flag
     /// is shared with every copy, which is what makes it reach a `dup`.
@@ -127,6 +130,7 @@ impl BlockStatement {
             opened_at: None,
             from_symbol: None,
             written_in: None,
+            written_depth: None,
             ruby2_keywords: Rc::new(std::cell::Cell::new(false)),
         }
     }
@@ -157,6 +161,7 @@ impl BlockStatement {
             opened_at: None,
             from_symbol: None,
             written_in: None,
+            written_depth: None,
             ruby2_keywords: Rc::new(std::cell::Cell::new(false)),
         }
     }

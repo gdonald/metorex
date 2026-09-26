@@ -571,7 +571,7 @@ fn test_stdlib_libraries_yaml_documents_no_parens_execution() {
 }
 
 /// The expected output of both `stdlib_libraries/process_identity` variants.
-const PROCESS_IDENTITY_OUTPUT: &str = "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n3\ntrue\n\"metorex-example\"\nNotImplementedError\nErrno::ESRCH\nErrno::EPERM\n";
+const PROCESS_IDENTITY_OUTPUT: &str = "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n3\ntrue\n\"metorex-example\"\n0\nErrno::ESRCH\nErrno::EPERM\n";
 
 #[test]
 fn test_stdlib_libraries_process_identity_execution() {
@@ -732,4 +732,34 @@ fn test_stdlib_libraries_coverage_counts_execution() {
 fn test_stdlib_libraries_coverage_counts_parens_execution() {
     let output = run_example("stdlib_libraries/coverage_counts_parens.rb");
     assert_eq!(output, COVERAGE_COUNTS_OUTPUT);
+}
+
+/// The expected output of both `stdlib_libraries/open3_streams` variants.
+/// The first pipeline's `sort` writes to the program's own output.
+const OPEN3_STREAMS_OUTPUT: &str = concat!(
+    "\"to the command\"\n",
+    "\"err\\n\"\n",
+    "true\n",
+    "true\n",
+    "\"SHOUT\"\n",
+    "[\"kept\", \"\", 4]\n",
+    "[\"err\", \"out\"]\n",
+    "a\n",
+    "b\n",
+    "[true, true]\n",
+    "\"2\"\n",
+    "2\n",
+    "\"apple\\n\"\n"
+);
+
+#[test]
+fn test_stdlib_libraries_open3_streams_execution() {
+    let output = run_example("stdlib_libraries/open3_streams.rb");
+    assert_eq!(output, OPEN3_STREAMS_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_libraries_open3_streams_parens_execution() {
+    let output = run_example("stdlib_libraries/open3_streams_parens.rb");
+    assert_eq!(output, OPEN3_STREAMS_OUTPUT);
 }

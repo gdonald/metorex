@@ -7,7 +7,24 @@ impl VirtualMachine {
     /// A sleep inside `Timeout.timeout` that would run past the limit
     /// is the one thing it reports on, since that is what the block
     /// was given a limit for.
+    /// `sleep`, run in a frame of its own so what interrupts the wait, such
+    /// as an exception another thread hands over, names it the way Ruby does.
     pub(crate) fn sleep_for(
+        &mut self,
+        arguments: Vec<Object>,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let frame = crate::vm::CallFrame::method(
+            "Kernel#sleep".to_string(),
+            Some(format!("{}:{}", position.line, position.column)),
+            "sleep".to_string(),
+            "sleep".to_string(),
+        )
+        .with_source_file(self.current_source_file.clone());
+        self.with_call_frame(frame, |vm| vm.sleep_waiting(arguments, position))
+    }
+
+    fn sleep_waiting(
         &mut self,
         arguments: Vec<Object>,
         position: Position,

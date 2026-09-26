@@ -217,10 +217,9 @@ impl VirtualMachine {
             let built = Rc::new(source);
             // A pattern built here is not frozen, which is what tells it
             // apart from one written as a literal.
-            self.built_patterns.insert(Rc::as_ptr(&built) as usize);
+            self.record_built_pattern(&built);
             if let Some(named) = source_encoding {
-                self.pattern_encodings
-                    .insert(Rc::as_ptr(&built) as usize, named);
+                self.record_pattern_encoding(&built, named);
             }
             let made = Object::Regex(built, Rc::new(flags));
             if let Some(site) = built_once {
@@ -261,21 +260,7 @@ impl VirtualMachine {
         }
         // `Regexp.union` matches any of what it was given.
         if class_rc.name() == "Regexp" && method_name == "union" {
-            let parts: Vec<Object> = match arguments.first() {
-                Some(Object::Array(array)) if arguments.len() == 1 => array.borrow().clone(),
-                _ => arguments.to_vec(),
-            };
-            let mut sources = Vec::with_capacity(parts.len());
-            for part in &parts {
-                sources.push(match part {
-                    Object::Regex(pattern, _) => pattern.as_str().to_string(),
-                    other => crate::regexp::escape(&self.coerce_name_argument(other, position)?),
-                });
-            }
-            return Ok(Answered(Object::Regex(
-                Rc::new(sources.join("|")),
-                Rc::new(String::new()),
-            )));
+            return self.pattern_union(arguments, position).map(Answered);
         }
         // Module.used_refinements: the refinements `using` has brought into
         // the current scope.
@@ -308,4 +293,170 @@ impl VirtualMachine {
         }
         Ok(Unclaimed)
     }
+}
+
+/// Where a pattern given to `Regexp.union` stands on encoding: in one that
+/// spells ASCII another way, fixed to one that spells ASCII as ASCII, or
+/// plain ASCII that reads in any of them.
+enum UnionEncoding {
+    AsciiIncompatible(String),
+    Fixed(String),
+    AsciiOnly,
+}
+
+impl VirtualMachine {
+    /// A pattern matching any of the ones given. A String is quoted and a
+    /// Regexp is written with its own options, and the union takes the
+    /// encoding of whichever patterns need one, refusing ones that cannot be
+    /// read together.
+    fn pattern_union(
+        &mut self,
+        arguments: &[Object],
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let parts: Vec<Object> = match arguments {
+            [Object::Array(array)] => array.borrow().clone(),
+            _ => arguments.to_vec(),
+        };
+        if parts.is_empty() {
+            return Ok(Object::Regex(
+                Rc::new("(?!)".to_string()),
+                Rc::new(String::new()),
+            ));
+        }
+        // A single pattern is answered as it stands.
+        if let [only] = parts.as_slice()
+            && let Some(pattern) = self.union_pattern_argument(only, position)?
+        {
+            return Ok(pattern);
+        }
+        let mut incompatible: Option<String> = None;
+        let mut fixed: Option<String> = None;
+        let mut ascii_only = false;
+        let mut sources = Vec::with_capacity(parts.len());
+        for part in &parts {
+            let (source, standing) = match self.union_pattern_argument(part, position)? {
+                Some(Object::Regex(pattern, flags)) => {
+                    let named = self.pattern_encoding_name(&pattern, &flags);
+                    let standing = if !encoding_reads_alongside_ascii(&named) {
+                        UnionEncoding::AsciiIncompatible(named)
+                    } else if self.pattern_fixes_encoding(&pattern, &flags) {
+                        UnionEncoding::Fixed(named)
+                    } else {
+                        UnionEncoding::AsciiOnly
+                    };
+                    let written = self.send_to_object(
+                        Object::Regex(pattern, flags),
+                        "to_s",
+                        vec![],
+                        position,
+                    )?;
+                    (written.to_string(), standing)
+                }
+                _ => {
+                    let text = self.union_string_argument(part, position)?;
+                    let named = text.encoding_name();
+                    let standing = if !encoding_reads_alongside_ascii(&named) {
+                        UnionEncoding::AsciiIncompatible(named)
+                    } else if crate::vm::native_methods::string_methods::binary_bytes(&text)
+                        .is_ascii()
+                    {
+                        UnionEncoding::AsciiOnly
+                    } else {
+                        UnionEncoding::Fixed(named)
+                    };
+                    (crate::regexp::escape(&text.as_str()), standing)
+                }
+            };
+            match standing {
+                UnionEncoding::AsciiIncompatible(named) => match &incompatible {
+                    None => incompatible = Some(named),
+                    Some(held) if *held != named => {
+                        return Err(incompatible_union(held, &named, position));
+                    }
+                    Some(_) => {}
+                },
+                UnionEncoding::Fixed(named) => match &fixed {
+                    None => fixed = Some(named),
+                    Some(held) if *held != named => {
+                        return Err(incompatible_union(held, &named, position));
+                    }
+                    Some(_) => {}
+                },
+                UnionEncoding::AsciiOnly => ascii_only = true,
+            }
+            if let Some(held) = &incompatible {
+                if ascii_only {
+                    let message = format!("ASCII incompatible encoding: {held}");
+                    return Err(crate::vm::errors::simple_exception(
+                        "ArgumentError",
+                        &message,
+                        position,
+                    ));
+                }
+                if let Some(other) = &fixed {
+                    return Err(incompatible_union(held, other, position));
+                }
+            }
+            sources.push(source);
+        }
+        let built = Rc::new(sources.join("|"));
+        // The union is built from its source tagged with the encoding that
+        // settled, so a source that stays within ASCII reads as US-ASCII
+        // unless that encoding spells ASCII another way.
+        let settled = incompatible.or(fixed.filter(|_| pattern_reaches_beyond_ascii(&built)));
+        let mut flags = String::new();
+        if let Some(named) = settled {
+            flags.push('u');
+            self.record_pattern_encoding(&built, named);
+        }
+        self.record_built_pattern(&built);
+        Ok(Object::Regex(built, Rc::new(flags)))
+    }
+
+    /// A pattern given to `Regexp.union` as a Regexp, or as an object that
+    /// converts to one through `to_regexp`. Anything else is None.
+    fn union_pattern_argument(
+        &mut self,
+        part: &Object,
+        position: Position,
+    ) -> Result<Option<Object>, MetorexError> {
+        match part {
+            Object::Regex(..) => Ok(Some(part.clone())),
+            Object::String(_) | Object::Symbol(_) => Ok(None),
+            other if self.responds_to(other, "to_regexp") => {
+                match self.send_to_object(other.clone(), "to_regexp", vec![], position)? {
+                    converted @ Object::Regex(..) => Ok(Some(converted)),
+                    _ => Ok(None),
+                }
+            }
+            _ => Ok(None),
+        }
+    }
+
+    /// A pattern given to `Regexp.union` as text: a String, a Symbol's name,
+    /// or what `to_str` answers.
+    fn union_string_argument(
+        &mut self,
+        part: &Object,
+        position: Position,
+    ) -> Result<Rc<crate::object::StringValue>, MetorexError> {
+        match part {
+            Object::String(text) | Object::Symbol(text) => Ok(Rc::clone(text)),
+            other if self.responds_to(other, "to_str") => {
+                match self.send_to_object(other.clone(), "to_str", vec![], position)? {
+                    Object::String(text) => Ok(text),
+                    _ => Err(self.string_conversion_error(other, position)),
+                }
+            }
+            other => Err(self.string_conversion_error(other, position)),
+        }
+    }
+}
+
+/// The error `Regexp.union` raises for two patterns whose encodings cannot be
+/// read together.
+fn incompatible_union(first: &str, second: &str, position: Position) -> MetorexError {
+    let message = format!("incompatible encodings: {first} and {second}");
+    crate::vm::errors::simple_exception("ArgumentError", &message, position)
 }

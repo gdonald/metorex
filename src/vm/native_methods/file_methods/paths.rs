@@ -46,7 +46,7 @@ impl VirtualMachine {
                     ));
                 }
                 let path = match &arguments[0] {
-                    Object::String(s) => s.as_str().to_string(),
+                    Object::String(s) => path_text(s),
                     other => {
                         return Err(method_argument_type_error(
                             "exist?", "String", other, position,
@@ -67,7 +67,7 @@ impl VirtualMachine {
                 let path_str = self.path_text("realpath", &arguments[0], position)?;
                 let base = if arguments.len() == 2 {
                     match &arguments[1] {
-                        Object::String(s) => s.as_str().to_string(),
+                        Object::String(s) => path_text(s),
                         other => {
                             return Err(method_argument_type_error(
                                 "realpath", "String", other, position,

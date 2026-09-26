@@ -152,6 +152,9 @@ impl VirtualMachine {
                 }
                 if is_const {
                     self.globals_mut().set(name.clone(), value.clone());
+                    // A constant the program's scope also holds, as the
+                    // standard streams are, reads the new value there too.
+                    self.environment_mut().set(name, value.clone());
                     let mut owner = None;
                     if let Some(Object::Class(object_class)) = self.globals().get("Object") {
                         if object_class.get_class_var(name).is_none() {
@@ -185,6 +188,7 @@ impl VirtualMachine {
                     .map(|path| path.display().to_string())
                     .unwrap_or_default();
                 self.globals_mut().set(name.clone(), value.clone());
+                self.environment_mut().set(name, value.clone());
                 if let Some(Object::Class(object_class)) = self.globals().get("Object") {
                     object_class.set_class_var(name, value);
                     object_class.set_const_location(name, assign_file, position.line as i64);

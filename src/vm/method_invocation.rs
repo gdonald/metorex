@@ -916,7 +916,11 @@ impl VirtualMachine {
     }
 
     /// The TypeError Ruby raises for an object that does not read as a String.
-    fn string_conversion_error(&mut self, given: &Object, position: Position) -> MetorexError {
+    pub(crate) fn string_conversion_error(
+        &mut self,
+        given: &Object,
+        position: Position,
+    ) -> MetorexError {
         let message = format!(
             "no implicit conversion of {} into String",
             self.builtins().class_of(given).ruby_name()

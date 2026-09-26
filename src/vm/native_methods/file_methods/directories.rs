@@ -258,7 +258,7 @@ impl VirtualMachine {
                 ));
             }
             let path = match &arguments[0] {
-                Object::String(s) => s.as_str().to_string(),
+                Object::String(s) => path_text(s),
                 other => {
                     return Err(method_argument_type_error(
                         method_name,

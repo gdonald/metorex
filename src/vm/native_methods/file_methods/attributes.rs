@@ -22,7 +22,7 @@ impl VirtualMachine {
                     ));
                 }
                 let path = match &arguments[0] {
-                    Object::String(s) => s.as_str().to_string(),
+                    Object::String(s) => path_text(s),
                     other => {
                         return Err(method_argument_type_error(
                             "directory?",
@@ -45,7 +45,7 @@ impl VirtualMachine {
                     ));
                 }
                 let path = match &arguments[0] {
-                    Object::String(held) => held.as_str().to_string(),
+                    Object::String(held) => path_text(held),
                     other => {
                         return Err(method_argument_type_error(
                             method_name,
@@ -78,7 +78,7 @@ impl VirtualMachine {
                     return Err(method_argument_error("file?", 1, arguments.len(), position));
                 }
                 let path = match &arguments[0] {
-                    Object::String(s) => s.as_str().to_string(),
+                    Object::String(s) => path_text(s),
                     other => {
                         return Err(method_argument_type_error(
                             "file?", "String", other, position,
@@ -99,7 +99,7 @@ impl VirtualMachine {
                     ));
                 }
                 let path = match &arguments[0] {
-                    Object::String(s) => s.as_str().to_string(),
+                    Object::String(s) => path_text(s),
                     other => {
                         return Err(method_argument_type_error(
                             "executable?",

@@ -231,11 +231,11 @@ impl VirtualMachine {
                 Object::String(Rc::new(line))
             })
             .collect();
-        if method_name == "lines" {
-            self.warn_unused_block(position)?;
+        let pending = self.pending_block.take();
+        if method_name == "lines" && !matches!(pending, Some(Object::Block(_))) {
             return Ok(Some(Object::array(pieces)));
         }
-        let Some(Object::Block(block)) = self.pending_block.take() else {
+        let Some(Object::Block(block)) = pending else {
             return self
                 .make_enumerator(receiver, method_name, arguments, position)
                 .map(Some);

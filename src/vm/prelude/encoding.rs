@@ -44,6 +44,12 @@ class Encoding
     @__source__ = named.is_a?(Encoding) ? named : Encoding.find(named)
   end
 
+  # The encodings Ruby carries no converter to or from.
+  def self.__without_converter__ name
+    ["Emacs-Mule", "EUC-TW", "Windows-1258", "GB1988", "macCentEuro", "macThai",
+     "ISO-2022-JP-2", "MacJapanese", "UTF-7"].include? name
+  end
+
   # A conversion from one encoding to another, along with the flags saying
   # what to do with what the destination cannot spell.
   # What a conversion reports when the destination cannot spell a character.
@@ -228,7 +234,10 @@ class Encoding
     def self.search_convpath source, destination, options = 0
       from = Encoding::Converter.named source
       to = Encoding::Converter.named destination
-      if from.name == "ASCII-8BIT" && to.name != "ASCII-8BIT"
+      refused = from.name == "ASCII-8BIT" && to.name != "ASCII-8BIT"
+      refused ||= from != to && (Encoding.__without_converter__(from.name) ||
+                                 Encoding.__without_converter__(to.name))
+      if refused
         raise Encoding::ConverterNotFoundError,
               "code converter not found (#{from.name} to #{to.name})"
       end
@@ -273,32 +282,42 @@ class Encoding
 
     # Carry what it can from `source` into `destination`, reporting how it
     # stopped rather than raising. The source is left holding whatever was
-    # not read.
+    # not read. Output that does not fit in `destination_bytesize` is kept and
+    # written first the next time, and so are the bytes an invalid run asks
+    # to be read again and a character the input stopped part-way through.
     def primitive_convert source, destination, destination_byteoffset = nil, destination_bytesize = nil, options = 0
-      unless destination_byteoffset.nil?
-        destination.replace destination.byteslice(0, destination_byteoffset)
+      destination_byteoffset = destination_byteoffset.to_int unless destination_byteoffset.nil?
+      destination_bytesize = destination_bytesize.to_int unless destination_bytesize.nil?
+      if destination_byteoffset.nil?
+        destination_byteoffset = destination.bytesize
+      elsif destination_byteoffset > destination.bytesize
+        raise ArgumentError, "output_byteoffset too big"
       end
-      held = source.dup.force_encoding "ASCII-8BIT"
+      kept = destination.byteslice(0, destination_byteoffset)
+      # A conversion that finished takes nothing more.
+      if @primitive_finished
+        destination.replace kept
+        return :finished
+      end
+      given = source.nil? ? "" : source
+      carried_over = (@held_back || "") + (@partial || "")
+      @held_back = nil
+      @partial = nil
+      held = carried_over.b + given.b
       trouble = invalid_run held
       readable = trouble.nil? ? held : held.byteslice(0, trouble[0])
-      written = ""
+      written = "".b
       consumed = 0
       status = nil
       readable.dup.force_encoding(@source.name).each_char do |character|
-        if !destination_bytesize.nil? && written.bytesize + character.bytesize > destination_bytesize
-          @errinfo = [:destination_buffer_full, nil, nil, nil, nil]
-          @last_error = nil
-          status = :destination_buffer_full
-          break
-        end
         unless spellable? character
+          consumed = consumed + character.bytesize
           if replacing_undefined?
-            written = written + @replacement
-            consumed = consumed + character.bytesize
+            written = written + @replacement.b
             next
           end
           from, to = stage_for :undefined
-          bytes = character.dup.force_encoding("ASCII-8BIT")
+          bytes = character.b
           spelled = "U+" + character.ord.to_s(16).upcase.rjust(4, "0")
           @errinfo = [:undefined_conversion, from.name, to.name, bytes, ""]
           @last_error = Encoding::UndefinedConversionError.new(
@@ -307,31 +326,51 @@ class Encoding
           status = :undefined_conversion
           break
         end
-        written = written + character
+        written = written + carried(character).b
         consumed = consumed + character.bytesize
       end
-      destination.replace destination + written.dup.force_encoding(@destination.name)
       if status.nil? && !trouble.nil?
-        from, to = stage_for :invalid
         wrong = trouble[1]
         rest = trouble[2]
         truncated = trouble[3]
-        status = truncated ? :incomplete_input : :invalid_byte_sequence
-        @errinfo = [status, from.name, to.name, wrong, rest]
-        @held_back = rest
-        @last_error = Encoding::InvalidByteSequenceError.new(
-          "#{wrong.inspect} on #{from.name}", from, to, wrong, rest, truncated
-        )
-        # The bytes that could not carry on are read too, and held for a
-        # `putback` to hand to the next piece of text.
         consumed = trouble[0] + wrong.bytesize + rest.bytesize
+        if truncated && partial_input_wanted(options)
+          @partial = wrong
+        else
+          from, to = stage_for :invalid
+          status = truncated ? :incomplete_input : :invalid_byte_sequence
+          @errinfo = [status, from.name, to.name, wrong, rest]
+          @held_back = rest
+          @last_error = Encoding::InvalidByteSequenceError.new(
+            "#{wrong.inspect} on #{from.name}", from, to, wrong, rest, truncated
+          )
+        end
       end
       if status.nil?
         status = partial_input_wanted(options) ? :source_buffer_empty : :finished
         @errinfo = [status, nil, nil, nil, nil]
         @last_error = nil
       end
-      source.replace held.byteslice(consumed, held.bytesize - consumed)
+      # A finished conversion into ISO-2022-JP ends back in ASCII.
+      if status == :finished && @shifted
+        @shifted = false
+        written = written + "\e(B".b
+      end
+      output = (@pending_output || "".b) + written
+      @pending_output = nil
+      if !destination_bytesize.nil? && output.bytesize > destination_bytesize
+        @pending_output = output.byteslice(destination_bytesize, output.bytesize - destination_bytesize)
+        output = output.byteslice(0, destination_bytesize)
+        status = :destination_buffer_full
+        @errinfo = [status, nil, nil, nil, nil]
+        @last_error = nil
+      end
+      @primitive_finished = status == :finished
+      destination.replace (kept.b + output).force_encoding(@destination.name)
+      unless source.nil?
+        left = held.byteslice(consumed, held.bytesize - consumed)
+        source.replace left.force_encoding(source.encoding)
+      end
       status
     end
 
@@ -389,7 +428,7 @@ class Encoding
     def spellable? character
       code = character.ord
       case @destination.name
-      when "UTF-8", "UTF-16", "UTF-16BE", "UTF-16LE", "UTF-32", "UTF-32BE", "UTF-32LE", "CESU-8", "GB18030"
+      when "UTF-8", "UTF8-MAC", "UTF-16", "UTF-16BE", "UTF-16LE", "UTF-32", "UTF-32BE", "UTF-32LE", "CESU-8", "GB18030"
         true
       when "ISO-8859-1"
         code < 256
@@ -481,6 +520,11 @@ class Encoding
       # The run that opened the character, and the one byte after it that
       # could not carry on.
       stop = start + 1
+      # A byte that opens no character is wrong by itself, and nothing after
+      # it is read again.
+      if @source.name != "EUC-JP" && bytes[start] < 0xc0
+        return [start, [bytes[start]].pack("C").force_encoding("ASCII-8BIT"), "", false]
+      end
       stop = stop + 1 while stop < bytes.length && carries_on?(bytes[stop])
       wrong = bytes[start..(stop - 1)].pack("C*").force_encoding "ASCII-8BIT"
       rest = stop < bytes.length ? [bytes[stop]].pack("C").force_encoding("ASCII-8BIT") : ""

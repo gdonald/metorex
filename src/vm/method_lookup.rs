@@ -512,6 +512,11 @@ impl VirtualMachine {
         {
             return true;
         }
+        if class_rc.ruby_name() == "Process"
+            && crate::vm::native_methods::PROCESS_NATIVE_METHODS.contains(&name)
+        {
+            return true;
+        }
         let mut cursor = Some(Rc::clone(class_rc));
         while let Some(current) = cursor {
             if let Some(sc) = current.singleton_class_slot().clone()

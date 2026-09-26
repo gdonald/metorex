@@ -23,6 +23,11 @@ collected = []
 "one\ntwo".each_line { |line| collected << line }
 p collected
 
+# Given a block, `lines` hands it each piece and answers the string itself.
+collected = []
+p("x\ny".lines(chomp: true) { |line| collected << line })
+p collected
+
 # `$/` names the separator a walk with none of its own cuts on.
 $/ = "x"
 p "axbxc".lines

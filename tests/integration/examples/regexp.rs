@@ -89,7 +89,9 @@ const BUILT_PATTERNS_OUTPUT: &str = concat!(
     "#<Encoding:UTF-8>\n",
     "unknown regexp option: e\n",
     "premature end of char-class: /^[$/\n",
-    "no implicit conversion of Symbol into String\n"
+    "no implicit conversion of Symbol into String\n",
+    "true\n",
+    "false\n"
 );
 
 #[test]
@@ -223,4 +225,37 @@ fn test_regexp_percent_r_and_conditions_execution() {
 fn test_regexp_percent_r_and_conditions_parens_execution() {
     let output = run_example("regexp/percent_r_and_conditions_parens.rb");
     assert_eq!(output, PERCENT_R_AND_CONDITIONS_OUTPUT);
+}
+
+/// The expected output of both `regexp/pattern_unions` variants.
+const PATTERN_UNIONS_OUTPUT: &str = concat!(
+    "/(?!)/\n",
+    "/n|\\./\n",
+    "/(?-mix:dogs)|(?i-mx:cats)/\n",
+    "/(?-mix:dogs)|(?i-mx:cats)/\n",
+    "/foo/\n",
+    "true\n",
+    "/from_regexp/\n",
+    "/(?-mix:from_regexp)|bar/\n",
+    "#<Encoding:US-ASCII>\n",
+    "#<Encoding:ISO-8859-1>\n",
+    "#<Encoding:UTF-16LE>\n",
+    "#<Encoding:BINARY (ASCII-8BIT)>\n",
+    "#<Encoding:UTF-8>\n",
+    "[ArgumentError, \"incompatible encodings: UTF-16LE and UTF-16BE\"]\n",
+    "[ArgumentError, \"incompatible encodings: ISO-8859-1 and UTF-8\"]\n",
+    "[ArgumentError, \"ASCII incompatible encoding: UTF-16LE\"]\n",
+    "[TypeError, \"no implicit conversion of Array into String\"]\n"
+);
+
+#[test]
+fn test_regexp_pattern_unions_execution() {
+    let output = run_example("regexp/pattern_unions.rb");
+    assert_eq!(output, PATTERN_UNIONS_OUTPUT);
+}
+
+#[test]
+fn test_regexp_pattern_unions_parens_execution() {
+    let output = run_example("regexp/pattern_unions_parens.rb");
+    assert_eq!(output, PATTERN_UNIONS_OUTPUT);
 }

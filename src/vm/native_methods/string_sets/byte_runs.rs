@@ -145,6 +145,20 @@ pub(crate) fn split_readable_runs(bytes: &[u8], named: &str) -> Vec<Run> {
                 runs.push(Run::Broken(bytes[at..].to_vec()));
             }
         }
+        // A lead byte is read with the one after it, so one the string ends
+        // on is put aside.
+        named if crate::vm::native_methods::string_methods::pairs_its_bytes(named) => {
+            let mut at = 0usize;
+            while at < bytes.len() {
+                let width = if bytes[at] < 0x80 { 1 } else { 2 };
+                if at + width > bytes.len() {
+                    runs.push(Run::Broken(bytes[at..].to_vec()));
+                    break;
+                }
+                runs.push(Run::Read(bytes[at..at + width].to_vec()));
+                at += width;
+            }
+        }
         // Every other encoding reads what it is handed, so nothing is put
         // aside.
         _ => runs.push(Run::Read(bytes.to_vec())),

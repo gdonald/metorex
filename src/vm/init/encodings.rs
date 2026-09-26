@@ -81,7 +81,7 @@ pub(crate) const PROCESS_CONSTANTS: &[(&str, i64)] = &[
     ),
 ];
 
-pub(crate) const ENCODING_NAMES: [(&str, &str, bool); 115] = [
+pub(crate) const ENCODING_NAMES: [(&str, &str, bool); 116] = [
     ("UTF_8", "UTF-8", false),
     ("CESU_8", "CESU-8", false),
     ("US_ASCII", "US-ASCII", false),
@@ -187,6 +187,7 @@ pub(crate) const ENCODING_NAMES: [(&str, &str, bool); 115] = [
     ("EucJP_ms", "eucJP-ms", false),
     ("CP51932", "CP51932", false),
     ("UTF8_MAC", "UTF8-MAC", false),
+    ("UTF_8_MAC", "UTF8-MAC", false),
     ("IBM720", "IBM720", false),
     ("CP720", "CP720", false),
     ("MACCYRILLIC", "macCyrillic", false),

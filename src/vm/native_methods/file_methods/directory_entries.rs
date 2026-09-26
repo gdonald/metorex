@@ -116,13 +116,13 @@ impl VirtualMachine {
                 return Err(method_argument_error(method_name, 1, named.len(), position));
             }
             let path = match named[0] {
-                Object::String(held) => held.as_str().to_string(),
+                Object::String(held) => path_text(held),
                 other => {
                     // Anything else names a path through `to_path`.
                     let converted =
                         self.send_to_object(other.clone(), "to_path", vec![], position)?;
                     match converted {
-                        Object::String(held) => held.as_str().to_string(),
+                        Object::String(held) => path_text(&held),
                         _ => {
                             return Err(method_argument_type_error(
                                 method_name,

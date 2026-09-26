@@ -190,33 +190,17 @@ fn string_rjust_with_pad_string() {
 }
 
 #[test]
-fn string_tty_returns_false() {
-    let result = run(r#""hello".tty?"#);
-    assert_eq!(result, Some(Object::Bool(false)));
-}
-
-#[test]
-fn string_isatty_returns_false() {
-    let result = run(r#""hello".isatty"#);
-    assert_eq!(result, Some(Object::Bool(false)));
-}
-
-#[test]
-fn string_flush_returns_nil() {
-    let result = run(r#""hello".flush"#);
-    assert_eq!(result, Some(Object::Nil));
-}
-
-#[test]
-fn string_sync_returns_nil() {
-    let result = run(r#""hello".sync"#);
-    assert_eq!(result, Some(Object::Nil));
-}
-
-#[test]
-fn string_fsync_returns_nil() {
-    let result = run(r#""hello".fsync"#);
-    assert_eq!(result, Some(Object::Nil));
+fn a_string_answers_none_of_the_stream_methods() {
+    for code in [
+        r#""hello".tty?"#,
+        r#""hello".isatty"#,
+        r#""hello".flush"#,
+        r#""hello".sync"#,
+        r#""hello".fsync"#,
+    ] {
+        let result = std::panic::catch_unwind(|| run(code));
+        assert!(result.is_err(), "{code} answered");
+    }
 }
 
 #[test]

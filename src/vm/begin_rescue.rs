@@ -92,7 +92,11 @@ impl VirtualMachine {
                         rescue_clause.position,
                         vec![("raised_exception", exception.clone())],
                     )?;
-                    if let Some(var_name) = &rescue_clause.variable_name {
+                    // The name is assigned the way `=` assigns it, so a
+                    // variable of an enclosing scope is the one set.
+                    if let Some(var_name) = &rescue_clause.variable_name
+                        && !self.environment_mut().set(var_name, exception.clone())
+                    {
                         self.environment_mut()
                             .define(var_name.clone(), exception.clone());
                     }

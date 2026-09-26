@@ -17,13 +17,12 @@ p([Process::WNOHANG, Process::WUNTRACED].all? { |held| held.is_a?(Integer) })
 p([Process::PRIO_PROCESS, Process::PRIO_PGRP, Process::PRIO_USER].uniq.length)
 p(Process::RLIMIT_NOFILE.is_a?(Integer))
 
-# Renaming the process leaves `$0` alone, and forking is not carried here.
+# Renaming the process leaves `$0` alone, and `_fork` splits the process,
+# answering 0 in the child.
 p(Process.setproctitle("metorex-example"))
-begin
-  Process._fork
-rescue NotImplementedError => problem
-  p(problem.class)
-end
+child = Process._fork
+Process.exit! 0 if child == 0
+p(Process.wait2(child)[1].exitstatus)
 
 # A signal sent to a process that is not there is refused.
 begin

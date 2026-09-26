@@ -161,20 +161,51 @@ impl VirtualMachine {
                 crate::vm::utils::position_to_location(position),
             ));
         };
-        let program = self.get_string_representation(command, position)?;
+        // `[program, argv0]` names the program and what it is told it is
+        // called.
+        let (command, called) = match command {
+            Object::Array(pair) if pair.borrow().len() == 2 => {
+                let pair = pair.borrow();
+                (
+                    pair[0].clone(),
+                    Some(self.get_string_representation(&pair[1], position)?),
+                )
+            }
+            other => (other.clone(), None),
+        };
+        let program = self.get_string_representation(&command, position)?;
         let mut rest = Vec::new();
         for argument in &given[1..] {
             rest.push(self.get_string_representation(argument, position)?);
         }
-        let mut running = if rest.is_empty() {
-            let mut shell = std::process::Command::new("/bin/sh");
-            shell.arg("-c").arg(&program);
-            shell
+        // A single command that the shell has nothing to read in runs as the
+        // program it names, the way Ruby runs it.
+        let plain = if rest.is_empty() && called.is_none() {
+            shell_free_words(&program)
         } else {
-            let mut named = std::process::Command::new(&program);
-            named.args(&rest);
-            named
+            None
         };
+        let mut running = match plain {
+            Some(words) => {
+                let mut named = std::process::Command::new(&words[0]);
+                named.args(&words[1..]);
+                named
+            }
+            None if rest.is_empty() && called.is_none() => {
+                let mut shell = std::process::Command::new("/bin/sh");
+                shell.arg("-c").arg(&program);
+                shell
+            }
+            None => {
+                let mut named = std::process::Command::new(&program);
+                named.args(&rest);
+                named
+            }
+        };
+        if let Some(called) = called {
+            use std::os::unix::process::CommandExt as _;
+            running.arg0(called);
+        }
         if let Some(environment) = environment {
             for (name, value) in environment.iter() {
                 let name = name.trim_start_matches(':');
@@ -189,9 +220,40 @@ impl VirtualMachine {
             }
         }
         if let Some(settings) = &settings
-            && let Some(Object::String(directory)) = settings.get(":chdir")
+            && let Some(directory) = settings.get(":chdir")
         {
-            running.current_dir(directory.as_str().to_string());
+            let file = self.globals().get("File").unwrap_or(Object::Nil);
+            let named = self.send_to_object(file, "path", vec![directory.clone()], position)?;
+            running.current_dir(self.get_string_representation(&named, position)?);
+        }
+        // The files a redirection opens stay open until the child has been
+        // started, since the child takes its copies of them then.
+        let mut held_open: Vec<std::fs::File> = Vec::new();
+        if let Some(settings) = &settings {
+            let moves = self.spawn_redirections(settings, &mut held_open, position)?;
+            if !moves.is_empty() {
+                use std::os::unix::process::CommandExt;
+                // SAFETY: the child only calls `dup2` between the fork and
+                // the exec, which is what redirecting its streams takes.
+                unsafe {
+                    running.pre_exec(move || {
+                        for (target, source) in &moves {
+                            let from = match source {
+                                RedirectSource::Descriptor(number) => *number,
+                                RedirectSource::ChildStream(number) => *number,
+                            };
+                            if libc::dup2(from, *target) < 0 {
+                                return Err(std::io::Error::last_os_error());
+                            }
+                            // A child's own streams wait for room or for
+                            // input, whatever the end it was handed did.
+                            let flags = libc::fcntl(*target, libc::F_GETFL);
+                            libc::fcntl(*target, libc::F_SETFL, flags & !libc::O_NONBLOCK);
+                        }
+                        Ok(())
+                    });
+                }
+            }
         }
         // `pgroup: true` starts the child in a process group of its
         // own, which is what keeps a signal to this group from
@@ -211,7 +273,9 @@ impl VirtualMachine {
                 });
             }
         }
-        match running.spawn() {
+        let started = running.spawn();
+        drop(held_open);
+        match started {
             Ok(child) => Ok(Object::Int(i64::from(child.id()))),
             Err(problem) => {
                 let message = format!("No such file or directory - {program} ({problem})");
@@ -319,36 +383,16 @@ impl VirtualMachine {
         Ok(Object::Bool(status.success()))
     }
 
-    /// `fork` splits the process. The child answers nil, or runs the
-    /// block and exits with its status; the parent answers the child's
-    /// process id either way.
+    /// `fork` splits the process through `Process._fork`. The child answers
+    /// nil, or runs the block and exits with its status; the parent answers
+    /// what `_fork` answered, which is the child's process id.
     pub(crate) fn fork_process(&mut self, position: Position) -> Result<Object, MetorexError> {
         use std::io::Write as _;
-        let _ = std::io::stdout().flush();
-        let _ = std::io::stderr().flush();
         let block = self.pending_block.take();
-        // SAFETY: `fork` is called with no other threads running, and
-        // the child does nothing but run the block and exit.
-        let child = unsafe { libc::fork() };
-        if child < 0 {
-            let message = "fork failed".to_string();
-            return Err(MetorexError::UncaughtException {
-                exception: Object::exception("Errno::EAGAIN", message.clone()),
-                location: crate::vm::utils::position_to_location(position),
-                message,
-            });
-        }
-        if child > 0 {
-            return Ok(Object::Int(child as i64));
-        }
-        // Only the thread that called `fork` survives into the child,
-        // so every other one is marked finished there.
-        for thread in std::mem::take(&mut self.pending_threads) {
-            if let Object::Instance(instance) = thread {
-                instance
-                    .borrow_mut()
-                    .set_var("__thread_value".to_string(), Object::Nil);
-            }
+        let process = self.globals().get("Process").unwrap_or(Object::Nil);
+        let answered = self.send_to_object(process, "_fork", vec![], position)?;
+        if !matches!(answered, Object::Int(0)) {
+            return Ok(answered);
         }
         // In the child. Without a block, `fork` answers nil and the
         // caller carries on as the child.
@@ -370,4 +414,181 @@ impl VirtualMachine {
         };
         std::process::exit(status);
     }
+}
+
+impl VirtualMachine {
+    /// `Process._fork` splits the process, answering the child's process id
+    /// in the parent and 0 in the child.
+    pub(crate) fn split_process(&mut self, position: Position) -> Result<Object, MetorexError> {
+        use std::io::Write as _;
+        let _ = std::io::stdout().flush();
+        let _ = std::io::stderr().flush();
+        // SAFETY: the interpreter is the only thread that runs Ruby code, and
+        // the child carries on with nothing but that thread.
+        let child = unsafe { libc::fork() };
+        if child < 0 {
+            let message = "fork failed".to_string();
+            return Err(MetorexError::UncaughtException {
+                exception: Object::exception("Errno::EAGAIN", message.clone()),
+                location: crate::vm::utils::position_to_location(position),
+                message,
+            });
+        }
+        if child > 0 {
+            return Ok(Object::Int(child as i64));
+        }
+        // Only the thread that called `fork` survives into the child, so
+        // every other one is marked finished there.
+        for thread in std::mem::take(&mut self.pending_threads) {
+            if let Object::Instance(instance) = thread {
+                instance
+                    .borrow_mut()
+                    .set_var("__thread_value".to_string(), Object::Nil);
+            }
+        }
+        Ok(Object::Int(0))
+    }
+}
+
+/// Where a redirected stream of a spawned child comes from: a descriptor this
+/// process holds, or another of the child's own streams.
+#[derive(Clone, Copy)]
+enum RedirectSource {
+    Descriptor(libc::c_int),
+    ChildStream(libc::c_int),
+}
+
+/// The stream a redirection names, as `:in`, `:out`, `:err` or a number.
+fn redirected_stream(named: &str) -> Option<libc::c_int> {
+    match named.trim_start_matches(':') {
+        "in" => Some(0),
+        "out" => Some(1),
+        "err" => Some(2),
+        number => number.parse().ok(),
+    }
+}
+
+impl VirtualMachine {
+    /// The moves a spawned child makes to its streams before it runs, in the
+    /// order they are made: a file, a stream of this process, or a descriptor
+    /// by number first, and another of the child's own streams last, since
+    /// that one is read once the others are in place.
+    fn spawn_redirections(
+        &mut self,
+        settings: &indexmap::IndexMap<String, Object>,
+        held_open: &mut Vec<std::fs::File>,
+        position: Position,
+    ) -> Result<Vec<(libc::c_int, RedirectSource)>, MetorexError> {
+        use std::os::fd::AsRawFd as _;
+        let mut moves = Vec::new();
+        let mut last = Vec::new();
+        for (key, value) in settings.iter() {
+            let Some(target) = redirected_stream(key) else {
+                continue;
+            };
+            let source = match value {
+                Object::Int(number) => RedirectSource::Descriptor(*number as libc::c_int),
+                Object::String(path) => {
+                    let opened = open_redirect_file(&path.as_str(), target, None)
+                        .map_err(|problem| redirect_error(&path.as_str(), &problem, position))?;
+                    let number = opened.as_raw_fd();
+                    held_open.push(opened);
+                    RedirectSource::Descriptor(number)
+                }
+                Object::Array(parts) => {
+                    let parts = parts.borrow().clone();
+                    match parts.first() {
+                        Some(Object::Symbol(child)) if &*child.as_str() == "child" => {
+                            let Some(Object::Symbol(other)) = parts.get(1) else {
+                                continue;
+                            };
+                            let Some(number) = redirected_stream(&other.as_str()) else {
+                                continue;
+                            };
+                            last.push((target, RedirectSource::ChildStream(number)));
+                            continue;
+                        }
+                        Some(Object::String(path)) => {
+                            let mode = match parts.get(1) {
+                                Some(Object::String(mode)) => Some(mode.as_str().to_string()),
+                                _ => None,
+                            };
+                            let opened =
+                                open_redirect_file(&path.as_str(), target, mode.as_deref())
+                                    .map_err(|problem| {
+                                        redirect_error(&path.as_str(), &problem, position)
+                                    })?;
+                            let number = opened.as_raw_fd();
+                            held_open.push(opened);
+                            RedirectSource::Descriptor(number)
+                        }
+                        _ => continue,
+                    }
+                }
+                // A stream of this process lends the child its descriptor.
+                other if self.responds_to(other, "fileno") => {
+                    match self.send_to_object(other.clone(), "fileno", vec![], position)? {
+                        Object::Int(number) => RedirectSource::Descriptor(number as libc::c_int),
+                        _ => continue,
+                    }
+                }
+                _ => continue,
+            };
+            moves.push((target, source));
+        }
+        moves.extend(last);
+        Ok(moves)
+    }
+}
+
+/// A file a redirection names, opened for reading when it stands for the
+/// child's input and for writing otherwise, unless a mode says how.
+fn open_redirect_file(
+    path: &str,
+    target: libc::c_int,
+    mode: Option<&str>,
+) -> std::io::Result<std::fs::File> {
+    let mut options = std::fs::OpenOptions::new();
+    match mode.unwrap_or(if target == 0 { "r" } else { "w" }) {
+        "r" => options.read(true),
+        "a" => options.append(true).create(true),
+        "r+" => options.read(true).write(true),
+        "w+" => options.read(true).write(true).create(true).truncate(true),
+        _ => options.write(true).create(true).truncate(true),
+    };
+    options.open(path)
+}
+
+/// The error a redirection to a file that cannot be opened raises.
+fn redirect_error(path: &str, problem: &std::io::Error, position: Position) -> MetorexError {
+    let named = match problem.raw_os_error() {
+        Some(code) if code == libc::EACCES => "Errno::EACCES",
+        Some(code) if code == libc::EISDIR => "Errno::EISDIR",
+        _ => "Errno::ENOENT",
+    };
+    crate::vm::errors::simple_exception(named, &format!("{problem} - {path}"), position)
+}
+
+/// The commands the shell answers itself, which have no program to run and so
+/// have to go through `/bin/sh` however plainly they are written.
+const SHELL_BUILTINS: &[&str] = &[
+    "!", ".", ":", "break", "case", "continue", "do", "done", "elif", "else", "esac", "eval",
+    "exec", "exit", "export", "fi", "for", "if", "in", "readonly", "return", "set", "shift",
+    "then", "times", "trap", "unset", "until", "while",
+];
+
+/// The words of a command that needs no shell to run, or None when the shell
+/// has to read it. Anything the shell would treat as more than a plain word
+/// sends the command back through `/bin/sh`.
+pub(crate) fn shell_free_words(command: &str) -> Option<Vec<String>> {
+    const SHELL_CHARACTERS: &str = "*?{}[]<>()~&|\\$;'\"`\n#=";
+    if command.contains(|character| SHELL_CHARACTERS.contains(character)) {
+        return None;
+    }
+    let words: Vec<String> = command.split_whitespace().map(str::to_string).collect();
+    let first = words.first()?;
+    if SHELL_BUILTINS.contains(&first.as_str()) {
+        return None;
+    }
+    Some(words)
 }

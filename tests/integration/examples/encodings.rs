@@ -207,3 +207,194 @@ fn test_encodings_held_back_bytes_parens_execution() {
     let output = run_example("encodings/held_back_bytes_parens.rb");
     assert_eq!(output, HELD_BACK_BYTES_OUTPUT);
 }
+
+/// The expected output of both `encodings/missing_converters` variants.
+const MISSING_CONVERTERS_OUTPUT: &str = concat!(
+    "#<Encoding:Emacs-Mule>\n",
+    "#<Encoding:EUC-TW>\n",
+    "\"code converter not found (ASCII-8BIT to Emacs-Mule)\"\n",
+    "\"code converter not found (UTF-8 to EUC-TW)\"\n",
+    "\"code converter not found (Emacs-Mule to ASCII-8BIT)\"\n",
+    "\"code converter not found (UTF-8 to UTF-7)\"\n",
+    "\"code converter not found (UTF-8 to xyz)\"\n",
+    "#<Encoding:EUC-JP>\n",
+    "false\n",
+    "\"あ\"\n",
+    "#<Encoding:UTF-8>\n",
+    "#<Encoding:Emacs-Mule>\n",
+    "\"code converter not found (ASCII-8BIT to Emacs-Mule)\"\n"
+);
+
+#[test]
+fn test_encodings_missing_converters_execution() {
+    let output = run_example("encodings/missing_converters.rb");
+    assert_eq!(output, MISSING_CONVERTERS_OUTPUT);
+}
+
+#[test]
+fn test_encodings_missing_converters_parens_execution() {
+    let output = run_example("encodings/missing_converters_parens.rb");
+    assert_eq!(output, MISSING_CONVERTERS_OUTPUT);
+}
+
+/// The expected output of both `encodings/replacing_while_encoding` variants.
+const REPLACING_WHILE_ENCODING_OUTPUT: &str = concat!(
+    "\"ab?c\"\n",
+    "\"こ�\"\n",
+    "\"ち��\"\n",
+    "\"ちfoofoo\"\n",
+    "\"B?\"\n",
+    "\"Bfoo\"\n",
+    "[164, 162, 63, 164, 162]\n",
+    "[164, 162, 63, 164, 162]\n",
+    "\"ab?c\"\n",
+    "[Encoding::InvalidByteSequenceError, \"\\\"\\\\xFF\\\" on UTF-8\"]\n",
+    "[Encoding::InvalidByteSequenceError, \"incomplete \\\"\\\\xE3\\\\x81\\\" on UTF-8\"]\n",
+    "[Encoding::InvalidByteSequenceError, \"\\\"\\\\xE3\\\" followed by \\\"A\\\" on UTF-8\"]\n",
+    "[Encoding::UndefinedConversionError, \"U+FFFD from UTF-8 to US-ASCII\"]\n",
+    "\"あ\"\n",
+    "#<Encoding:UTF-8>\n",
+    "false\n",
+    "\"?\"\n",
+    "[Encoding::UndefinedConversionError, \"\\\"\\\\xC3\\\" from ASCII-8BIT to UTF-8\"]\n",
+    "[Encoding::UndefinedConversionError, \"\\\"\\\\xC3\\\" to UTF-8 in conversion from ASCII-8BIT to UTF-8 to UTF-16LE\"]\n",
+    "\"a�\"\n"
+);
+
+#[test]
+fn test_encodings_replacing_while_encoding_execution() {
+    let output = run_example("encodings/replacing_while_encoding.rb");
+    assert_eq!(output, REPLACING_WHILE_ENCODING_OUTPUT);
+}
+
+#[test]
+fn test_encodings_replacing_while_encoding_parens_execution() {
+    let output = run_example("encodings/replacing_while_encoding_parens.rb");
+    assert_eq!(output, REPLACING_WHILE_ENCODING_OUTPUT);
+}
+
+/// The expected output of both `encodings/encoding_fallbacks` variants.
+const ENCODING_FALLBACKS_OUTPUT: &str = concat!(
+    "\"Bbar\"\n",
+    "\"Bdflt\"\n",
+    "\"B[239, 191, 189]\"\n",
+    "\"Bfffd\"\n",
+    "\"BU+FFFD\"\n",
+    "\"Blookup\"\n",
+    "\"Bword\"\n",
+    "\"Bfoo\"\n",
+    "[Encoding::UndefinedConversionError, \"U+FFFD from UTF-8 to US-ASCII\"]\n",
+    "[Encoding::UndefinedConversionError, \"U+FFFD from UTF-8 to US-ASCII\"]\n",
+    "[TypeError, \"no implicit conversion of Object into String\"]\n",
+    "[ArgumentError, \"too big fallback string\"]\n"
+);
+
+#[test]
+fn test_encodings_encoding_fallbacks_execution() {
+    let output = run_example("encodings/encoding_fallbacks.rb");
+    assert_eq!(output, ENCODING_FALLBACKS_OUTPUT);
+}
+
+#[test]
+fn test_encodings_encoding_fallbacks_parens_execution() {
+    let output = run_example("encodings/encoding_fallbacks_parens.rb");
+    assert_eq!(output, ENCODING_FALLBACKS_OUTPUT);
+}
+
+/// The expected output of both `encodings/xml_escaping` variants.
+const XML_ESCAPING_OUTPUT: &str = concat!(
+    "\"&lt;a &amp; b&gt;\"\n",
+    "\"say \\\"hi\\\"\"\n",
+    "\"&lt;ü&gt;\"\n",
+    "\"\\\"&lt;&#xFC;&gt;&quot;\\\"\"\n",
+    "\"&#x1F600;&amp;\"\n",
+    "[34, 0, 38, 0, 108, 0, 116, 0, 59, 0, 34, 0]\n",
+    "\"&#xFC;\"\n",
+    "\"&#xFC;\"\n",
+    "\"unexpected value for xml option: other\"\n",
+    "\"unexpected value for xml option\"\n"
+);
+
+#[test]
+fn test_encodings_xml_escaping_execution() {
+    let output = run_example("encodings/xml_escaping.rb");
+    assert_eq!(output, XML_ESCAPING_OUTPUT);
+}
+
+#[test]
+fn test_encodings_xml_escaping_parens_execution() {
+    let output = run_example("encodings/xml_escaping_parens.rb");
+    assert_eq!(output, XML_ESCAPING_OUTPUT);
+}
+
+/// The expected output of both `encodings/newline_conversions` variants.
+const NEWLINE_CONVERSIONS_OUTPUT: &str = concat!(
+    "\"a\\nb\\nc\\nd\"\n",
+    "\"a\\r\\r\\nb\\rc\\r\\nd\"\n",
+    "\"a\\r\\rb\\rc\\rd\"\n",
+    "\"a\\r\\nb\\rc\\nd\"\n",
+    "\"a\\nb\\nc\\nd\"\n",
+    "\"a\\r\\r\\nb\\rc\\r\\nd\"\n",
+    "\"a\\nb\\nc\\nd\"\n",
+    "[Encoding::ConverterNotFoundError, \"code converter not found (universal_newline,crlf_newline)\"]\n",
+    "[Encoding::ConverterNotFoundError, \"code converter not found (crlf_newline,cr_newline)\"]\n",
+    "[ArgumentError, \"unexpected value for newline option: other\"]\n",
+    "[ArgumentError, \"unexpected value for newline option\"]\n"
+);
+
+#[test]
+fn test_encodings_newline_conversions_execution() {
+    let output = run_example("encodings/newline_conversions.rb");
+    assert_eq!(output, NEWLINE_CONVERSIONS_OUTPUT);
+}
+
+#[test]
+fn test_encodings_newline_conversions_parens_execution() {
+    let output = run_example("encodings/newline_conversions_parens.rb");
+    assert_eq!(output, NEWLINE_CONVERSIONS_OUTPUT);
+}
+
+/// The expected output of both `encodings/primitive_conversions` variants.
+const PRIMITIVE_CONVERSIONS_OUTPUT: &str = concat!(
+    ":undefined_conversion\n",
+    "\"abcd\"\n",
+    "[225]\n",
+    "#<Encoding:ISO-8859-1>\n",
+    ":destination_buffer_full\n",
+    ":destination_buffer_full\n",
+    ":finished\n",
+    "\"aabbb\"\n",
+    ":finished\n",
+    "\"  \"\n",
+    "\"output_byteoffset too big\"\n",
+    ":invalid_byte_sequence\n",
+    "\"bcd\"\n",
+    "[:invalid_byte_sequence, \"UTF-8\", \"ISO-8859-1\", \"\\xF1\", \"a\"]\n",
+    ":finished\n",
+    "\"abcd\"\n",
+    ":invalid_byte_sequence\n",
+    "\"\\x80\"\n",
+    ":source_buffer_empty\n",
+    "\"\"\n",
+    ":finished\n",
+    "\"あ\"\n",
+    ":destination_buffer_full\n",
+    ":finished\n",
+    "[27, 36, 66, 57, 97, 27, 40, 66]\n",
+    "#<Encoding:UTF8-MAC>\n",
+    "2\n",
+    "[[164, 162], [97]]\n",
+    "[225]\n"
+);
+
+#[test]
+fn test_encodings_primitive_conversions_execution() {
+    let output = run_example("encodings/primitive_conversions.rb");
+    assert_eq!(output, PRIMITIVE_CONVERSIONS_OUTPUT);
+}
+
+#[test]
+fn test_encodings_primitive_conversions_parens_execution() {
+    let output = run_example("encodings/primitive_conversions_parens.rb");
+    assert_eq!(output, PRIMITIVE_CONVERSIONS_OUTPUT);
+}

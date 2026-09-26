@@ -55,7 +55,9 @@ impl VirtualMachine {
         let frame_location = position_to_location(position);
         let frame_location_string = Some(format!("{}", frame_location));
 
-        let depth = self.block_nesting_depth();
+        let depth = block
+            .written_depth
+            .unwrap_or_else(|| self.block_nesting_depth());
         let frame = match block.defining_method.clone() {
             Some((callee, defined)) => CallFrame::method(
                 frame_name.clone(),
@@ -386,7 +388,9 @@ impl VirtualMachine {
         // A block body is a place of its own in a backtrace, named for the
         // scope it was written in and for how many blocks deep it sits.
         let frame_name = block.name().to_string();
-        let depth = self.block_nesting_depth();
+        let depth = block
+            .written_depth
+            .unwrap_or_else(|| self.block_nesting_depth());
         // A block reached from a method is entered where that method was
         // called, which is the call site the frame records.
         let called_at = Some(format!("{}", position_to_location(position)));

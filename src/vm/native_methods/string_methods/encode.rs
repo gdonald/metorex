@@ -13,26 +13,18 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<Option<Object>, MetorexError> {
         match method_name {
-            // String#encode — metorex strings are always UTF-8 and carry no
-            // encoding metadata, so re-encoding is the identity.
-            // Text that is nothing but ASCII reads the same in every
-            // ASCII-compatible encoding, so a copy of it can be tagged with
-            // the one asked for without converting anything. Text that is not
-            // needs a conversion metorex does not carry out, and the copy
-            // keeps the encoding it had.
-            // Metorex holds every string's characters as text, so `encode`
-            // answers a copy tagged with the encoding asked for rather than
-            // rewriting what it holds.
+            // `encode` reads the string's bytes in the encoding they are
+            // written in and writes the characters out in the one asked for.
             "encode" => {
-                // The last argument may name what to do with bytes the source
-                // encoding cannot read.
-                let (positional, replacement) = encode_options(arguments);
-                let arguments = positional;
-                let Some(named) = arguments.first() else {
-                    return Ok(Some(Object::string(string_value.to_text())));
-                };
-                let Ok(wanted) = self.encoding_name_argument(named, position) else {
-                    return Ok(Some(Object::string(string_value.to_text())));
+                let (arguments, options) = encode_options(arguments);
+                // With no encoding named, the string is written in the
+                // default internal encoding, or kept in its own.
+                let wanted = match arguments.first() {
+                    Some(named) => self.encode_target_name(string_value, named, position)?,
+                    None => match self.globals().get("__Encoding_default_internal") {
+                        Some(Object::Class(internal)) => internal.name().to_string(),
+                        _ => string_value.encoding_name(),
+                    },
                 };
                 // An encoding that spells a character in more than one byte
                 // is carried as the bytes themselves, since they spell
@@ -45,9 +37,54 @@ impl VirtualMachine {
                         .unwrap_or_else(|_| string_value.encoding_name()),
                     None => string_value.encoding_name(),
                 };
+                let replacement = options
+                    .replace
+                    .clone()
+                    .unwrap_or_else(|| default_replacement(&wanted));
+                // Between two names for the same encoding nothing is
+                // converted, and `invalid: :replace` scrubs what the bytes do
+                // not spell.
+                let xml = match &options.xml {
+                    Some(named) => Some(xml_escape(named, position)?),
+                    None => None,
+                };
+                let newline = newline_conversion(&options, position)?;
+                if held == wanted && xml.is_none() && newline.is_none() {
+                    let copy = relabeled_copy(string_value, &wanted);
+                    if let (true, Object::String(copied)) = (options.invalid_replace, &copy) {
+                        let stands_in = options.replace.map_or(Object::Nil, Object::string);
+                        return self
+                            .scrubbed_string(copied, &[stands_in], position)
+                            .map(Some);
+                    }
+                    return Ok(Some(copy));
+                }
+                if self.encoding_without_converter(&held, position)?
+                    || self.encoding_without_converter(&wanted, position)?
+                {
+                    // Text that is all ASCII reads the same in every one of
+                    // these that is not a dummy, so it needs no converter.
+                    let ascii_only = binary_bytes(string_value).is_ascii();
+                    if ascii_only && !dummy_encoding(&held) && !dummy_encoding(&wanted) {
+                        return Ok(Some(relabeled_copy(string_value, &wanted)));
+                    }
+                    return Err(converter_not_found(&held, &wanted, position));
+                }
                 let reads_bytes = string_value.holds_bytes() || arguments.len() > 1;
                 let reading = match wide_encoding(&held) {
                     Some(shape) => wide_text(&binary_bytes(string_value), shape),
+                    None if held == "ASCII-8BIT" => binary_text(
+                        &binary_bytes(string_value),
+                        &wanted,
+                        options.undef_replace.then_some(replacement.as_str()),
+                        position,
+                    )?,
+                    None if held == "UTF-8" => self.utf8_text(
+                        &binary_bytes(string_value),
+                        &options,
+                        &replacement,
+                        position,
+                    )?,
                     None if held == "ISO-2022-JP" && reads_bytes => {
                         crate::vm::native_methods::euc_jp_table::iso_2022_jp_text(&binary_bytes(
                             string_value,
@@ -58,19 +95,59 @@ impl VirtualMachine {
                             string_value,
                         ))
                     }
-                    None if held == "EUC-JP" && reads_bytes => match &replacement {
-                        Some(stands_in) => {
-                            euc_jp_text_replacing(&binary_bytes(string_value), stands_in)
-                        }
-                        None => crate::vm::native_methods::euc_jp_table::euc_jp_text(
-                            &binary_bytes(string_value),
-                        ),
-                    },
+                    None if held == "EUC-JP" && reads_bytes && options.invalid_replace => {
+                        euc_jp_text_replacing(&binary_bytes(string_value), &replacement)
+                    }
+                    None if held == "EUC-JP" && reads_bytes => {
+                        crate::vm::native_methods::euc_jp_table::euc_jp_text(&binary_bytes(
+                            string_value,
+                        ))
+                    }
                     None => match latin_text(&binary_bytes(string_value), &held) {
                         Some(spelled) if reads_bytes => spelled,
                         _ => string_value.to_text(),
                     },
                 };
+                // `xml:` writes a character the destination cannot spell as a
+                // character reference. Failing that, `undef: :replace` stands
+                // the replacement in for it, and failing that `fallback:` is
+                // asked for one.
+                let reading = match newline {
+                    Some(NewlineConversion::Universal) => {
+                        reading.replace("\r\n", "\n").replace('\r', "\n")
+                    }
+                    _ => reading,
+                };
+                let reading = if let Some(escape) = xml {
+                    xml_escaped(&reading, escape, &wanted)
+                } else if options.undef_replace {
+                    reading
+                        .chars()
+                        .map(|character| match destination_spells(&wanted, character) {
+                            true => character.to_string(),
+                            false => replacement.clone(),
+                        })
+                        .collect()
+                } else if let Some(fallback) = &options.fallback {
+                    self.fallback_text(reading, fallback, &wanted, position)?
+                } else {
+                    reading
+                };
+                let reading = match newline {
+                    Some(NewlineConversion::Crlf) => reading.replace('\n', "\r\n"),
+                    Some(NewlineConversion::Cr) => reading.replace('\n', "\r"),
+                    _ => reading,
+                };
+                if wanted == "US-ASCII"
+                    && let Some(character) = reading.chars().find(|character| !character.is_ascii())
+                {
+                    let message = format!("U+{:04X} from UTF-8 to US-ASCII", character as u32);
+                    return Err(crate::vm::errors::simple_exception(
+                        "Encoding::UndefinedConversionError",
+                        &message,
+                        position,
+                    ));
+                }
                 // ISO-2022-JP writes its Japanese runs between escapes, so
                 // the bytes are built rather than mapped one for one.
                 if wanted == "ISO-2022-JP" {

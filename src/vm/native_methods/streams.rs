@@ -98,41 +98,27 @@ impl OpenStreams {
     }
 }
 
-/// A file opened the way the count says: 0 reads, 1 writes from the start, 2
-/// adds to the end, 3 reads and writes what is already there, 4 reads and
-/// writes from the start, and 5 reads and adds to the end.
-fn open_for(path: &str, count: i64) -> std::io::Result<std::fs::File> {
+/// How a file is opened the way the count says: 0 reads, 1 writes from the
+/// start, 2 adds to the end, 3 reads and writes what is already there, 4 reads
+/// and writes from the start, and 5 reads and adds to the end.
+fn options_for(count: i64) -> std::fs::OpenOptions {
+    let mut options = std::fs::OpenOptions::new();
     match count {
-        0 => std::fs::File::open(path),
-        2 => std::fs::OpenOptions::new()
-            .append(true)
-            .create(true)
-            .open(path),
+        0 => options.read(true),
+        2 => options.append(true).create(true),
         // Reading and writing leaves what the file already holds where it
         // is, which is what `r+` asks for. A file that is not there is not
         // brought into being: `r+` reads as well as writes.
-        3 => std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .truncate(false)
-            .open(path),
-        4 => std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(path),
-        5 => std::fs::OpenOptions::new()
-            .read(true)
-            .append(true)
-            .create(true)
-            .open(path),
-        _ => std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(path),
-    }
+        3 => options.read(true).write(true).truncate(false),
+        4 => options.read(true).write(true).create(true).truncate(true),
+        5 => options.read(true).append(true).create(true),
+        _ => options.write(true).create(true).truncate(true),
+    };
+    options
+}
+
+fn open_for(path: &str, count: i64) -> std::io::Result<std::fs::File> {
+    options_for(count).open(path)
 }
 
 /// What the operating system calls this failure, without the number it
@@ -176,6 +162,20 @@ fn stream_error(problem: &std::io::Error, what: &str, position: Position) -> Met
     crate::vm::errors::simple_exception(named, &format!("{what}: {problem}"), position)
 }
 
+/// Wait for a descriptor to have something to read, or to reach its end,
+/// until the deadline. Answers whether it did.
+fn wait_until_readable(number: RawFd, deadline: std::time::Instant) -> bool {
+    let left = deadline.saturating_duration_since(std::time::Instant::now());
+    let mut watched = libc::pollfd {
+        fd: number,
+        events: libc::POLLIN,
+        revents: 0,
+    };
+    // SAFETY: `watched` is one pollfd, which is the count passed.
+    let ready = unsafe { libc::poll(&mut watched, 1, left.as_millis() as libc::c_int) };
+    ready > 0
+}
+
 /// How long a read waits for something to arrive before giving up. Metorex
 /// runs one thread, so a stream nothing is left to write to has nobody to
 /// wait for.
@@ -217,6 +217,12 @@ impl VirtualMachine {
             Some(Object::String(held)) => held.as_str().to_string(),
             _ => String::new(),
         };
+        // Where the text names a path, a binary one names the file its bytes
+        // spell.
+        let path = match arguments.get(2) {
+            Some(Object::String(held)) => super::file_methods::path_text(held),
+            _ => String::new(),
+        };
         // A separator whose characters stand for bytes names those bytes
         // rather than the ones its text is spelled with.
         let text_bytes = match arguments.get(2) {
@@ -249,12 +255,14 @@ impl VirtualMachine {
                 let (reader, writer) =
                     unsafe { (OwnedFd::from_raw_fd(ends[0]), OwnedFd::from_raw_fd(ends[1])) };
                 // Ruby hands back pipe ends that answer straight away rather
-                // than waiting, which is what `nonblock?` reports for them.
+                // than waiting, which is what `nonblock?` reports for them,
+                // and that a program it starts does not inherit.
                 for end in [reader.as_raw_fd(), writer.as_raw_fd()] {
                     // SAFETY: both descriptors came from `pipe` just above.
                     unsafe {
                         let flags = libc::fcntl(end, libc::F_GETFL);
                         libc::fcntl(end, libc::F_SETFL, flags | libc::O_NONBLOCK);
+                        libc::fcntl(end, libc::F_SETFD, libc::FD_CLOEXEC);
                     }
                 }
                 let first = self.open_streams.keep(reader);
@@ -594,7 +602,7 @@ impl VirtualMachine {
             "open" => {
                 // The count says how the file is opened: 0 reads, 1 writes
                 // from the start, 2 adds to the end, and 3 does both.
-                let opened = open_for(&text, count);
+                let opened = self.open_taking_turns(&path, options_for(count), position);
                 match opened {
                     Ok(file) => {
                         // SAFETY: the descriptor came from the file just
@@ -602,17 +610,40 @@ impl VirtualMachine {
                         let owned = unsafe { OwnedFd::from_raw_fd(file.into_raw_fd()) };
                         Ok(Object::Int(self.open_streams.keep(owned) as i64))
                     }
-                    Err(problem) => Err(stream_error(&problem, &format!("open({text})"), position)),
+                    Err(problem) => Err(stream_error(&problem, &format!("open({path})"), position)),
+                }
+            }
+            // A file opened with the flags a program named as a number. The
+            // file was already brought into being or refused for existing,
+            // so O_EXCL is not asked again.
+            "open_flags" => {
+                use std::os::unix::fs::OpenOptionsExt as _;
+                let flags = count as libc::c_int;
+                let mut options = std::fs::OpenOptions::new();
+                match flags & libc::O_ACCMODE {
+                    held if held == libc::O_WRONLY => options.write(true),
+                    held if held == libc::O_RDWR => options.read(true).write(true),
+                    _ => options.read(true),
+                };
+                options.custom_flags(flags & !libc::O_ACCMODE & !libc::O_EXCL & !libc::O_CREAT);
+                match self.open_taking_turns(&path, options, position) {
+                    Ok(file) => {
+                        // SAFETY: the descriptor came from the file just
+                        // opened and is owned from here on.
+                        let owned = unsafe { OwnedFd::from_raw_fd(file.into_raw_fd()) };
+                        Ok(Object::Int(self.open_streams.keep(owned) as i64))
+                    }
+                    Err(problem) => Err(stream_error(&problem, &format!("open({path})"), position)),
                 }
             }
             // The descriptor a path names, handed back by number rather
             // than under a handle. Whoever asked for it owns it from here,
             // which is what `IO.sysopen` promises.
             "sysopen" => {
-                let opened = open_for(&text, count);
+                let opened = open_for(&path, count);
                 match opened {
                     Ok(file) => Ok(Object::Int(i64::from(file.into_raw_fd()))),
-                    Err(problem) => Err(stream_error(&problem, &format!("open({text})"), position)),
+                    Err(problem) => Err(stream_error(&problem, &format!("open({path})"), position)),
                 }
             }
             // One line: everything up to and including the separator the
@@ -643,6 +674,7 @@ impl VirtualMachine {
                 };
                 let mut collected: Vec<u8> = Vec::new();
                 let mut buffer = [0u8; 4096];
+                let line_deadline = std::time::Instant::now() + READ_LIMIT;
                 // The newlines standing before a paragraph belong to the
                 // one already read, so they are stepped over here.
                 if skipping {
@@ -679,6 +711,12 @@ impl VirtualMachine {
                                 if self.open_streams.number_of(handle).is_none() {
                                     break;
                                 }
+                                continue;
+                            }
+                            // Another process may still write, such as a
+                            // forked child, so the descriptor is waited on
+                            // for as long as a read waits.
+                            if wait_until_readable(number, line_deadline) {
                                 continue;
                             }
                             break;
@@ -915,14 +953,69 @@ impl VirtualMachine {
             };
             self.globals_mut().set(constant, stream.clone());
             self.globals_mut().set_variable(named, stream.clone());
+            // Each is a constant on Object, which is what makes naming it
+            // again warn that it was already set.
+            if let Some(Object::Class(object_class)) = self.globals().get("Object") {
+                object_class.set_class_var(constant, stream.clone());
+            }
             // `$>` is where a program writes without naming a stream, which
             // is standard output under the name Ruby's punctuation gives it.
             if named == "stdout" {
-                self.globals_mut().set_variable(">", stream.clone());
+                self.globals_mut().set_variable(">", stream);
             }
-            // The name is reached as a constant as well as through the
-            // globals, so the scope the program runs in holds it too.
-            self.environment_mut().define(constant.to_string(), stream);
+        }
+    }
+}
+
+impl VirtualMachine {
+    /// Open a path, letting the other threads run while the open waits. A
+    /// FIFO's open waits for a process to open its other end, which may be
+    /// another thread of this one, so the open is made on a thread of its own
+    /// while this one hands over its turn. The descriptor then answers
+    /// straight away when there is nothing to read, so a read hands over its
+    /// turn the same way rather than holding up the whole program.
+    fn open_taking_turns(
+        &mut self,
+        path: &str,
+        options: std::fs::OpenOptions,
+        position: Position,
+    ) -> std::io::Result<std::fs::File> {
+        use std::os::unix::fs::FileTypeExt as _;
+        let is_fifo = std::fs::metadata(path)
+            .map(|found| found.file_type().is_fifo())
+            .unwrap_or(false);
+        if !is_fifo || !self.other_threads_are_waiting() {
+            return options.open(path);
+        }
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let named = path.to_string();
+        std::thread::spawn(move || {
+            let _ = sender.send(options.open(&named));
+        });
+        loop {
+            match receiver.try_recv() {
+                Ok(opened) => {
+                    if let Ok(file) = &opened {
+                        let number = file.as_raw_fd();
+                        // SAFETY: the descriptor came from the file just
+                        // opened, which is still held.
+                        unsafe {
+                            let flags = libc::fcntl(number, libc::F_GETFL);
+                            libc::fcntl(number, libc::F_SETFL, flags | libc::O_NONBLOCK);
+                        }
+                    }
+                    return opened;
+                }
+                // The thread making the open sends before it ends, so the
+                // only thing to wait for is that send.
+                Err(_) => {
+                    if self.other_threads_are_waiting() {
+                        self.wait_for_other_threads(position);
+                    } else {
+                        std::thread::sleep(std::time::Duration::from_millis(2));
+                    }
+                }
+            }
         }
     }
 }

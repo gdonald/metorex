@@ -27,7 +27,25 @@ impl VirtualMachine {
             // it stays there until this body suspends or runs out.
             let vm = unsafe { &mut *machine };
             vm.fibers[handle].yielder = yielder as *const _;
+            // The fiber's body is a block, and a backtrace names it as one:
+            // by the scope it was written in and how many blocks deep.
+            let frame = match block.defining_method.clone() {
+                Some((callee, defined)) => crate::vm::CallFrame::method(
+                    crate::callable::Callable::name(&*block).to_string(),
+                    None,
+                    callee,
+                    defined,
+                ),
+                None => crate::vm::CallFrame::boundary(
+                    crate::callable::Callable::name(&*block).to_string(),
+                ),
+            }
+            .nested_in_a_block(block.written_depth.unwrap_or(1))
+            .written_in_scope(block.written_in.clone())
+            .with_source_file(block.source_file.clone());
+            vm.call_stack_push(frame);
             let answered = vm.execute_block_body(&block, first);
+            vm.call_stack_pop();
             // A `break` or a `return` written in a fiber's block has nothing
             // to jump out to, which Ruby reports where the fiber was entered.
             match answered {
@@ -80,7 +98,34 @@ impl VirtualMachine {
             crate::vm::native_methods::regexp_methods::LAST_MATCH,
             carried,
         );
+        // `$!` and `$@` belong to the fiber handling the exception, so a
+        // fiber sees its own and leaves the one it was resumed from alone.
+        let outer_error = (
+            self.globals().get("!").unwrap_or(Object::Nil),
+            self.globals().get("@").unwrap_or(Object::Nil),
+        );
+        let (own_error, own_trace) = self
+            .fiber_errors
+            .remove(&handle)
+            .unwrap_or((Object::Nil, Object::Nil));
+        self.globals_mut().set_variable("!", own_error);
+        self.globals_mut().set_variable("@", own_trace);
+        // The file the running code was written in belongs to the fiber
+        // running it, so the resumer reads its own again afterwards.
+        let outer_file = self.current_source_file.clone();
+        if let Some(own_file) = self.fiber_source_files.remove(&handle) {
+            self.current_source_file = own_file;
+        }
         let stepped = self.fiber_resume_within(handle, fiber, given, position);
+        let left_file = std::mem::replace(&mut self.current_source_file, outer_file);
+        self.fiber_source_files.insert(handle, left_file);
+        let left_error = (
+            self.globals().get("!").unwrap_or(Object::Nil),
+            self.globals().get("@").unwrap_or(Object::Nil),
+        );
+        self.fiber_errors.insert(handle, left_error);
+        self.globals_mut().set_variable("!", outer_error.0);
+        self.globals_mut().set_variable("@", outer_error.1);
         let left = self
             .globals()
             .get(crate::vm::native_methods::regexp_methods::LAST_MATCH)

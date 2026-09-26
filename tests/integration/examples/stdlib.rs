@@ -637,6 +637,35 @@ fn test_runtime_fork_child_process_parens_execution() {
     assert_eq!(output, expected);
 }
 
+/// The expected output of both `runtime/forked_popen` variants.
+const FORKED_POPEN_OUTPUT: &str = concat!(
+    "\"hello from child\\n\"\n",
+    "true\n",
+    "false\n",
+    "\"child read \\\"to child\\\\n\\\"\\n\"\n",
+    "3\n",
+    "\"from the child's block\\n\"\n",
+    "IOError\n",
+    "true\n",
+    "true\n",
+    "5\n",
+    "\"I'm shared!\"\n",
+    "\"I'm shared!\"\n",
+    "1\n"
+);
+
+#[test]
+fn test_runtime_forked_popen_execution() {
+    let output = run_example("runtime/forked_popen.rb");
+    assert_eq!(output, FORKED_POPEN_OUTPUT);
+}
+
+#[test]
+fn test_runtime_forked_popen_parens_execution() {
+    let output = run_example("runtime/forked_popen_parens.rb");
+    assert_eq!(output, FORKED_POPEN_OUTPUT);
+}
+
 #[test]
 fn test_stdlib_string_format_keywords_execution() {
     let expected = concat!(
@@ -949,4 +978,35 @@ fn test_stdlib_objspace_dump_execution() {
 fn test_stdlib_objspace_dump_no_parens_execution() {
     let output = run_example("stdlib/objspace_dump_no_parens.rb");
     assert_eq!(output, OBJSPACE_DUMP_OUTPUT);
+}
+
+/// The expected output of both `runtime/popen_options` variants.
+const POPEN_OPTIONS_OUTPUT: &str = concat!(
+    "\"hello\\n\"\n",
+    "\"hi\\n\"\n",
+    "\"to_err\\n\"\n",
+    "\"/\\n\"\n",
+    "\"named\\n\"\n",
+    "true\n",
+    "\"positional\\n\"\n",
+    "\"bar\"\n",
+    "Stream\n",
+    "#<Encoding:EUC-JP>\n",
+    "IOError\n",
+    "\"foo\\n\"\n",
+    "true\n",
+    "\"logged\"\n",
+    "\"metorex: No such file or directory -- does_not_exist (LoadError)\\n\"\n"
+);
+
+#[test]
+fn test_runtime_popen_options_execution() {
+    let output = run_example("runtime/popen_options.rb");
+    assert_eq!(output, POPEN_OPTIONS_OUTPUT);
+}
+
+#[test]
+fn test_runtime_popen_options_parens_execution() {
+    let output = run_example("runtime/popen_options_parens.rb");
+    assert_eq!(output, POPEN_OPTIONS_OUTPUT);
 }

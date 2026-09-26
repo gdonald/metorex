@@ -47,6 +47,12 @@ pub struct VirtualMachine {
     /// The last match each suspended fiber left behind, which it sees again
     /// when it is resumed.
     pub(crate) fiber_last_matches: HashMap<usize, Object>,
+    /// The exception each suspended fiber is handling, with its backtrace,
+    /// which `$!` and `$@` read while that fiber runs.
+    pub(crate) fiber_errors: HashMap<usize, (Object, Object)>,
+    /// The file each suspended fiber was running code from, which `__FILE__`
+    /// and backtraces read again when it is resumed.
+    pub(crate) fiber_source_files: HashMap<usize, Option<String>>,
 
     /// Where a number variable too big to name a capture has already been
     /// reported, so each place in the source says so once.
@@ -111,18 +117,10 @@ pub struct VirtualMachine {
     /// How many times the program has built an instance of each class, which
     /// is what the object space reports in place of walking a heap.
     pub(crate) allocation_counts: HashMap<usize, i64>,
-    /// Children spawned by `IO.popen` that have not been waited for, keyed by
-    /// the id their handle carries.
-    pub(crate) popen_children: HashMap<u64, std::process::Child>,
-    /// The one stream a child writes both of its own into, for a command run
-    /// with its error stream pointed at its output.
-    pub(crate) popen_merged: HashMap<u64, std::fs::File>,
     /// The listeners and connections a program holds open.
     pub(crate) open_sockets: crate::vm::native_methods::OpenSockets,
     /// The file descriptors an IO object of this program stands over.
     pub(crate) open_streams: crate::vm::native_methods::OpenStreams,
-    /// The id the next `IO.popen` handle takes.
-    pub(crate) next_popen_id: u64,
     /// The file whose code is running right now, which differs from
     /// `current_file` inside a method defined in another file.
     pub(crate) current_source_file: Option<String>,
@@ -280,8 +278,10 @@ pub struct VirtualMachine {
     pub(crate) frozen_collections: HashMap<usize, Object>,
 
     /// Patterns built by `Regexp.new`, which a program may still change. A
-    /// pattern written as a literal is frozen where it stands.
-    pub(crate) built_patterns: std::collections::HashSet<usize>,
+    /// pattern written as a literal is frozen where it stands. Each entry
+    /// holds its pattern weakly, so a literal made later at the same address
+    /// is not read as the built one that was freed.
+    pub(crate) built_patterns: HashMap<usize, std::rc::Weak<String>>,
     /// The sets `compare_by_identity` was called on, against the address each
     /// one lives at. A Set has nowhere of its own to record the flag, and the
     /// value keeps the set alive so a later one cannot take its address and
@@ -305,7 +305,9 @@ pub struct VirtualMachine {
     /// The encoding of the source string each `Regexp.new` pattern was built
     /// from, recorded against the pattern's address since a Regexp carries
     /// its source as plain text.
-    pub(crate) pattern_encodings: HashMap<usize, String>,
+    /// Each entry holds the pattern weakly, so a pattern built later at the
+    /// same address is not read as the one that was freed.
+    pub(crate) pattern_encodings: HashMap<usize, (std::rc::Weak<String>, String)>,
     /// The instance variables set on an Array, Hash, or Set. A collection has
     /// nowhere of its own to keep them, so the VM records them against the
     /// address it lives at.
@@ -425,6 +427,8 @@ impl VirtualMachine {
             coverage: None,
             coverage_skip_line: None,
             fiber_last_matches: HashMap::new(),
+            fiber_errors: HashMap::new(),
+            fiber_source_files: HashMap::new(),
             reported_big_number_variables: std::collections::HashSet::new(),
             tracepoints: Vec::new(),
             traced_line: None,
@@ -445,11 +449,8 @@ impl VirtualMachine {
             class_var_cref_stack: Vec::new(),
             deduped_strings: HashMap::new(),
             allocation_counts: HashMap::new(),
-            popen_children: HashMap::new(),
-            popen_merged: HashMap::new(),
             open_sockets: Default::default(),
             open_streams: Default::default(),
-            next_popen_id: 0,
             current_source_file: None,
             current_source_encoding: None,
             file_encodings: HashMap::new(),
@@ -490,7 +491,7 @@ impl VirtualMachine {
             tracing_allocations: false,
             debug_frozen_string_literal: false,
             frozen_collections: HashMap::new(),
-            built_patterns: std::collections::HashSet::new(),
+            built_patterns: HashMap::new(),
             identity_sets: HashMap::new(),
             packed_pointers: HashMap::new(),
             thawed_ranges: HashMap::new(),

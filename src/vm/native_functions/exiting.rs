@@ -10,7 +10,9 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<Object, MetorexError> {
         let code = self.exit_status_argument(arguments.first(), position)?;
+        // `exit!` without a status leaves with false, which is 1.
         if name == "exit!" {
+            let code = if arguments.is_empty() { 1 } else { code };
             std::process::exit(code as i32);
         }
         // `exit` raises SystemExit so `ensure` blocks and a rescue of

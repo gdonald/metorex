@@ -284,10 +284,13 @@ pub(crate) fn character_count(string_value: &crate::object::StringValue) -> i64 
         "UTF-32" | "UTF-32BE" | "UTF-32LE" if string_value.holds_bytes() => {
             binary_bytes(string_value).len().div_ceil(4) as i64
         }
-        // Shift_JIS pairs some of its bytes, so a run of them spells fewer
-        // characters than it has bytes.
+        // Shift_JIS and EUC-JP pair some of their bytes, so a run of them
+        // spells fewer characters than it has bytes.
         held if spells_shift_jis(held) && string_value.holds_bytes() => {
             shift_jis_characters(&binary_bytes(string_value)).len() as i64
+        }
+        "EUC-JP" if string_value.holds_bytes() => {
+            euc_jp_characters(&binary_bytes(string_value)).len() as i64
         }
         _ => string_value.as_str().chars().count() as i64,
     }

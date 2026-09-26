@@ -189,7 +189,7 @@ impl Parser {
             }
             return Ok(regex_literal(pattern, flags.replace('o', ""), position));
         }
-        let parts = crate::lexer::split_interpolation_parts(&pattern);
+        let parts = crate::lexer::split_pattern_interpolation_parts(&pattern);
         let source = self.primary_interpolated_string(parts, position)?;
         Ok(Expression::MethodCall {
             receiver: Box::new(Expression::Identifier {

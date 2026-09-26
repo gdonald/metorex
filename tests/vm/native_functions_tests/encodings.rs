@@ -40,16 +40,18 @@ fn packing_answers_a_run_of_bytes_and_an_empty_format_answers_ascii() {
 }
 
 #[test]
-fn encode_tags_text_with_the_encoding_asked_for() {
-    // Metorex holds every string's characters as text, so `encode` answers a
-    // copy tagged with the encoding asked for rather than rewriting it.
+fn encode_tags_ascii_text_and_refuses_what_ascii_cannot_spell() {
     let result = run(r#"
-[ "plain".encode("US-ASCII").encoding.name,
-  "é".encode("US-ASCII").encoding.name ]
+refused = begin
+  "é".encode("US-ASCII")
+rescue Encoding::UndefinedConversionError => problem
+  problem.message
+end
+[ "plain".encode("US-ASCII").encoding.name, refused ]
 "#);
     assert_eq!(
         result.map(|value| value.to_string()),
-        Some("[US-ASCII, US-ASCII]".to_string())
+        Some("[US-ASCII, U+00E9 from UTF-8 to US-ASCII]".to_string())
     );
 }
 

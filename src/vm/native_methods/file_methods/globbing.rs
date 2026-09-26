@@ -34,7 +34,7 @@ impl VirtualMachine {
                             ":base" => {
                                 base = match &value {
                                     Object::Nil => None,
-                                    Object::String(text) => Some(text.as_str().to_string()),
+                                    Object::String(text) => Some(path_text(text)),
                                     other => Some(self.glob_pattern_text(other, position)?),
                                 }
                             }

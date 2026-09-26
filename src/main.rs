@@ -207,8 +207,12 @@ fn real_main() {
     // Convert filename to absolute path
     let absolute_path = match fs::canonicalize(filename) {
         Ok(path) => path,
+        // Ruby names a script it cannot open as a LoadError, with what the
+        // operating system said about it.
         Err(err) => {
-            eprintln!("Error resolving file path '{}': {}", filename, err);
+            let reason = err.to_string();
+            let reason = reason.split(" (os error").next().unwrap_or(&reason);
+            eprintln!("metorex: {reason} -- {filename} (LoadError)");
             process::exit(1);
         }
     };

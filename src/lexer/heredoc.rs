@@ -311,19 +311,26 @@ fn split_interpolated(body: &str, first_line: usize) -> TokenKind {
     }
 }
 
-/// Split a body containing `#{expr}` interpolations into its parts. Balances
-/// braces inside each expression, and treats `\#{` as a literal `#{`.
-pub(crate) fn split_interpolation_parts(body: &str) -> Vec<InterpolationPart> {
-    split_interpolation_parts_from(body, 0)
-}
-
-/// The same split, with the source line the body's first line sits on, so
+/// Split a body containing `#{expr}` interpolations into its parts, balancing
+/// braces inside each expression and treating `\#{` as a literal `#{`. The
+/// line given is the one the body's first line sits on, so
 /// each `#{` is recorded at the line it was written on. A zero line means the
 /// caller has none to give.
 pub(crate) fn split_interpolation_parts_from(
     body: &str,
     first_line: usize,
 ) -> Vec<InterpolationPart> {
+    split_parts(body, first_line, false)
+}
+
+/// The same split for a regex, where `\#` stays as it was written: the
+/// pattern reads it as an escaped `#`, which in extended mode is not the
+/// start of a comment.
+pub(crate) fn split_pattern_interpolation_parts(body: &str) -> Vec<InterpolationPart> {
+    split_parts(body, 0, true)
+}
+
+fn split_parts(body: &str, first_line: usize, keeps_escaped_hash: bool) -> Vec<InterpolationPart> {
     let mut parts: Vec<InterpolationPart> = Vec::new();
     let mut current = String::new();
     let mut line = first_line;
@@ -336,6 +343,9 @@ pub(crate) fn split_interpolation_parts_from(
             match chars.peek() {
                 Some('#') => {
                     chars.next();
+                    if keeps_escaped_hash {
+                        current.push('\\');
+                    }
                     current.push('#');
                 }
                 // `\c` names a control character by the one that follows it,

@@ -14,7 +14,7 @@ pub mod token;
 mod cursor;
 mod dispatch;
 mod heredoc;
-pub(crate) use heredoc::split_interpolation_parts;
+pub(crate) use heredoc::split_pattern_interpolation_parts;
 mod identifiers;
 mod numbers;
 mod percent;

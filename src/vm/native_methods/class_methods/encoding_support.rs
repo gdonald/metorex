@@ -164,6 +164,15 @@ impl VirtualMachine {
     /// else the encoding of the string it was built from, else the encoding a
     /// literal is read in.
     pub(crate) fn pattern_encoding_name(&self, pattern: &Rc<String>, flags: &str) -> String {
+        // A pattern built to match in one encoding, or from text in an
+        // encoding that spells ASCII another way, keeps the one it was built
+        // in.
+        let recorded = self.recorded_pattern_encoding(pattern);
+        if let Some(named) = &recorded
+            && (flags.contains('u') || !encoding_reads_alongside_ascii(named))
+        {
+            return named.clone();
+        }
         if flags.contains('u') {
             return "UTF-8".to_string();
         }
@@ -185,10 +194,53 @@ impl VirtualMachine {
         if !beyond_ascii {
             return "US-ASCII".to_string();
         }
-        self.pattern_encodings
+        recorded.unwrap_or_else(|| "UTF-8".to_string())
+    }
+}
+
+impl VirtualMachine {
+    /// Record the encoding of the text a pattern was built from.
+    pub(crate) fn record_pattern_encoding(&mut self, pattern: &Rc<String>, named: String) {
+        self.pattern_encodings.insert(
+            Rc::as_ptr(pattern) as usize,
+            (Rc::downgrade(pattern), named),
+        );
+    }
+
+    /// Record a pattern as built by `Regexp.new` rather than written.
+    pub(crate) fn record_built_pattern(&mut self, pattern: &Rc<String>) {
+        self.built_patterns
+            .insert(Rc::as_ptr(pattern) as usize, Rc::downgrade(pattern));
+    }
+
+    /// Whether a pattern was built by `Regexp.new`, if it is the pattern the
+    /// entry was made for rather than one made later at the same address.
+    pub(crate) fn pattern_was_built(&self, pattern: &Rc<String>) -> bool {
+        self.built_patterns
             .get(&(Rc::as_ptr(pattern) as usize))
-            .cloned()
-            .unwrap_or_else(|| "UTF-8".to_string())
+            .and_then(std::rc::Weak::upgrade)
+            .is_some_and(|held| Rc::ptr_eq(&held, pattern))
+    }
+
+    /// The encoding recorded for a pattern, if it is the pattern the entry
+    /// was made for rather than one built later at the same address.
+    pub(crate) fn recorded_pattern_encoding(&self, pattern: &Rc<String>) -> Option<String> {
+        let (held, named) = self
+            .pattern_encodings
+            .get(&(Rc::as_ptr(pattern) as usize))?;
+        let alive = held.upgrade()?;
+        Rc::ptr_eq(&alive, pattern).then(|| named.clone())
+    }
+
+    /// Whether a pattern matches in one encoding whatever the text it is
+    /// matched against is tagged with. A pattern written with an encoding
+    /// after it does, and so does one in any encoding but US-ASCII.
+    pub(crate) fn pattern_fixes_encoding(&self, pattern: &Rc<String>, flags: &str) -> bool {
+        let named = flags.contains('u') || flags.contains('e') || flags.contains('s');
+        // A `\u` escape names a character outside ASCII whether or not the
+        // pattern spells it out.
+        let spelled = !pattern.is_ascii() || pattern.contains("\\u");
+        named || spelled || self.pattern_encoding_name(pattern, flags) != "US-ASCII"
     }
 }
 

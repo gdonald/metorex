@@ -112,10 +112,6 @@ pub(crate) fn register_singletons(globals: &mut GlobalRegistry) {
         ruby_module.set_class_var(short, held);
     }
     globals.set("Ruby", Object::Module(ruby_module));
-    // Standard IO stream placeholders (used as constants like STDOUT/STDERR/STDIN)
-    globals.set("STDOUT", Object::string("STDOUT".to_string()));
-    globals.set("STDERR", Object::string("STDERR".to_string()));
-    globals.set("STDIN", Object::string("STDIN".to_string()));
 
     // BasicObject — Ruby's true root class. Object inherits from it.
     let basic_object = Rc::new(Class::new("BasicObject", None));

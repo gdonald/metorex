@@ -42,6 +42,18 @@ class Set
 end
 
 class Thread
+  # Raise an exception in this thread, built from the arguments the way
+  # `Kernel#raise` builds one. On the thread running now it is raised at once.
+  # Another thread raises it where it stands, with a backtrace of its own
+  # unless the exception carries one already, and a thread that has ended
+  # takes nothing.
+  def raise(*arguments, **options)
+    return nil unless alive?
+    return ::Kernel.raise(*arguments, **options) if equal? Thread.current
+    __raise_later__ __build_raised__(*arguments, **options)
+    nil
+  end
+
   # Run the block with the interrupts named in `mapping` handled the way it
   # says: :immediate raises one where the thread stands, :on_blocking waits
   # for the next place the thread waits on something, and :never holds it
@@ -83,6 +95,10 @@ class Thread
     return nil if how == :never
     return nil if how == :on_blocking && !blocking
     thread.instance_variable_set(:@__thread_raise, nil)
+    # The exception is raised where the thread was interrupted, so the
+    # backtrace starts at the call that was waiting rather than here.
+    handed = pending.first
+    handed.set_backtrace(caller(1)) if handed.is_a?(Exception) && handed.backtrace.nil?
     raise(*pending)
   end
 

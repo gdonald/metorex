@@ -11,7 +11,9 @@ pub(crate) use class_methods::is_native_kernel_method;
 pub(crate) use class_methods::native_module_method_stub;
 pub(crate) use hash_methods::remember_key_object;
 pub(crate) use method_object_methods::{block_parameter_list, method_parameter_list};
-pub(crate) use module_methods::{REFINEMENT_KEY_PREFIX, REFINEMENT_LABEL_KEY};
+pub(crate) use module_methods::{
+    PROCESS_NATIVE_METHODS, REFINEMENT_KEY_PREFIX, REFINEMENT_LABEL_KEY,
+};
 mod binding_methods;
 mod socket_addresses;
 pub(crate) use socket_addresses::OpenSockets;

@@ -36,7 +36,7 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<String, MetorexError> {
         if let Object::String(text) = given {
-            return Ok(text.as_str().to_string());
+            return Ok(path_text(text));
         }
         if self
             .send_to_object(
@@ -49,7 +49,7 @@ impl VirtualMachine {
         {
             let named = self.send_to_object(given.clone(), "to_path", Vec::new(), position)?;
             if let Object::String(text) = &named {
-                return Ok(text.as_str().to_string());
+                return Ok(path_text(text));
             }
         }
         Err(method_argument_type_error(
@@ -158,7 +158,10 @@ pub(crate) fn names_a_second_path(method_name: &str) -> bool {
 /// from is read back through those bytes, so the name reaches the operating
 /// system the way it was written.
 pub(crate) fn path_text(held: &Rc<crate::object::StringValue>) -> String {
-    if !held.holds_bytes() {
+    // A binary string's characters are its bytes, whether or not it was
+    // built from them.
+    let binary = matches!(held.encoding_name().as_str(), "ASCII-8BIT" | "BINARY");
+    if !held.holds_bytes() && !binary {
         return held.as_str().to_string();
     }
     let bytes = crate::vm::native_methods::string_methods::binary_bytes(held);
@@ -170,18 +173,42 @@ pub(crate) fn path_text(held: &Rc<crate::object::StringValue>) -> String {
 
 /// The mode a count of flag bits names. The access bits say whether the file
 /// is read, written, or both, and the rest say how it is opened.
+/// Whether a mode string spells an access mode Ruby reads: `r`, `w`, or `a`
+/// first, then any of `+`, `b` or `t` but not both of the last two, and `x`
+/// only after `w`, with encodings after a colon.
+pub(crate) fn valid_access_mode(mode: &str) -> bool {
+    let access = mode.split(':').next().unwrap_or("");
+    let mut letters = access.chars();
+    let Some(first) = letters.next() else {
+        return false;
+    };
+    if !matches!(first, 'r' | 'w' | 'a') {
+        return false;
+    }
+    let mut binary = false;
+    let mut text = false;
+    for letter in letters {
+        match letter {
+            '+' => {}
+            'b' => binary = true,
+            't' => text = true,
+            'x' if first == 'w' => {}
+            _ => return false,
+        }
+    }
+    !(binary && text)
+}
+
 pub(crate) fn mode_of_flags(bits: i64) -> String {
     let bits = bits as libc::c_int;
     let appends = bits & libc::O_APPEND != 0;
     let truncates = bits & libc::O_TRUNC != 0;
     match bits & libc::O_ACCMODE {
         held if held == libc::O_WRONLY => {
-            if truncates {
-                "w".to_string()
-            } else if appends {
+            if appends {
                 "a".to_string()
             } else {
-                "r+".to_string()
+                "w".to_string()
             }
         }
         held if held == libc::O_RDWR => {

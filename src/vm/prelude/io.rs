@@ -123,7 +123,8 @@ class IO
 
   # Text written to a file named by path. Without an offset the file is
   # written from the start and cut down to what was written, and with one the
-  # rest of the file is left as it was.
+  # rest of the file is left as it was. `open_args:` names everything the file
+  # is opened with, in place of the other options.
   def self.write(name, text, offset = :__none__, *extra, **options)
     unless extra.empty?
       raise ArgumentError,
@@ -131,23 +132,22 @@ class IO
     end
     spelled = text.is_a?(String) ? text : text.to_s
     at = offset == :__none__ ? nil : offset
-    brought_into_being = !File.exist?(File.path(name))
-    named = options[:mode]
-    mode = if !named.nil?
-      named
-    elsif at.nil?
-      "w"
+    path = File.path(name)
+    brought_into_being = !File.exist?(path)
+    opened_with = options[:open_args]
+    held = if !opened_with.nil?
+      given = opened_with.to_a
+      if given.last.is_a? Hash
+        File.open path, *given[0..-2], **given.last
+      else
+        File.open path, *given
+      end
     else
-      "r+"
+      mode = options[:mode]
+      mode = at.nil? ? "w" : File::WRONLY | File::CREAT if mode.nil?
+      File.open path, mode, **options.reject { |key, _| key == :mode || key == :perm }
     end
-    held = begin
-      File.open File.path(name), mode
-    rescue Errno::ENOENT
-      # A write brings the file into being, whatever the mode says about
-      # reading it.
-      File.open File.path(name), "w"
-    end
-    begin
+    written = begin
       held.seek at, IO::SEEK_SET unless at.nil?
       held.write spelled
     ensure
@@ -155,8 +155,10 @@ class IO
     end
     # A permission named here stands for the file the write brought into
     # being, and says nothing about one that was already there.
-    File.chmod options[:perm], File.path(name) if brought_into_being && !options[:perm].nil?
-    spelled.bytesize
+    if brought_into_being && opened_with.nil? && !options[:perm].nil?
+      File.chmod options[:perm], path
+    end
+    written
   end
 
   # The bytes a String stands for written to a file, with nothing carried
@@ -418,6 +420,23 @@ class IO
         opened_source = File.open(File.path(source), "rb")
       end
       writer = destination.respond_to?(:write) ? destination : (opened_target = File.open(File.path(destination), "wb"))
+      # A whole stream is passed on as it arrives, so a copy between two
+      # pipes carries each piece over without waiting for the end.
+      if length.nil? && offset.nil? && reader.is_a?(IO)
+        raise IOError, "not opened for reading" unless reader.__send__ :__readable__
+        copied = 0
+        loop do
+          piece = begin
+            reader.readpartial 16384
+          rescue EOFError
+            break
+          end
+          writer.write piece
+          writer.flush if writer.is_a? IO
+          copied += piece.bytesize
+        end
+        return copied
+      end
       held = __copied_text__ reader, length, offset
       writer.write held
       held.bytesize
@@ -536,7 +555,7 @@ class IO
   # A stream not reading from a child process has no process to name.
   def pid
     raise IOError, "closed stream" if closed?
-    nil
+    @__popen_pid
   end
 
   def closed?
@@ -562,16 +581,141 @@ class IO
     begin
       __drain__
     ensure
+      @__popen_writer.close unless @__popen_writer.nil? || @__popen_writer.closed?
       IO.__stream__ "close", __stream_handle__, "", 0 if autoclose?
       @closed = true
     end
+    # A stream joined to a forked child waits for it, which is what sets `$?`.
+    Process.waitpid @__popen_pid unless @__popen_pid.nil?
     nil
   end
+
+  # `IO.popen("-")` forks. The child answers nil with its standard output
+  # and input joined to pipes, and the parent answers a stream over the other
+  # ends, reading what the child writes and writing what the child reads.
+  def self.__popen_fork__(mode = "r")
+    mode = mode.to_str unless mode.is_a? String
+    reads = mode.include?("r") || mode.include?("+")
+    writes = mode.include?("w") || mode.include?("+")
+    from_child = IO.pipe if reads
+    to_child = IO.pipe if writes
+    pid = Process._fork
+    if pid == 0
+      if reads
+        from_child[0].close
+        STDOUT.reopen from_child[1]
+        from_child[1].close
+      end
+      if writes
+        to_child[1].close
+        STDIN.reopen to_child[0]
+        to_child[0].close
+      end
+      return nil
+    end
+    from_child[1].close if reads
+    to_child[0].close if writes
+    joined = reads ? from_child[0] : to_child[1]
+    joined.__send__ :__popen_forked__, pid, (reads && writes ? to_child[1] : nil), mode
+    joined
+  end
+
+  # A command run as a child process, with its standard output joined to the
+  # stream answered for reading, its standard input for writing, or both for
+  # "r+". A Hash in front names the child's environment and one behind names
+  # how it is run, as `spawn` reads them, alongside the stream's own options.
+  # With a block the stream is handed over and closed once the block is done,
+  # which waits for the child.
+  def self.popen(*given, **options, &block)
+    given = given.dup
+    environment = given.first.is_a?(Hash) ? given.shift : nil
+    # Options may come as a Hash written as the last argument as well as by
+    # keyword.
+    options = given.pop.merge(options) if given.length > 1 && given.last.is_a?(Hash)
+    command = given.shift
+    raise ArgumentError, "wrong number of arguments (given 0, expected 1+)" if command.nil?
+    mode = given.shift
+    mode = options.delete(:mode) if mode.nil?
+    mode = mode.nil? ? "r" : (mode.is_a?(String) ? mode : mode.to_str)
+    stream_options = {}
+    [:external_encoding, :internal_encoding, :encoding, :binmode].each do |key|
+      stream_options[key] = options.delete(key) if options.key? key
+    end
+    if command == "-"
+      stream = __popen_fork__(mode)
+      # The child hands nil to the block and ends once the block is done,
+      # whatever the block did.
+      if stream.nil? && !block.nil?
+        begin
+          block.call nil
+        rescue Exception
+          nil
+        end
+        $stdout.flush
+        $stderr.flush
+        exit! 0
+      end
+      return __popen_block__(stream, &block)
+    end
+    words = if command.is_a? Array
+      held = command.dup
+      environment = (environment || {}).merge(held.shift) if held.first.is_a? Hash
+      options = held.pop.merge(options) if held.last.is_a? Hash
+      held
+    else
+      [command.is_a?(String) ? command : command.to_str]
+    end
+    reads = mode.include?("r") || mode.include?("+")
+    writes = mode.include?("w") || mode.include?("+")
+    from_child = IO.pipe if reads
+    to_child = IO.pipe if writes
+    redirects = {}
+    redirects[:out] = from_child[1] if reads
+    redirects[:in] = to_child[0] if writes
+    spawned = environment.nil? ? [] : [environment]
+    begin
+      pid = Process.spawn(*spawned, *words, **options.merge(redirects))
+    ensure
+      from_child[1].close if reads
+      to_child[0].close if writes
+    end
+    joined = reads ? from_child[0] : to_child[1]
+    # Reading waits for the child to write, and writing for it to read.
+    joined.nonblock = false
+    to_child[1].nonblock = false if reads && writes
+    stream = __over__ joined.__stream_handle__, nil, mode
+    stream.__send__ :__popen_forked__, pid, (reads && writes ? to_child[1] : nil), mode
+    unless stream_options[:external_encoding].nil? && stream_options[:internal_encoding].nil?
+      stream.set_encoding stream_options[:external_encoding], stream_options[:internal_encoding]
+    end
+    stream.set_encoding stream_options[:encoding] unless stream_options[:encoding].nil?
+    stream.binmode if stream_options[:binmode]
+    __popen_block__ stream, &block
+  end
+
+  # The stream `popen` made, or what a block handed it answers. The stream is
+  # closed once the block is done, whatever the block did.
+  def self.__popen_block__(stream)
+    return stream unless block_given?
+    begin
+      yield stream
+    ensure
+      stream.close unless stream.nil? || stream.closed?
+    end
+  end
+
+  def __popen_forked__(pid, writer, mode)
+    @__popen_pid = pid
+    @__popen_writer = writer
+    @__file_mode = mode
+    self
+  end
+  private :__popen_forked__
 
   # A stream with two ends may have one of them closed on its own. A stream
   # with a single end refuses, which is what Ruby does for a file.
   def __duplex__
-    !@__popen_input.nil?
+    !@__popen_input.nil? || !@__popen_writer.nil?
   end
 
   # Whether this stream was opened only for the side being closed, in which

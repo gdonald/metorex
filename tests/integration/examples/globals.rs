@@ -157,3 +157,15 @@ fn test_toplevel_binding_live_locals_parens_execution() {
     let output = run_example("globals/toplevel_binding/live_locals_parens.rb");
     assert_eq!(output, TOPLEVEL_BINDING_LIVE_LOCALS_OUTPUT);
 }
+
+#[test]
+fn test_globals_reassigned_standard_stream_execution() {
+    let output = run_example("globals/reassigned_standard_stream.rb");
+    assert_eq!(output, "true\ntrue\nfalse\nfalse\n");
+}
+
+#[test]
+fn test_globals_reassigned_standard_stream_parens_execution() {
+    let output = run_example("globals/reassigned_standard_stream_parens.rb");
+    assert_eq!(output, "true\ntrue\nfalse\nfalse\n");
+}

@@ -19,5 +19,6 @@ mod reachable;
 mod refinements;
 
 pub(crate) use clocks::*;
+pub(crate) use processes::PROCESS_NATIVE_METHODS;
 pub(crate) use reachable::*;
 pub(crate) use refinements::*;

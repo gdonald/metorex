@@ -314,7 +314,7 @@ fn test_strings_bytes_and_encodings_parens_execution() {
 
 /// The expected output of both `strings/line_walks` variants, which differ
 /// only in whether the calls are written with parentheses.
-const LINE_WALKS_OUTPUT: &str = "[\"one\\n\", \"two\\n\", \"three\"]\n[\"one\\ntwo\\nthree\"]\n[\"hello\\nworld\\n\\n\", \"and\\nuniverse\\n\\n\"]\n[\"hello \", \"world\"]\n[\"hello \", \"world\"]\n[\"hello\", \"world\"]\n[\"hel\", \"l\", \"o\\nworl\", \"d\"]\n[\"one\\n\", \"two\"]\n[\"ax\", \"bx\", \"c\"]\n";
+const LINE_WALKS_OUTPUT: &str = "[\"one\\n\", \"two\\n\", \"three\"]\n[\"one\\ntwo\\nthree\"]\n[\"hello\\nworld\\n\\n\", \"and\\nuniverse\\n\\n\"]\n[\"hello \", \"world\"]\n[\"hello \", \"world\"]\n[\"hello\", \"world\"]\n[\"hel\", \"l\", \"o\\nworl\", \"d\"]\n[\"one\\n\", \"two\"]\n\"x\\ny\"\n[\"x\", \"y\"]\n[\"ax\", \"bx\", \"c\"]\n";
 
 #[test]
 fn test_strings_line_walks_execution() {

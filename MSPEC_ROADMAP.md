@@ -1257,7 +1257,7 @@ Parser fixes during Phase 4 work:
 
 ### Strings and Patterns
 
-- [ ] 4.28. core/string - 131 pass, 2 files have no examples on this platform at ruby 4.0.1, and the rest are enabled in the runner one file at a time
+- [x] 4.28. core/string - 141 files, 3976 examples, 11242 expectations, 0 failures, 0 errors
   - [x] 4.28.1. core/string/allocate_spec - 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
   - [x] 4.28.2. core/string/append_as_bytes_spec - 1 file, 8 examples, 13 expectations, 0 failures, 0 errors
   - [x] 4.28.3. core/string/append_spec - 1 file, 27 examples, 43 expectations, 0 failures, 0 errors
@@ -1300,7 +1300,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.28.40. core/string/element_reference_spec - 1 file, 61 examples, 229 expectations, 0 failures, 0 errors
   - [x] 4.28.41. core/string/element_set_spec - 1 file, 86 examples, 122 expectations, 0 failures, 0 errors
   - [x] 4.28.42. core/string/empty_spec - 1 file, 1 example, 5 expectations, 0 failures, 0 errors
-  - [ ] 4.28.43. core/string/encode_spec
+  - [x] 4.28.43. core/string/encode_spec - 1 file, 152 examples, 212 expectations, 0 failures, 0 errors
   - [x] 4.28.44. core/string/encoding_spec - 1 file, 25 examples, 44 expectations, 0 failures, 0 errors
   - [x] 4.28.45. core/string/end_with_spec - 1 file, 10 examples, 19 expectations, 0 failures, 0 errors
   - [x] 4.28.46. core/string/eql_spec - 1 file, 9 examples, 14 expectations, 0 failures, 0 errors
@@ -1395,7 +1395,8 @@ Parser fixes during Phase 4 work:
   - [x] 4.28.140. core/string/valid_encoding/utf_8_spec - 1 file, 28 examples, 102 expectations, 0 failures, 0 errors
   - [x] 4.28.141. core/string/valid_encoding_spec - 1 file, 8 examples, 97 expectations, 0 failures, 0 errors
   - [x] 4.28.142. core/string/slice_spec - 1 file, 104 examples, 355 expectations, 0 failures, 0 errors
-- [ ] 4.29. core/symbol - 28 pass, and the rest are enabled in the runner one file at a time
+  - [x] 4.28.143. core/string/lines_spec - 1 file, 21 examples, 69 expectations, 0 failures, 0 errors
+- [x] 4.29. core/symbol - 29 files, 330 examples, 1835 expectations, 0 failures, 0 errors
   - [x] 4.29.1. core/symbol/all_symbols_spec - 1 file, 3 examples, 1133 expectations, 0 failures, 0 errors
   - [x] 4.29.2. core/symbol/capitalize_spec - 1 file, 9 examples, 10 expectations, 0 failures, 0 errors
   - [x] 4.29.3. core/symbol/case_compare_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
@@ -1423,7 +1424,9 @@ Parser fixes during Phase 4 work:
   - [x] 4.29.27. core/symbol/to_s_spec - 1 file, 4 examples, 8 expectations, 0 failures, 0 errors
   - [x] 4.29.28. core/symbol/to_sym_spec - 1 file, 1 example, 5 expectations, 0 failures, 0 errors
   - [x] 4.29.29. core/symbol/upcase_spec - 1 file, 4 examples, 5 expectations, 0 failures, 0 errors
-- [ ] 4.30. core/regexp - 22 pass, and the rest are enabled in the runner one file at a time
+  - [x] 4.29.30. core/symbol/empty_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 4.29.31. core/symbol/start_with_spec - 1 file, 11 examples, 31 expectations, 0 failures, 0 errors
+- [x] 4.30. core/regexp - 24 files, 267 examples, 466 expectations, 0 failures, 0 errors
   - [x] 4.30.1. core/regexp/case_compare_spec - 1 file, 6 examples, 7 expectations, 0 failures, 0 errors
   - [x] 4.30.2. core/regexp/casefold_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
   - [x] 4.30.3. core/regexp/compile_spec - 1 file, 39 examples, 93 expectations, 0 failures, 0 errors
@@ -1447,8 +1450,8 @@ Parser fixes during Phase 4 work:
   - [x] 4.30.21. core/regexp/timeout_spec - 1 file, 3 examples, 5 expectations, 0 failures, 0 errors
   - [x] 4.30.22. core/regexp/to_s_spec - 1 file, 10 examples, 16 expectations, 0 failures, 0 errors
   - [x] 4.30.23. core/regexp/try_convert_spec - 1 file, 4 examples, 10 expectations, 0 failures, 0 errors
-  - [ ] 4.30.24. core/regexp/union_spec
-- [ ] 4.31. core/encoding - 42 pass, 2 files have no examples on this platform at ruby 4.0.1, and the rest are enabled in the runner one file at a time
+  - [x] 4.30.24. core/regexp/union_spec - 1 file, 30 examples, 47 expectations, 0 failures, 0 errors
+- [x] 4.31. core/encoding - 45 files, 631 examples, 2412 expectations, 0 failures, 0 errors
   - [x] 4.31.1. core/encoding/_dump_spec - no examples on this platform at ruby 4.0.1
   - [x] 4.31.2. core/encoding/_load_spec - no examples on this platform at ruby 4.0.1
   - [x] 4.31.3. core/encoding/aliases_spec - 1 file, 8 examples, 31 expectations, 0 failures, 0 errors
@@ -1463,7 +1466,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.31.12. core/encoding/converter/insert_output_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
   - [x] 4.31.13. core/encoding/converter/inspect_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [x] 4.31.14. core/encoding/converter/last_error_spec - 1 file, 11 examples, 26 expectations, 0 failures, 0 errors
-  - [ ] 4.31.16. core/encoding/converter/primitive_convert_spec
+  - [x] 4.31.16. core/encoding/converter/primitive_convert_spec - 1 file, 32 examples, 58 expectations, 0 failures, 0 errors
   - [x] 4.31.17. core/encoding/converter/primitive_errinfo_spec - 1 file, 10 examples, 20 expectations, 0 failures, 0 errors
   - [x] 4.31.19. core/encoding/converter/replacement_spec - 1 file, 9 examples, 18 expectations, 0 failures, 0 errors
   - [x] 4.31.21. core/encoding/converter/source_encoding_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
@@ -1491,7 +1494,10 @@ Parser fixes during Phase 4 work:
   - [x] 4.31.44. core/encoding/undefined_conversion_error/source_encoding_name_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
   - [x] 4.31.45. core/encoding/undefined_conversion_error/source_encoding_spec - 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
   - [x] 4.31.46. core/encoding/converter/putback_spec - 1 file, 7 examples, 17 expectations, 0 failures, 0 errors
-- [ ] 4.32. core/matchdata - 29 pass, and the rest are enabled in the runner one file at a time
+  - [x] 4.31.47. core/encoding/converter/new_spec - 1 file, 19 examples, 24 expectations, 0 failures, 0 errors
+  - [x] 4.31.48. core/encoding/converter/search_convpath_spec - 1 file, 4 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 4.31.49. core/encoding/invalid_byte_sequence_error/readagain_bytes_spec - 1 file, 3 examples, 10 expectations, 0 failures, 0 errors
+- [x] 4.32. core/matchdata - 29 files, 186 examples, 314 expectations, 0 failures, 0 errors
   - [x] 4.32.1. core/matchdata/allocate_spec - 1 file, 1 example, 1 expectations, 0 failures, 0 errors
   - [x] 4.32.2. core/matchdata/begin_spec - 1 file, 18 examples, 29 expectations, 0 failures, 0 errors
   - [x] 4.32.3. core/matchdata/bytebegin_spec - 1 file, 18 examples, 29 expectations, 0 failures, 0 errors
@@ -1594,7 +1600,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.35.17. core/unboundmethod/source_location_spec - 1 file, 7 examples, 11 expectations, 0 failures, 0 errors
   - [x] 4.35.18. core/unboundmethod/super_method_spec - 1 file, 6 examples, 7 expectations, 0 failures, 0 errors
   - [x] 4.35.19. core/unboundmethod/to_s_spec - 1 file, 5 examples, 9 expectations, 0 failures, 0 errors
-- [x] 4.36. core/binding - 9 files, all passing
+- [x] 4.36. core/binding - 9 files, 58 examples, 106 expectations, 0 failures, 0 errors
   - [x] 4.36.1. core/binding/clone_spec - 1 file, 5 examples, 20 expectations, 0 failures, 0 errors
   - [x] 4.36.2. core/binding/dup_spec - 1 file, 6 examples, 25 expectations, 0 failures, 0 errors
   - [x] 4.36.3. core/binding/eval_spec - 1 file, 15 examples, 22 expectations, 0 failures, 0 errors
@@ -1607,7 +1613,7 @@ Parser fixes during Phase 4 work:
 
 ### IO and Filesystem
 
-- [ ] 4.37. core/io - 92 pass, 1 file has no examples on this platform at ruby 4.0.1, and the rest are enabled in the runner one file at a time
+- [x] 4.37. core/io - 101 files, 1535 examples, 2383 expectations, 0 failures, 0 errors
   - [x] 4.37.1. core/io/advise_spec - 1 file, 13 examples, 13 expectations, 0 failures, 0 errors
   - [x] 4.37.2. core/io/autoclose_spec - 1 file, 8 examples, 11 expectations, 0 failures, 0 errors
   - [x] 4.37.3. core/io/binmode_spec - 1 file, 7 examples, 8 expectations, 0 failures, 0 errors
@@ -1621,7 +1627,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.37.11. core/io/buffer/initialize_spec - 1 file, 14 examples, 45 expectations, 0 failures, 0 errors
   - [x] 4.37.12. core/io/buffer/internal_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
   - [x] 4.37.13. core/io/buffer/locked_spec - 1 file, 7 examples, 13 expectations, 0 failures, 0 errors
-  - [ ] 4.37.14. core/io/buffer/map_spec
+  - [x] 4.37.14. core/io/buffer/map_spec - 1 file, 22 examples, 52 expectations, 0 failures, 0 errors
   - [x] 4.37.15. core/io/buffer/mapped_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
   - [x] 4.37.16. core/io/buffer/not_spec - 1 file, 4 examples, 7 expectations, 0 failures, 0 errors
   - [x] 4.37.17. core/io/buffer/null_spec - 1 file, 13 examples, 13 expectations, 0 failures, 0 errors
@@ -1673,7 +1679,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.37.63. core/io/path_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [x] 4.37.64. core/io/pid_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
   - [x] 4.37.65. core/io/pipe_spec - 1 file, 26 examples, 51 expectations, 0 failures, 0 errors
-  - [ ] 4.37.66. core/io/popen_spec
+  - [x] 4.37.66. core/io/popen_spec - 1 file, 38 examples, 43 expectations, 0 failures, 0 errors
   - [x] 4.37.67. core/io/pos_spec - 1 file, 8 examples, 11 expectations, 0 failures, 0 errors
   - [x] 4.37.68. core/io/pread_spec - 1 file, 22 examples, 31 expectations, 0 failures, 0 errors
   - [x] 4.37.69. core/io/print_spec - 1 file, 5 examples, 9 expectations, 0 failures, 0 errors
@@ -1708,8 +1714,8 @@ Parser fixes during Phase 4 work:
   - [x] 4.37.98. core/io/ungetbyte_spec - 1 file, 6 examples, 19 expectations, 0 failures, 0 errors
   - [x] 4.37.99. core/io/ungetc_spec - 1 file, 14 examples, 36 expectations, 0 failures, 0 errors
   - [x] 4.37.100. core/io/write_nonblock_spec - 1 file, 18 examples, 24 expectations, 0 failures, 0 errors
-  - [ ] 4.37.101. core/io/write_spec
-- [ ] 4.38. core/file - 110 pass, 6 files have no examples on this platform at ruby 4.0.1, and the rest are enabled in the runner one file at a time
+  - [x] 4.37.101. core/io/write_spec - 1 file, 49 examples, 78 expectations, 0 failures, 0 errors
+- [x] 4.38. core/file - 112 files, 935 examples, 2241 expectations, 0 failures, 0 errors
   - [x] 4.38.1. core/file/absolute_path_spec - 1 file, 14 examples, 18 expectations, 0 failures, 0 errors
   - [x] 4.38.2. core/file/atime_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
   - [x] 4.38.3. core/file/basename_spec - 1 file, 16 examples, 139 expectations, 0 failures, 0 errors
@@ -1748,7 +1754,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.38.36. core/file/mtime_spec - 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
   - [x] 4.38.37. core/file/new_spec - 1 file, 27 examples, 56 expectations, 0 failures, 0 errors
   - [x] 4.38.38. core/file/null_spec - 1 file, 1 example, 1 expectations, 0 failures, 0 errors
-  - [ ] 4.38.39. core/file/open_spec
+  - [x] 4.38.39. core/file/open_spec - 1 file, 83 examples, 135 expectations, 0 failures, 0 errors
   - [x] 4.38.40. core/file/owned_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
   - [x] 4.38.41. core/file/path_spec - 1 file, 17 examples, 36 expectations, 0 failures, 0 errors
   - [x] 4.38.42. core/file/pipe_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
@@ -1822,7 +1828,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.38.110. core/file/writable_real_spec - 1 file, 5 examples, 8 expectations, 0 failures, 0 errors
   - [x] 4.38.111. core/file/writable_spec - 1 file, 3 examples, 5 expectations, 0 failures, 0 errors
   - [x] 4.38.112. core/file/zero_spec - 1 file, 9 examples, 12 expectations, 0 failures, 0 errors
-- [ ] 4.39. core/dir - 32 pass, 2 files have no examples on this platform at ruby 4.0.1, and the rest are enabled in the runner one file at a time
+- [x] 4.39. core/dir - 34 files, 338 examples, 456 expectations, 0 failures, 0 errors
   - [x] 4.39.1. core/dir/chdir_spec - 1 file, 19 examples, 26 expectations, 0 failures, 0 errors
   - [x] 4.39.2. core/dir/children_spec - 1 file, 13 examples, 21 expectations, 0 failures, 0 errors
   - [x] 4.39.3. core/dir/chroot_spec - 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
@@ -1857,7 +1863,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.39.32. core/dir/tell_spec - 1 file, 3 examples, 7 expectations, 0 failures, 0 errors
   - [x] 4.39.33. core/dir/to_path_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
   - [x] 4.39.34. core/dir/unlink_spec - 1 file, 6 examples, 6 expectations, 0 failures, 0 errors
-- [x] 4.40. core/filetest - 24 pass, the whole directory
+- [x] 4.40. core/filetest - 24 files, 87 examples, 133 expectations, 0 failures, 0 errors
   - [x] 4.40.1. core/filetest/blockdev_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
   - [x] 4.40.2. core/filetest/chardev_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
   - [x] 4.40.3. core/filetest/directory_spec - 1 file, 8 examples, 11 expectations, 0 failures, 0 errors
@@ -1882,7 +1888,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.40.22. core/filetest/writable_real_spec - 1 file, 5 examples, 8 expectations, 0 failures, 0 errors
   - [x] 4.40.23. core/filetest/writable_spec - 1 file, 3 examples, 5 expectations, 0 failures, 0 errors
   - [x] 4.40.24. core/filetest/zero_spec - 1 file, 9 examples, 12 expectations, 0 failures, 0 errors
-- [x] 4.41. core/env - 45 pass, 1 file has no examples on this platform at ruby 4.0.1, the whole directory
+- [x] 4.41. core/env - 45 files, 239 examples, 2228 expectations, 0 failures, 0 errors
   - [x] 4.41.1. core/env/assoc_spec - 1 file, 4 examples, 5 expectations, 0 failures, 0 errors
   - [x] 4.41.2. core/env/clear_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
   - [x] 4.41.3. core/env/clone_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
@@ -1928,7 +1934,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.41.43. core/env/value_spec - 1 file, 4 examples, 5 expectations, 0 failures, 0 errors
   - [x] 4.41.44. core/env/values_at_spec - 1 file, 5 examples, 5 expectations, 0 failures, 0 errors
   - [x] 4.41.45. core/env/values_spec - 1 file, 2 examples, 73 expectations, 0 failures, 0 errors
-- [x] 4.42. core/argf - 34 files, 34 pass
+- [x] 4.42. core/argf - 34 files, 148 examples, 215 expectations, 0 failures, 0 errors
   - [x] 4.42.1. core/argf/argf_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
   - [x] 4.42.2. core/argf/argv_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
   - [x] 4.42.3. core/argf/binmode_spec - 1 file, 2 examples, 4 expectations, 0 failures, 0 errors
@@ -1966,7 +1972,7 @@ Parser fixes during Phase 4 work:
 
 ### Concurrency
 
-- [ ] 4.43. core/thread - 48 pass, 3 files have no examples on this platform at ruby 4.0.1, and the rest are enabled in the runner one file at a time
+- [x] 4.43. core/thread - 53 files, 402 examples, 1140 expectations, 0 failures, 0 errors
   - [x] 4.43.1. core/thread/abort_on_exception_spec - 1 file, 6 examples, 8 expectations, 0 failures, 0 errors
   - [x] 4.43.2. core/thread/add_trace_func_spec - no examples on this platform at ruby 4.0.1
   - [x] 4.43.3. core/thread/alive_spec - 1 file, 10 examples, 10 expectations, 0 failures, 0 errors
@@ -2004,8 +2010,8 @@ Parser fixes during Phase 4 work:
   - [x] 4.43.36. core/thread/pass_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [x] 4.43.37. core/thread/pending_interrupt_spec - 1 file, 3 examples, 7 expectations, 0 failures, 0 errors
   - [x] 4.43.38. core/thread/priority_spec - 1 file, 7 examples, 10 expectations, 0 failures, 0 errors
-  - [ ] 4.43.39. core/thread/raise_spec
-  - [ ] 4.43.40. core/thread/report_on_exception_spec
+  - [x] 4.43.39. core/thread/raise_spec - 1 file, 70 examples, 116 expectations, 0 failures, 0 errors
+  - [x] 4.43.40. core/thread/report_on_exception_spec - 1 file, 10 examples, 18 expectations, 0 failures, 0 errors
   - [x] 4.43.41. core/thread/run_spec - 1 file, 3 examples, 5 expectations, 0 failures, 0 errors
   - [x] 4.43.42. core/thread/set_trace_func_spec - no examples on this platform at ruby 4.0.1
   - [x] 4.43.43. core/thread/start_spec - 1 file, 4 examples, 5 expectations, 0 failures, 0 errors

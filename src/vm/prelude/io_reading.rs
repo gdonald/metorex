@@ -13,6 +13,11 @@ pub(super) const SOURCE: &str = r##"
 
   def close_write
     return nil if @write_closed
+    unless @__popen_writer.nil?
+      @__popen_writer.close
+      @write_closed = true
+      return nil
+    end
     unless __duplex__
       return close if !__both_ways__ && (__opened_for__("w") || __opened_for__("a"))
       raise IOError, "closing non-duplex IO for writing"
@@ -22,12 +27,30 @@ pub(super) const SOURCE: &str = r##"
   end
 
   def write(*parts)
+    texts = parts.map { |part| part.to_s }
+    # Nothing to write is written without asking whether the stream can be
+    # written at all.
+    return 0 if texts.all? { |text| text.empty? }
+    __write_texts__ texts, true
+  end
+
+  # The pieces written to the stream, carried into its encoding when
+  # `converting` says so. `syswrite` and `write_nonblock` write them as they
+  # are.
+  def __write_texts__(texts, converting)
     raise IOError, "closed stream" if closed?
     raise IOError, "not opened for writing" if @write_closed
     raise IOError, "not opened for writing" unless __writable__
+    return @__popen_writer.__send__(:__write_texts__, texts, converting) unless @__popen_writer.nil?
     @line_buffered = nil
     @wrote_through_buffer = true
-    held = parts.length == 1 ? parts[0].to_s : parts.map { |part| part.to_s }.join
+    # Each piece is carried into the stream's encoding on its own, and the
+    # pieces are joined as the bytes they were written in.
+    held = if texts.length == 1
+      converting ? __written_text__(texts[0]) : texts[0]
+    else
+      texts.map { |text| (converting ? __written_text__(text) : text).b }.join
+    end
     # A stream the program told not to sync holds what is written until it is
     # flushed, which is when the descriptor hears about it.
     if @holding && @standard.nil?
@@ -41,6 +64,21 @@ pub(super) const SOURCE: &str = r##"
     IO.__write_standard__ @standard, held
     held.bytesize
   end
+
+  private :__write_texts__
+
+  # Text carried into the encoding the stream was told to write in. A stream
+  # told none, or told to write bytes, writes the text as it stands.
+  def __written_text__(text)
+    named = __named_encodings__[0]
+    return text if named.nil? || named.empty?
+    target = Encoding.find named
+    return text if target == Encoding::BINARY || text.encoding == target
+    return text.encode(target) if target.ascii_compatible?
+    # An encoding that spells ASCII another way is reached through UTF-8.
+    text.encode(Encoding::UTF_8).encode target
+  end
+  private :__written_text__
 
   # Everything held back by a stream that does not sync, written through now.
   def __drain__
@@ -406,7 +444,7 @@ pub(super) const SOURCE: &str = r##"
     if @wrote_through_buffer
       warn "warning: syswrite for buffered IO"
     end
-    held = write text
+    held = __write_texts__ [text.to_s], false
     @wrote_through_buffer = nil
     held
   end
@@ -414,7 +452,7 @@ pub(super) const SOURCE: &str = r##"
   # As much as the descriptor will take right now. A descriptor with no room
   # says so rather than holding the program up.
   def write_nonblock(text, exception: true)
-    write text
+    __write_texts__ [text.to_s], false
   rescue Errno::EAGAIN
     raise IO::EAGAINWaitWritable, "Resource temporarily unavailable - write would block" if exception
     :wait_writable

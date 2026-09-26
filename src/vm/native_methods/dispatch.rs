@@ -107,11 +107,6 @@ impl VirtualMachine {
                 return Ok(Some(result));
             }
             if let Some(result) =
-                self.call_io_class_method(class_rc, method_name, arguments, position)?
-            {
-                return Ok(Some(result));
-            }
-            if let Some(result) =
                 self.call_complex_class_method(class_rc, method_name, arguments, position)?
             {
                 return Ok(Some(result));
@@ -320,10 +315,7 @@ impl VirtualMachine {
         if method_name == "frozen?"
             && let Object::Regex(pattern, _) = receiver
         {
-            let built = self
-                .built_patterns
-                .contains(&(Rc::as_ptr(pattern) as *const _ as usize));
-            return Ok(Some(Object::Bool(!built)));
+            return Ok(Some(Object::Bool(!self.pattern_was_built(pattern))));
         }
         // The encoding a pattern is read in is settled from the pattern's own
         // address, which is where the encoding of the string it was built
@@ -337,6 +329,13 @@ impl VirtualMachine {
             let named = self.pattern_encoding_name(pattern, flags);
             let made = crate::object::StringValue::with_encoding(pattern.to_string(), named);
             return Ok(Some(Object::String(Rc::new(made))));
+        }
+        if method_name == "fixed_encoding?"
+            && let Object::Regex(pattern, flags) = receiver
+        {
+            return Ok(Some(Object::Bool(
+                self.pattern_fixes_encoding(pattern, flags),
+            )));
         }
         if method_name == "encoding"
             && let Object::Regex(pattern, flags) = receiver
@@ -366,6 +365,11 @@ impl VirtualMachine {
         if let Some(Object::Regex(pattern, flags)) = regexp_subclass_value(receiver) {
             if matches!(method_name, "clone" | "dup") {
                 return self.call_object_method(receiver, method_name, arguments, position);
+            }
+            if method_name == "fixed_encoding?" {
+                return Ok(Some(Object::Bool(
+                    self.pattern_fixes_encoding(&pattern, &flags),
+                )));
             }
             if let Some(result) =
                 self.call_regexp_method(&pattern, &flags, method_name, arguments, position)?
@@ -532,7 +536,6 @@ impl VirtualMachine {
             "ConditionVariable" => {
                 self.call_condition_variable_method(receiver, method_name, arguments, position)
             }
-            "IO" => self.call_io_handle_method(receiver, method_name, arguments, position),
             "Process::Status" => {
                 self.call_process_status_method(receiver, method_name, arguments, position)
             }

@@ -261,6 +261,7 @@ fn test_equals_block() {
         opened_at: None,
         from_symbol: None,
         written_in: None,
+        written_depth: None,
         ruby2_keywords: std::rc::Rc::new(std::cell::Cell::new(false)),
     });
     let block2 = Rc::clone(&block1);
@@ -281,6 +282,7 @@ fn test_equals_block() {
         opened_at: None,
         from_symbol: None,
         written_in: None,
+        written_depth: None,
         ruby2_keywords: std::rc::Rc::new(std::cell::Cell::new(false)),
     });
     let block4 = Rc::new((*block1).clone());

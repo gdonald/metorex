@@ -3,6 +3,55 @@
 
 use super::*;
 
+/// The Process methods the interpreter answers itself rather than through a
+/// method written in Ruby, which `respond_to?` reports alongside those.
+pub(crate) const PROCESS_NATIVE_METHODS: &[&str] = &[
+    "_fork",
+    "abort",
+    "argv0",
+    "clock_getres",
+    "clock_gettime",
+    "egid",
+    "egid=",
+    "euid",
+    "euid=",
+    "exit",
+    "exit!",
+    "fork",
+    "getpgid",
+    "getpgrp",
+    "getpriority",
+    "getrlimit",
+    "getsid",
+    "gid",
+    "gid=",
+    "groups",
+    "groups=",
+    "initgroups",
+    "kill",
+    "last_status",
+    "maxgroups",
+    "maxgroups=",
+    "pid",
+    "ppid",
+    "setpgid",
+    "setpgrp",
+    "setpriority",
+    "setproctitle",
+    "setrlimit",
+    "setsid",
+    "spawn",
+    "times",
+    "uid",
+    "uid=",
+    "wait",
+    "wait2",
+    "waitall",
+    "waitpid",
+    "waitpid2",
+    "warmup",
+];
+
 impl VirtualMachine {
     /// The Process module method `method_name` names, or `None` when the
     /// name is none of its own.
@@ -208,16 +257,8 @@ impl VirtualMachine {
                 self.set_process_title(&title);
                 return Ok(Some(Object::string(title)));
             }
-            // `_fork` is the hook `fork` runs through, and an
-            // implementation without `fork` has none.
-            "_fork" => {
-                let message = "fork() function is unimplemented on this machine".to_string();
-                return Err(MetorexError::UncaughtException {
-                    exception: Object::exception("NotImplementedError", message.clone()),
-                    location: crate::vm::utils::position_to_location(position),
-                    message,
-                });
-            }
+            // `_fork` is the hook `fork` runs through.
+            "_fork" => return self.split_process(position).map(Some),
             // A user or a group may be named rather than numbered, and
             // setting either needs the right to do so.
             "uid=" | "gid=" | "euid=" | "egid=" => {

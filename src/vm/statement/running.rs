@@ -302,6 +302,10 @@ impl VirtualMachine {
         name: &str,
         position: crate::lexer::Position,
     ) {
+        // `$VERBOSE = nil` silences warnings of every kind.
+        if matches!(self.globals().get("VERBOSE"), Some(Object::Nil)) {
+            return;
+        }
         let named = owner.ruby_name();
         let named = if named.is_empty() {
             owner.inspect_name()

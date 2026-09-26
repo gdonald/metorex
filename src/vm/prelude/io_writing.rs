@@ -377,9 +377,11 @@ pub(super) const SOURCE: &str = r##"
     self
   end
 
+  # A stream is in binary mode once `binmode` was called, or when the mode it
+  # was opened with says `b`.
   def binmode?
     raise IOError, "closed stream" if closed?
-    @binmode == true
+    @binmode == true || @__file_mode.to_s.split(":", 2)[0].to_s.include?("b")
   end
 
   # Lock the whole file, or let a lock go. A lock asked for with `LOCK_NB`

@@ -409,14 +409,38 @@ impl VirtualMachine {
             }
             // A thread is handed an exception to raise where it left off, so
             // one waiting inside `sleep` wakes and raises it there.
-            "raise" => {
-                // `raise` with nothing named raises a RuntimeError, and the
-                // thread has to be handed something for it to take.
-                let handed = if arguments.is_empty() {
-                    vec![Object::string("unhandled exception".to_string())]
-                } else {
-                    arguments.to_vec()
-                };
+            // The exception a `raise` with these arguments would raise,
+            // built without raising it, so a thread can be handed one.
+            // The cause is settled here, from what the caller is handling,
+            // so the thread that raises it does not take its own.
+            "__build_raised__" => {
+                // A backtrace named in the call, or one the exception already
+                // carries, stays. Any other is recorded where the thread
+                // raises it, not here.
+                let keeps_backtrace = matches!(arguments.get(2), Some(Object::Array(_)))
+                    || matches!(arguments.first(), Some(Object::Exception(given)) if given.borrow().backtrace.is_some());
+                let built = self.build_raise_exception(arguments, position)?;
+                if !keeps_backtrace && let Object::Exception(details) = &built {
+                    let mut details = details.borrow_mut();
+                    details.backtrace = None;
+                    details.backtrace_sites = None;
+                    details.backtrace_array = None;
+                    details.backtrace_locations_array = None;
+                }
+                if let Object::Exception(details) = &built
+                    && !details.borrow().cause_settled
+                {
+                    if details.borrow().cause.is_none()
+                        && let Some(active @ Object::Exception(_)) = self.globals().get("!")
+                    {
+                        crate::vm::VirtualMachine::record_cause(&built, &active);
+                    }
+                    details.borrow_mut().cause_settled = true;
+                }
+                Ok(Some(built))
+            }
+            "__raise_later__" => {
+                let handed = arguments.to_vec();
                 inst.borrow_mut()
                     .set_var("__thread_raise".to_string(), Object::array(handed));
                 inst.borrow_mut()

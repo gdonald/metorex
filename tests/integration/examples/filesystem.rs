@@ -80,7 +80,7 @@ fn test_filesystem_pipe_streams_no_parens_execution() {
 }
 
 /// The expected output of both `filesystem/stream_redirection` variants.
-const STREAM_REDIRECTION_OUTPUT: &str = "0\n1\n\"from the first\\n\"\n\"metorex_stream_second.txt\"\n\"from the second\\n\"\n1\n2\n3\n\ntrue\n";
+const STREAM_REDIRECTION_OUTPUT: &str = "1\n1\n\"from the first\\n\"\n\"metorex_stream_second.txt\"\n\"from the second\\n\"\n1\n2\n3\n\ntrue\n";
 
 #[test]
 fn test_filesystem_stream_redirection_execution() {
@@ -307,4 +307,98 @@ fn test_filesystem_written_encodings_execution() {
 fn test_filesystem_written_encodings_parens_execution() {
     let output = run_example("filesystem/written_encodings_parens.rb");
     assert_eq!(output, WRITTEN_ENCODINGS_OUTPUT);
+}
+
+/// The expected output of both `filesystem/opening_modes` variants.
+const OPENING_MODES_OUTPUT: &str = concat!(
+    "[ArgumentError, \"invalid access mode q\"]\n",
+    "[ArgumentError, \"invalid access mode rbt\"]\n",
+    "[ArgumentError, \"invalid access mode rx\"]\n",
+    "[ArgumentError, \"newline decorator with binary mode\"]\n",
+    "Errno::EEXIST\n",
+    "[IOError, \"not opened for reading\"]\n",
+    "\"hello file\\n\"\n",
+    "nil\n",
+    "0\n",
+    "Errno::ENOENT\n",
+    "File\n",
+    "[true, #<Encoding:BINARY (ASCII-8BIT)>, 0]\n",
+    "[:closed, \"from close\"]\n"
+);
+
+#[test]
+fn test_filesystem_opening_modes_execution() {
+    let output = run_example("filesystem/opening_modes.rb");
+    assert_eq!(output, OPENING_MODES_OUTPUT);
+}
+
+#[test]
+fn test_filesystem_opening_modes_parens_execution() {
+    let output = run_example("filesystem/opening_modes_parens.rb");
+    assert_eq!(output, OPENING_MODES_OUTPUT);
+}
+
+#[test]
+fn test_filesystem_fifo_between_threads_execution() {
+    let output = run_example("filesystem/fifo_between_threads.rb");
+    assert_eq!(output, "5\n\"hello\"\n");
+}
+
+#[test]
+fn test_filesystem_fifo_between_threads_parens_execution() {
+    let output = run_example("filesystem/fifo_between_threads_parens.rb");
+    assert_eq!(output, "5\n\"hello\"\n");
+}
+
+/// The expected output of both `filesystem/binary_paths` variants.
+const BINARY_PATHS_OUTPUT: &str = concat!(
+    "#<Encoding:BINARY (ASCII-8BIT)>\n",
+    "true\n",
+    "true\n",
+    "true\n",
+    "false\n",
+    "[\".\", \"..\"]\n",
+    "true\n",
+    "[\"inside.txt\"]\n",
+    "false\n"
+);
+
+#[test]
+fn test_filesystem_binary_paths_execution() {
+    let output = run_example("filesystem/binary_paths.rb");
+    assert_eq!(output, BINARY_PATHS_OUTPUT);
+}
+
+#[test]
+fn test_filesystem_binary_paths_parens_execution() {
+    let output = run_example("filesystem/binary_paths_parens.rb");
+    assert_eq!(output, BINARY_PATHS_OUTPUT);
+}
+
+/// The expected output of both `filesystem/converted_writes` variants.
+const CONVERTED_WRITES_OUTPUT: &str = concat!(
+    "8\n",
+    "[104, 0, 0, 0, 105, 0, 0, 0]\n",
+    "[104, 105]\n",
+    "[135, 196, 133]\n",
+    "0\n",
+    "[Encoding::UndefinedConversionError, \"\\\"\\\\xC3\\\" from ASCII-8BIT to UTF-8\"]\n",
+    "8\n",
+    "8\n",
+    "2\n",
+    "\"\\u0000\\u0000hi\"\n",
+    "[ArgumentError, \"ASCII incompatible encoding needs binmode\"]\n",
+    "[ArgumentError, \"encoding specified twice\"]\n"
+);
+
+#[test]
+fn test_filesystem_converted_writes_execution() {
+    let output = run_example("filesystem/converted_writes.rb");
+    assert_eq!(output, CONVERTED_WRITES_OUTPUT);
+}
+
+#[test]
+fn test_filesystem_converted_writes_parens_execution() {
+    let output = run_example("filesystem/converted_writes_parens.rb");
+    assert_eq!(output, CONVERTED_WRITES_OUTPUT);
 }

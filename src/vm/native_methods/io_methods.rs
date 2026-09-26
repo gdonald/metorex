@@ -3,28 +3,10 @@ use crate::error::MetorexError;
 use crate::lexer::Position;
 use crate::object::{Instance, Method, Object};
 use crate::vm::VirtualMachine;
-use crate::vm::errors::*;
 use crate::vm::utils::position_to_location;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-/// Instance variable holding everything an `IO.popen` handle has left to read.
-const POPEN_OUTPUT: &str = "__popen_output";
-/// What a read took from the child but has not handed over yet. It is kept
-/// apart from the output a settled handle holds, since a handle with a read
-/// waiting is still running.
-const POPEN_PENDING: &str = "__popen_pending";
-/// Instance variable holding the id of the child behind the handle.
-const POPEN_HANDLE: &str = "__popen_handle";
-/// Instance variables marking an end of a two-ended stream as closed.
-const WRITE_CLOSED: &str = "__popen_write_closed";
-const READ_CLOSED: &str = "__popen_read_closed";
-/// Instance variable holding what has been written to the child's input.
-const POPEN_INPUT: &str = "__popen_input";
-/// Instance variable holding the child's process id.
-const POPEN_PID: &str = "__popen_pid";
-/// Instance variable recording whether the handle has been closed.
-const POPEN_CLOSED: &str = "__popen_closed";
 /// Instance variable on a Process::Status: the exit code, or nil when signaled.
 const STATUS_EXITSTATUS: &str = "__exitstatus";
 /// Instance variable on a Process::Status: the signal number, or nil.
@@ -35,438 +17,6 @@ const STATUS_PID: &str = "__pid";
 const LAST_STATUS_GLOBAL: &str = "__process_last_status";
 
 impl VirtualMachine {
-    /// `IO.popen(command)` and `IO.popen(command, options)`. The command runs
-    /// through `/bin/sh` and is waited for before the handle is handed out, so
-    /// `#read` answers everything the child wrote. `err: [:child, :out]`
-    /// merges the child's stderr into that output.
-    pub(crate) fn call_io_class_method(
-        &mut self,
-        class_rc: &Rc<Class>,
-        method_name: &str,
-        arguments: &[Object],
-        position: Position,
-    ) -> Result<Option<Object>, MetorexError> {
-        if class_rc.name() != "IO" || method_name != "popen" {
-            return Ok(None);
-        }
-        if arguments.is_empty() {
-            return Err(method_argument_error("popen", 1, 0, position));
-        }
-        // The command is either a String the shell reads or an argv Array,
-        // which names the program and its arguments outright.
-        let mut child = match &arguments[0] {
-            Object::String(text) => {
-                let merge_stderr = arguments.iter().skip(1).any(child_out_redirect);
-                // A plain command runs without a shell, which is what Ruby
-                // does and what makes this process the child's parent rather
-                // than a shell standing between them.
-                if !merge_stderr && let Some(words) = shell_free_words(&text.as_str()) {
-                    let (program, rest) = words.split_first().expect("a non-empty word list");
-                    let mut child = std::process::Command::new(program);
-                    child.args(rest);
-                    child
-                } else {
-                    // Merging through the shell keeps the child's two streams
-                    // interleaved as they were written, which capturing them
-                    // separately would lose. The whole command is grouped so
-                    // the redirect applies to it as a unit.
-                    let shell_command = if merge_stderr {
-                        format!("{{ {} ; }} 2>&1", text)
-                    } else {
-                        text.as_str().to_string()
-                    };
-                    let mut child = std::process::Command::new("/bin/sh");
-                    child.arg("-c").arg(&shell_command);
-                    child
-                }
-            }
-            Object::Array(parts) => {
-                let parts = parts.borrow();
-                let mut words = Vec::with_capacity(parts.len());
-                for part in parts.iter() {
-                    match part {
-                        Object::String(word) => words.push(word.as_str().to_string()),
-                        other => {
-                            return Err(method_argument_type_error(
-                                "popen", "String", other, position,
-                            ));
-                        }
-                    }
-                }
-                let Some((program, rest)) = words.split_first() else {
-                    return Err(method_argument_error("popen", 1, 0, position));
-                };
-                let mut child = std::process::Command::new(program);
-                child.args(rest);
-                child
-            }
-            other => {
-                return Err(method_argument_type_error(
-                    "popen", "String", other, position,
-                ));
-            }
-        };
-        child.stdin(std::process::Stdio::piped());
-        // A command told to point its error stream at its output writes both
-        // into one stream, which is what keeps the two interleaved the way
-        // they were written. The command runs without a shell either way, so
-        // a command ended by a signal is reported as ended by that signal.
-        let merged = arguments
-            .iter()
-            .skip(1)
-            .any(child_out_redirect)
-            .then(one_stream_for_both)
-            .flatten();
-        match &merged {
-            Some((_, writer)) => {
-                let held = writer.try_clone().map_err(|error| {
-                    MetorexError::runtime_error(
-                        format!("Failed to run {}: {}", arguments[0], error),
-                        position_to_location(position),
-                    )
-                })?;
-                child.stdout(std::process::Stdio::from(held));
-                child.stderr(std::process::Stdio::from(writer.try_clone().map_err(
-                    |error| {
-                        MetorexError::runtime_error(
-                            format!("Failed to run {}: {}", arguments[0], error),
-                            position_to_location(position),
-                        )
-                    },
-                )?));
-            }
-            None => {
-                child.stdout(std::process::Stdio::piped());
-                child.stderr(std::process::Stdio::inherit());
-            }
-        }
-        let spawned = child.spawn().map_err(|error| {
-            MetorexError::runtime_error(
-                format!("Failed to run {}: {}", arguments[0], error),
-                position_to_location(position),
-            )
-        })?;
-        // The command holds a copy of whatever it was told to write into, so
-        // letting go of it is what leaves the writing end to the child alone.
-        drop(child);
-        let pid = spawned.id() as i64;
-
-        // The child stays alive behind the handle so the block can write to
-        // its input before reading what it wrote back.
-        let handle_id = self.next_popen_id;
-        self.next_popen_id += 1;
-        self.popen_children.insert(handle_id, spawned);
-        if let Some((reader, writer)) = merged {
-            // The writing end belongs to the child alone now, so letting go
-            // of this copy is what tells the reader when the child is done.
-            drop(writer);
-            self.popen_merged.insert(handle_id, reader);
-        }
-
-        let handle_class = self.memoized_class("__IO_popen_class", "IO", &["close", "closed?"]);
-        let instance = Rc::new(RefCell::new(Instance::new(handle_class)));
-        {
-            let mut borrowed = instance.borrow_mut();
-            borrowed.set_var(POPEN_HANDLE.to_string(), Object::Int(handle_id as i64));
-            borrowed.set_var(POPEN_PID.to_string(), Object::Int(pid));
-            borrowed.set_var(POPEN_INPUT.to_string(), Object::string(String::new()));
-            borrowed.set_var(POPEN_CLOSED.to_string(), Object::Bool(false));
-        }
-        let handle = Object::Instance(Rc::clone(&instance));
-
-        let Some(Object::Block(block)) = self.pending_block.take() else {
-            return Ok(Some(handle));
-        };
-        let result = self.execute_block_callable(&block, vec![handle], position);
-        // Whatever the block did, the child is waited for once it returns.
-        self.finish_popen(&instance)?;
-        result.map(Some)
-    }
-
-    /// One line of what a popen child has written, taken from what was
-    /// already read where there is any and from the child itself otherwise.
-    /// Answers nil once the child has written everything it will.
-    fn read_popen_line(&mut self, instance: &Rc<RefCell<Instance>>) -> Object {
-        // What an earlier read took but did not hand over stands first.
-        let held = match instance.borrow().get_var(POPEN_PENDING) {
-            Some(Object::String(text)) => text.as_str().to_string(),
-            _ => match instance.borrow().get_var(POPEN_OUTPUT) {
-                Some(Object::String(text)) => text.as_str().to_string(),
-                _ => String::new(),
-            },
-        };
-        if let Some(at) = held.find('\n') {
-            let (line, rest) = held.split_at(at + 1);
-            let line = line.to_string();
-            instance
-                .borrow_mut()
-                .set_var(POPEN_PENDING.to_string(), Object::string(rest.to_string()));
-            return Object::string(line);
-        }
-        let handle_id = match instance.borrow().get_var(POPEN_HANDLE) {
-            Some(Object::Int(id)) => *id as u64,
-            _ => return Object::Nil,
-        };
-        let mut collected = held;
-        {
-            let mut take_a_line = |stream: &mut dyn std::io::Read| {
-                let mut byte = [0u8; 1];
-                while stream.read(&mut byte).unwrap_or(0) == 1 {
-                    collected.push(byte[0] as char);
-                    if byte[0] == b'\n' {
-                        break;
-                    }
-                }
-            };
-            if let Some(stream) = self.popen_merged.get_mut(&handle_id) {
-                take_a_line(stream);
-            } else if let Some(child) = self.popen_children.get_mut(&handle_id)
-                && let Some(stream) = child.stdout.as_mut()
-            {
-                take_a_line(stream);
-            }
-        }
-        instance
-            .borrow_mut()
-            .set_var(POPEN_PENDING.to_string(), Object::string(String::new()));
-        if collected.is_empty() {
-            return Object::Nil;
-        }
-        Object::string(collected)
-    }
-
-    /// Send whatever was written to a popen handle, wait for the child, and
-    /// keep what it wrote. Answers the output, which a later `read` hands out.
-    fn finish_popen(&mut self, instance: &Rc<RefCell<Instance>>) -> Result<String, MetorexError> {
-        self.settle_popen(instance, true)
-    }
-
-    /// The same, told whether what the child wrote is still wanted. Closing a
-    /// stream lets go of the reading end first, which is what tells a child
-    /// still writing that nobody is listening.
-    fn settle_popen(
-        &mut self,
-        instance: &Rc<RefCell<Instance>>,
-        keep_output: bool,
-    ) -> Result<String, MetorexError> {
-        if let Some(Object::String(output)) = instance.borrow().get_var(POPEN_OUTPUT) {
-            return Ok(output.as_str().to_string());
-        }
-        let handle_id = match instance.borrow().get_var(POPEN_HANDLE) {
-            Some(Object::Int(id)) => *id as u64,
-            _ => return Ok(String::new()),
-        };
-        let input = match instance.borrow().get_var(POPEN_INPUT) {
-            Some(Object::String(text)) => text.as_str().to_string(),
-            _ => String::new(),
-        };
-        let Some(mut child) = self.popen_children.remove(&handle_id) else {
-            return Ok(String::new());
-        };
-        if let Some(mut stdin) = child.stdin.take() {
-            use std::io::Write as _;
-            let _ = stdin.write_all(input.as_bytes());
-        }
-        // The child's id is read before waiting, since waiting consumes the
-        // handle it is read from.
-        let child_pid = child.id() as i64;
-        let complain = |error: std::io::Error| {
-            MetorexError::runtime_error(
-                format!("Failed to wait for the command: {}", error),
-                crate::error::SourceLocation::new(0, 0, 0),
-            )
-        };
-        // A command writing both of its streams into one is read from that
-        // stream rather than from the child's own.
-        if let Some(mut stream) = self.popen_merged.remove(&handle_id) {
-            let mut written = Vec::new();
-            if keep_output {
-                use std::io::Read as _;
-                let _ = stream.read_to_end(&mut written);
-            }
-            drop(stream);
-            let finished = child.wait().map_err(complain)?;
-            let output = String::from_utf8_lossy(&written).to_string();
-            self.record_last_status(&finished, Some(child_pid));
-            instance
-                .borrow_mut()
-                .set_var(POPEN_OUTPUT.to_string(), Object::string(output.clone()));
-            return Ok(output);
-        }
-        let (finished, output) = if keep_output {
-            let held = child.wait_with_output().map_err(complain)?;
-            let text = String::from_utf8_lossy(&held.stdout).to_string();
-            (held.status, text)
-        } else {
-            // Letting go of the reading end is what ends a child that is
-            // still writing, so it is dropped before the wait.
-            drop(child.stdout.take());
-            (child.wait().map_err(complain)?, String::new())
-        };
-        self.record_last_status(&finished, Some(child_pid));
-        instance
-            .borrow_mut()
-            .set_var(POPEN_OUTPUT.to_string(), Object::string(output.clone()));
-        Ok(output)
-    }
-
-    /// The reading and writing halves of an `IO.popen` handle.
-    pub(crate) fn call_io_handle_method(
-        &mut self,
-        receiver: &Object,
-        method_name: &str,
-        arguments: &[Object],
-        position: Position,
-    ) -> Result<Option<Object>, MetorexError> {
-        let Object::Instance(instance) = receiver else {
-            return Ok(None);
-        };
-        if instance.borrow().get_var(POPEN_HANDLE).is_none() {
-            return Ok(None);
-        }
-        match method_name {
-            // Wait for the command to finish without taking what it wrote,
-            // which is what a reader of its error stream needs before there
-            // is anything in that stream to read.
-            "__settle__" => {
-                self.finish_popen(instance)?;
-                Ok(Some(Object::Nil))
-            }
-            // One line of what the child has written so far. The child is
-            // left running: a reader that wants a line has no reason to wait
-            // for the whole of what is coming.
-            "gets" => {
-                if matches!(
-                    instance.borrow().get_var(READ_CLOSED),
-                    Some(Object::Bool(true))
-                ) {
-                    return Err(crate::vm::errors::simple_exception(
-                        "IOError",
-                        "not opened for reading",
-                        position,
-                    ));
-                }
-                Ok(Some(self.read_popen_line(instance)))
-            }
-            // Everything the child wrote that has not been read yet, which is
-            // an empty string rather than nil once the handle is drained.
-            "read" => {
-                // A stream whose reading end is closed hands back nothing more.
-                if matches!(
-                    instance.borrow().get_var(READ_CLOSED),
-                    Some(Object::Bool(true))
-                ) {
-                    return Err(crate::vm::errors::simple_exception(
-                        "IOError",
-                        "not opened for reading",
-                        position,
-                    ));
-                }
-                let remaining = self.finish_popen(instance)?;
-                instance
-                    .borrow_mut()
-                    .set_var(POPEN_OUTPUT.to_string(), Object::string(String::new()));
-                Ok(Some(Object::string(remaining)))
-            }
-            // Writing buffers until the input is closed, which is when the
-            // child is handed everything at once.
-            "puts" | "print" | "write" | "<<" => {
-                // A stream whose writing end is closed takes nothing more.
-                if matches!(
-                    instance.borrow().get_var(WRITE_CLOSED),
-                    Some(Object::Bool(true))
-                ) {
-                    return Err(crate::vm::errors::simple_exception(
-                        "IOError",
-                        "not opened for writing",
-                        position,
-                    ));
-                }
-                let mut written = String::new();
-                for argument in arguments {
-                    let text = self.get_string_representation(argument, position)?;
-                    written.push_str(&text);
-                    if method_name == "puts" && !text.ends_with('\n') {
-                        written.push('\n');
-                    }
-                }
-                if method_name == "puts" && arguments.is_empty() {
-                    written.push('\n');
-                }
-                let existing = match instance.borrow().get_var(POPEN_INPUT) {
-                    Some(Object::String(text)) => text.as_str().to_string(),
-                    _ => String::new(),
-                };
-                instance.borrow_mut().set_var(
-                    POPEN_INPUT.to_string(),
-                    Object::string(format!("{}{}", existing, written)),
-                );
-                Ok(Some(if method_name == "<<" {
-                    receiver.clone()
-                } else {
-                    Object::Nil
-                }))
-            }
-            // Half of a stream with two ends may be closed on its own.
-            "close_write" => {
-                self.finish_popen(instance)?;
-                instance
-                    .borrow_mut()
-                    .set_var(WRITE_CLOSED.to_string(), Object::Bool(true));
-                Ok(Some(Object::Nil))
-            }
-            "close_read" => {
-                instance
-                    .borrow_mut()
-                    .set_var(READ_CLOSED.to_string(), Object::Bool(true));
-                Ok(Some(Object::Nil))
-            }
-            // A closed stream names no process, the same as it answers
-            // nothing else about itself.
-            "pid" => {
-                if matches!(
-                    instance.borrow().get_var(POPEN_CLOSED),
-                    Some(Object::Bool(true))
-                ) {
-                    return Err(crate::vm::errors::simple_exception(
-                        "IOError",
-                        "closed stream",
-                        position,
-                    ));
-                }
-                Ok(Some(
-                    instance
-                        .borrow()
-                        .get_var(POPEN_PID)
-                        .cloned()
-                        .unwrap_or(Object::Nil),
-                ))
-            }
-            "close" => {
-                // A stream the program wrote to is closed with what the child
-                // wrote still wanted. One it only read from is let go of,
-                // which is what ends a child that is still writing.
-                let wrote_to_it = matches!(
-                    instance.borrow().get_var(POPEN_INPUT),
-                    Some(Object::String(text)) if !text.as_str().is_empty()
-                );
-                self.settle_popen(instance, wrote_to_it)?;
-                instance
-                    .borrow_mut()
-                    .set_var(POPEN_CLOSED.to_string(), Object::Bool(true));
-                Ok(Some(Object::Nil))
-            }
-            "closed?" => Ok(Some(
-                instance
-                    .borrow()
-                    .get_var(POPEN_CLOSED)
-                    .cloned()
-                    .unwrap_or(Object::Bool(false)),
-            )),
-            _ => Ok(None),
-        }
-    }
-
     /// `Process::Status` readers. A status carries either an exit code or the
     /// signal that ended the child, never both.
     pub(crate) fn call_process_status_method(
@@ -596,77 +146,6 @@ impl VirtualMachine {
         self.globals_mut()
             .set(LAST_STATUS_GLOBAL, Object::Instance(instance));
     }
-
-    /// A class built once and kept in globals, so every instance of it shares
-    /// one method table and compares equal by class.
-    fn memoized_class(&mut self, global: &str, name: &str, methods: &[&str]) -> Rc<Class> {
-        if let Some(Object::Class(existing)) = self.globals().get(global) {
-            return existing;
-        }
-        // The handle descends from the class it stands for, so the methods
-        // written for that class in the core library answer for it as well.
-        let parent = match self.globals().get(name) {
-            Some(Object::Class(held)) => Some(held),
-            _ => None,
-        };
-        let class = Rc::new(Class::new(name, parent));
-        for method_name in methods {
-            class.define_method(
-                *method_name,
-                Rc::new(Method::with_owner(
-                    (*method_name).to_string(),
-                    vec![],
-                    vec![],
-                    name.to_string(),
-                )),
-            );
-        }
-        self.globals_mut()
-            .set(global, Object::Class(Rc::clone(&class)));
-        class
-    }
-}
-
-/// The commands the shell answers itself, which have no program to run and so
-/// have to go through `/bin/sh` however plainly they are written.
-const SHELL_BUILTINS: &[&str] = &[
-    "!", ".", ":", "break", "case", "continue", "do", "done", "elif", "else", "esac", "eval",
-    "exec", "exit", "export", "fi", "for", "if", "in", "readonly", "return", "set", "shift",
-    "then", "times", "trap", "unset", "until", "while",
-];
-
-/// The words of a command that needs no shell to run, or None when the shell
-/// has to read it. Anything the shell would treat as more than a plain word
-/// sends the command back through `/bin/sh`.
-fn shell_free_words(command: &str) -> Option<Vec<String>> {
-    const SHELL_CHARACTERS: &str = "*?{}[]<>()~&|\\$;'\"`\n#=";
-    if command.contains(|character| SHELL_CHARACTERS.contains(character)) {
-        return None;
-    }
-    let words: Vec<String> = command.split_whitespace().map(str::to_string).collect();
-    let first = words.first()?;
-    if SHELL_BUILTINS.contains(&first.as_str()) {
-        return None;
-    }
-    Some(words)
-}
-
-/// True when an `IO.popen` options hash asks for the child's stderr to join
-/// its stdout, which mspec writes as `err: [:child, :out]`.
-fn child_out_redirect(options: &Object) -> bool {
-    let Object::Dict(entries) = options else {
-        return false;
-    };
-    let Some(target) = entries.borrow().get(":err").cloned() else {
-        return false;
-    };
-    let Object::Array(items) = target else {
-        return false;
-    };
-    let items = items.borrow();
-    items.len() == 2
-        && matches!(&items[0], Object::Symbol(name) if *name.as_str() == *"child")
-        && matches!(&items[1], Object::Symbol(name) if *name.as_str() == *"out")
 }
 
 /// The signal that ended a child, on platforms that report one.
@@ -732,6 +211,35 @@ impl VirtualMachine {
         Ok((pid, status))
     }
 
+    /// A class built once and kept in globals, so every instance of it shares
+    /// one method table and compares equal by class.
+    fn memoized_class(&mut self, global: &str, name: &str, methods: &[&str]) -> Rc<Class> {
+        if let Some(Object::Class(existing)) = self.globals().get(global) {
+            return existing;
+        }
+        // The class descends from the one it stands for, so the methods
+        // written for that class in the core library answer for it as well.
+        let parent = match self.globals().get(name) {
+            Some(Object::Class(found)) => Some(found),
+            _ => None,
+        };
+        let class = Rc::new(Class::new(name, parent));
+        for method in methods {
+            class.define_method(
+                *method,
+                Rc::new(Method::with_owner(
+                    method.to_string(),
+                    Vec::new(),
+                    Vec::new(),
+                    name.to_string(),
+                )),
+            );
+        }
+        self.globals_mut()
+            .set(global, Object::Class(Rc::clone(&class)));
+        class
+    }
+
     /// A Process::Status carrying the parts a wait reported.
     fn build_process_status(&mut self, exitstatus: Object, termsig: Object, pid: i64) -> Object {
         let status_class = self.memoized_class(
@@ -747,25 +255,5 @@ impl VirtualMachine {
             borrowed.set_var(STATUS_PID.to_string(), Object::Int(pid));
         }
         Object::Instance(instance)
-    }
-}
-
-/// One stream for a child to write both of its own into: the end it writes
-/// to, and the end this process reads from.
-fn one_stream_for_both() -> Option<(std::fs::File, std::fs::File)> {
-    use std::os::fd::FromRawFd as _;
-    let mut ends = [0 as libc::c_int; 2];
-    // SAFETY: `pipe` fills the two descriptors it is given and touches
-    // nothing else.
-    if unsafe { libc::pipe(ends.as_mut_ptr()) } != 0 {
-        return None;
-    }
-    // SAFETY: each end is a descriptor this process just made and nothing
-    // else holds.
-    unsafe {
-        Some((
-            std::fs::File::from_raw_fd(ends[0]),
-            std::fs::File::from_raw_fd(ends[1]),
-        ))
     }
 }

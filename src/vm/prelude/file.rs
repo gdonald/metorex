@@ -282,7 +282,11 @@ class File
     else
       0
     end
-    @handle = IO.__stream__ "open", 0, @__file_path.to_s, opening
+    @handle = if @__file_flags.nil?
+      IO.__stream__ "open", 0, @__file_path.to_s, opening
+    else
+      IO.__stream__ "open_flags", 0, @__file_path.to_s, @__file_flags
+    end
     __apply_options__
     @handle
   end

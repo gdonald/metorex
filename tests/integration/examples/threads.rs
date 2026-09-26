@@ -88,3 +88,60 @@ fn test_threads_ending_with_threads_alive_no_parens_execution() {
     let output = run_example("threads/ending_with_threads_alive_no_parens.rb");
     assert_eq!(output, ENDING_WITH_THREADS_ALIVE);
 }
+
+/// The expected output of both `threads/raising_into_threads` variants.
+const RAISING_INTO_THREADS_OUTPUT: &str = concat!(
+    "[ArgumentError, \"at once\"]\n",
+    "[TypeError, \"exception class/object expected\"]\n",
+    "nil\n",
+    "nil\n",
+    "\"handed over\"\n",
+    "nil\n",
+    "\"with a message\"\n",
+    "[[\"with a message\"], []]\n",
+    "\"in a block\"\n",
+    "nil\n",
+    "\"outer\"\n"
+);
+
+#[test]
+fn test_threads_raising_into_threads_execution() {
+    let output = run_example("threads/raising_into_threads.rb");
+    assert_eq!(output, RAISING_INTO_THREADS_OUTPUT);
+}
+
+#[test]
+fn test_threads_raising_into_threads_parens_execution() {
+    let output = run_example("threads/raising_into_threads_parens.rb");
+    assert_eq!(output, RAISING_INTO_THREADS_OUTPUT);
+}
+
+/// The expected output of `threads/interrupted_backtraces`, where the file
+/// name each backtrace entry carries is the example's own.
+fn interrupted_backtraces_output(file: &str) -> String {
+    format!(
+        "[\"{file}:11:in 'Kernel#sleep'\", \"{file}:11:in 'block (2 levels) in <main>'\"]\n\
+         [\"somewhere:1\"]\n\
+         \"a\\\\#1\"\n\
+         true\n\
+         true\n"
+    )
+}
+
+#[test]
+fn test_threads_interrupted_backtraces_execution() {
+    let output = run_example("threads/interrupted_backtraces.rb");
+    assert_eq!(
+        output,
+        interrupted_backtraces_output("interrupted_backtraces.rb")
+    );
+}
+
+#[test]
+fn test_threads_interrupted_backtraces_parens_execution() {
+    let output = run_example("threads/interrupted_backtraces_parens.rb");
+    assert_eq!(
+        output,
+        interrupted_backtraces_output("interrupted_backtraces_parens.rb")
+    );
+}

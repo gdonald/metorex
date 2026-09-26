@@ -126,6 +126,7 @@ fn class_of_block() {
         opened_at: None,
         from_symbol: None,
         written_in: None,
+        written_depth: None,
         ruby2_keywords: std::rc::Rc::new(std::cell::Cell::new(false)),
     }));
     let class = builtins.class_of(&block);

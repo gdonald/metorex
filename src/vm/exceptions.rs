@@ -179,14 +179,24 @@ impl VirtualMachine {
                 }
                 _ => Object::exception("RuntimeError", ""),
             },
+            // An exception is asked for the one to raise through its own
+            // `exception`, handed the message when there is one, which is
+            // where a copy carrying that message comes from.
             Some(Object::Exception(cell)) => {
                 re_raised = true;
                 let existing = Object::Exception(Rc::clone(cell));
-                if let Some(Object::String(text)) = &message {
-                    cell.borrow_mut().message = text.as_str().to_string();
-                }
-                cell.borrow_mut().cause_settled = true;
-                existing
+                let handed: Vec<Object> = message.into_iter().collect();
+                let answered = self.send_to_object(existing, "exception", handed, position)?;
+                let Object::Exception(answered_cell) = &answered else {
+                    let msg = "exception object expected".to_string();
+                    return Err(MetorexError::UncaughtException {
+                        exception: Object::exception("TypeError", msg.clone()),
+                        location: position_to_location(position),
+                        message: msg,
+                    });
+                };
+                answered_cell.borrow_mut().cause_settled = true;
+                answered
             }
             Some(Object::String(text)) => {
                 Object::exception("RuntimeError", text.as_str().to_string())
@@ -327,6 +337,12 @@ impl VirtualMachine {
                 ));
             }
 
+            // An exception that already carries a backtrace, from being
+            // raised before or from `set_backtrace`, keeps it.
+            if exc.backtrace.is_some() {
+                drop(exc);
+                return Object::Exception(exc_ref);
+            }
             // Generate stack trace from call stack
             // Ruby's entries read `file:line:in 'label'`, so a backtrace is
             // usable for locating the code that raised.
@@ -357,6 +373,11 @@ impl VirtualMachine {
             // call. The outermost one is the file body itself.
             let mut sites = vec![(raise_file.clone(), position.line, raising_method)];
             for (index, frame) in frames.iter().enumerate() {
+                // A frame with no call site was entered from nowhere, such
+                // as a fiber's own block, so it names no place of its own.
+                if frame.location().is_none() {
+                    continue;
+                }
                 let line = frame
                     .location()
                     .and_then(|location| {
@@ -525,9 +546,13 @@ impl VirtualMachine {
                             Some(global) => {
                                 self.globals_mut().set(global, exception.clone());
                             }
+                            // Assigned the way `=` assigns it, so a
+                            // variable of an enclosing scope is the one set.
                             None => {
-                                self.environment_mut()
-                                    .define(var_name.clone(), exception.clone());
+                                if !self.environment_mut().set(var_name, exception.clone()) {
+                                    self.environment_mut()
+                                        .define(var_name.clone(), exception.clone());
+                                }
                             }
                         }
                     }

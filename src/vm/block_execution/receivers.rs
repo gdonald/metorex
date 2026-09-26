@@ -163,7 +163,11 @@ impl VirtualMachine {
                 CallFrame::boundary(frame_name.clone()).with_location(frame_location_string.clone())
             }
         }
-        .nested_in_a_block(self.block_nesting_depth())
+        .nested_in_a_block(
+            block
+                .written_depth
+                .unwrap_or_else(|| self.block_nesting_depth()),
+        )
         .written_in_scope(block.written_in.clone())
         .with_source_file(self.current_source_file.clone());
         let body_source_file = block

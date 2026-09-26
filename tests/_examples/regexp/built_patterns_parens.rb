@@ -23,3 +23,9 @@ begin
 rescue TypeError => problem
   puts(problem.message)
 end
+
+# A pattern written as a literal stays frozen however many built ones came
+# and went before it.
+100.times() { Regexp.new("x") }
+p(/after/.frozen?())
+p(Regexp.new("after").frozen?())

@@ -164,11 +164,21 @@ impl VirtualMachine {
             }
             "replace" | "__native_replace__" => {
                 let text = self.one_string_argument(method_name, arguments, position)?;
-                // The replacement's encoding comes with its text.
-                if let Some(Object::String(source)) = arguments.first() {
-                    target.set_encoding(source.encoding_name());
-                }
+                // The replacement's encoding comes with its text, and so does
+                // whether that text is held as bytes.
+                let holds_bytes = match arguments.first() {
+                    Some(Object::String(source)) => {
+                        target.set_encoding(source.encoding_name());
+                        source.holds_bytes()
+                    }
+                    _ => false,
+                };
                 target.replace_text(text);
+                if holds_bytes {
+                    target.mark_bytes();
+                } else {
+                    target.clear_bytes();
+                }
                 Ok(Some(receiver.clone()))
             }
             "prepend" => {

@@ -289,17 +289,6 @@ impl VirtualMachine {
                 Ok(Some(Object::Int(options)))
             }
             "casefold?" => Ok(Some(Object::Bool(flags.contains('i')))),
-            // Whether the pattern matches in one encoding whatever the text
-            // it is matched against is tagged with. A pattern written with
-            // an encoding after it does, and so does one spelled with
-            // characters outside ASCII.
-            "fixed_encoding?" => {
-                let named = flags.contains('u') || flags.contains('e') || flags.contains('s');
-                // A `\u` escape names a character outside ASCII whether or
-                // not the pattern spells it out.
-                let spelled = !pattern.is_ascii() || pattern.contains("\\u");
-                Ok(Some(Object::Bool(named || spelled)))
-            }
             "names" => {
                 let mut named: Vec<Object> = Vec::new();
                 let mut seen = Vec::new();

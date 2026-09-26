@@ -330,6 +330,7 @@ impl VirtualMachine {
                 };
                 block.home_frame = self.lexical_home_frame.unwrap_or(self.current_method_frame);
                 block.written_in = Some(self.enclosing_scope_label());
+                block.written_depth = Some(self.block_nesting_depth());
                 Ok(Object::Block(Rc::new(block)))
             }
             Expression::Grouped { expression, .. } => self.evaluate_expression(expression),

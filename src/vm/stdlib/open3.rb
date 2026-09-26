@@ -1,198 +1,202 @@
 # Running a command and reaching its streams. Each of these starts the
-# command through the shell and hands back what it wrote, what it wrote to
-# its error stream, and how it ended.
-
-require 'tmpdir'
+# command with `Process.spawn`, joined to pipes this process holds the other
+# ends of, alongside a thread whose value is the status the command ended
+# with.
 
 module Open3
-  # Run `command`, answering what it wrote to its output stream and the
-  # status it ended with.
-  def self.capture2(*command, stdin_data: nil, **_options)
-    written = Open3.written_form command
-    output = Open3.run_capturing written, stdin_data, nil
-    [output, Process.last_status]
+  # The command's input, output and error streams, and its waiting thread.
+  def self.popen3(*command, &block)
+    words, options = Open3.split_command command
+    in_read, in_write = IO.pipe
+    out_read, out_write = IO.pipe
+    err_read, err_write = IO.pipe
+    options[:in] = in_read
+    options[:out] = out_write
+    options[:err] = err_write
+    Open3.run words, options, [in_read, out_write, err_write], [in_write, out_read, err_read], &block
+  end
+
+  # The command's input and output streams.
+  def self.popen2(*command, &block)
+    words, options = Open3.split_command command
+    in_read, in_write = IO.pipe
+    out_read, out_write = IO.pipe
+    options[:in] = in_read
+    options[:out] = out_write
+    Open3.run words, options, [in_read, out_write], [in_write, out_read], &block
+  end
+
+  # The command's input, and its output with its error stream joined on.
+  def self.popen2e(*command, &block)
+    words, options = Open3.split_command command
+    in_read, in_write = IO.pipe
+    out_read, out_write = IO.pipe
+    options[:in] = in_read
+    options[:out] = out_write
+    options[:err] = [:child, :out]
+    Open3.run words, options, [in_read, out_write], [in_write, out_read], &block
+  end
+
+  # What the command wrote and the status it ended with, having been handed
+  # `stdin_data` to read.
+  def self.capture2(*command, stdin_data: nil, binmode: false, **options)
+    popen2(*command, **options) do |input, output, waiter|
+      output.binmode if binmode
+      Open3.feed input, stdin_data, binmode
+      [output.read, waiter.value]
+    end
   end
 
   # The same, with the error stream joined onto the output stream.
-  def self.capture2e(*command, stdin_data: nil, **_options)
-    written = Open3.written_form command
-    output = Open3.run_capturing "{ #{written} ; } 2>&1", stdin_data, nil
-    [output, Process.last_status]
+  def self.capture2e(*command, stdin_data: nil, binmode: false, **options)
+    popen2e(*command, **options) do |input, output, waiter|
+      output.binmode if binmode
+      Open3.feed input, stdin_data, binmode
+      [output.read, waiter.value]
+    end
   end
 
   # The same again, with the two streams kept apart.
-  def self.capture3(*command, stdin_data: nil, **_options)
-    written = Open3.written_form command
-    held = Open3.scratch_name
-    output = Open3.run_capturing "{ #{written} ; } 2>#{held}", stdin_data, nil
-    status = Process.last_status
-    errors = File.exist?(held) ? File.read(held) : ""
-    File.delete held if File.exist? held
-    [output, errors, status]
+  def self.capture3(*command, stdin_data: nil, binmode: false, **options)
+    popen3(*command, **options) do |input, output, errors, waiter|
+      if binmode
+        output.binmode
+        errors.binmode
+      end
+      Open3.feed input, stdin_data, binmode
+      [output.read, errors.read, waiter.value]
+    end
   end
 
-  # Run `command` and hand its output stream to the block, which is what
-  # `popen2` gives beyond `capture2`.
-  def self.popen2(*command, **_options)
-    written = Open3.written_form command
-    stream = IO.popen written
-    return [stream, stream, Open3.waiter] unless block_given?
+  # Each command reading what the one before it wrote, answering the status
+  # each ended with.
+  def self.pipeline(*commands, **options)
+    Open3.spawn_pipeline(commands, options, nil, nil).map(&:value)
+  end
+
+  # The last command's output.
+  def self.pipeline_r(*commands, **options, &block)
+    out_read, out_write = IO.pipe
+    waiters = Open3.spawn_pipeline commands, options, nil, out_write
+    out_write.close
+    Open3.hand_over [out_read], [out_read, waiters], waiters, &block
+  end
+
+  # The first command's input.
+  def self.pipeline_w(*commands, **options, &block)
+    in_read, in_write = IO.pipe
+    waiters = Open3.spawn_pipeline commands, options, in_read, nil
+    in_read.close
+    in_write.sync = true
+    Open3.hand_over [in_write], [in_write, waiters], waiters, &block
+  end
+
+  # The first command's input and the last command's output.
+  def self.pipeline_rw(*commands, **options, &block)
+    in_read, in_write = IO.pipe
+    out_read, out_write = IO.pipe
+    waiters = Open3.spawn_pipeline commands, options, in_read, out_write
+    in_read.close
+    out_write.close
+    in_write.sync = true
+    Open3.hand_over [in_write, out_read], [in_write, out_read, waiters], waiters, &block
+  end
+
+  # The commands started, with their input and output left as they were.
+  def self.pipeline_start(*commands, **options, &block)
+    waiters = Open3.spawn_pipeline commands, options, nil, nil
+    Open3.hand_over [], [waiters], waiters, &block
+  end
+
+  # A command's words apart from how it is to be run, which a Hash at the
+  # end names.
+  def self.split_command(command)
+    words = command.dup
+    options = words.last.is_a?(Hash) && !(words.length == 1) ? words.pop.dup : {}
+    [words, options]
+  end
+
+  # Start the command, close the ends only the child uses, and hand the rest
+  # to the block, closing them and waiting for the child once it is done.
+  def self.run(words, options, child_ends, parent_ends)
+    pid = Process.spawn(*words, **options)
+    child_ends.each(&:close)
+    parent_ends.each { |stream| stream.nonblock = false }
+    parent_ends[0].sync = true
+    waiter = Open3.waiter pid
+    handed = [*parent_ends, waiter]
+    return handed unless block_given?
     begin
-      yield stream, stream, Open3.waiter
+      yield(*handed)
     ensure
-      stream.close unless stream.closed?
+      parent_ends.each { |stream| stream.close unless stream.closed? }
+      waiter.join
     end
   end
 
-  def self.popen2e(*command, **_options)
-    written = Open3.written_form command
-    stream = IO.popen "{ #{written} ; } 2>&1"
-    return [stream, stream, Open3.waiter] unless block_given?
+  # What a pipeline hands the block, closing the streams and waiting for
+  # every command once it is done.
+  def self.hand_over(streams, handed, waiters)
+    streams.each { |stream| stream.nonblock = false }
+    return handed unless block_given?
     begin
-      yield stream, stream, Open3.waiter
+      yield(*handed)
     ensure
-      stream.close unless stream.closed?
+      streams.each { |stream| stream.close unless stream.closed? }
+      waiters.each(&:join)
     end
   end
 
-  # The output and error streams separately, with the error stream held in a
-  # scratch file the reader is opened on.
-  def self.popen3(*command, **_options)
-    written = Open3.written_form command
-    held = Open3.scratch_name
-    output = IO.popen "{ #{written} ; } 2>#{held}"
-    File.write held, "" unless File.exist? held
-    errors = Open3.error_reader held, output
-    waiter = Open3.waiter
-    return [output, output, errors, waiter] unless block_given?
-    begin
-      yield output, output, errors, waiter
-    ensure
-      output.close unless output.closed?
-      errors.close unless errors.closed?
-      File.delete held if File.exist? held
+  # Start each command with its input joined to the output of the one before
+  # it, answering a waiting thread for each.
+  def self.spawn_pipeline(commands, options, input, output)
+    reading = input
+    waiters = []
+    commands.each_with_index do |command, index|
+      last = index == commands.length - 1
+      next_read, writing = last ? [nil, output] : IO.pipe
+      words, own = Open3.split_command(command.is_a?(Array) ? command : [command])
+      own = options.merge(own)
+      own[:in] = reading unless reading.nil?
+      own[:out] = writing unless writing.nil?
+      waiters << Open3.waiter(Process.spawn(*words, **own))
+      reading.close unless reading.nil? || reading.equal?(input)
+      writing.close unless last
+      reading = next_read
     end
+    waiters
   end
 
-  # The error stream of a command whose errors were written to a scratch
-  # file. Nothing is in the file until the command has run, so the first read
-  # waits for it to finish.
-  # Nothing is in the scratch file the errors go to until the command has
-  # run, so the first read of one waits for it to finish.
-  module SettleFirst
-    def read(*args)
-      __settle_first__
-      super
+  # Write what the command is to read, then close its input so it sees the
+  # end. A command that stopped reading early is no trouble.
+  def self.feed(input, data, binmode)
+    unless data.nil?
+      data = data.to_s
+      data = data.b if binmode
+      begin
+        input.write data
+      rescue Errno::EPIPE
+        nil
+      end
     end
+    input.close
+  end
 
-    def gets(*args)
-      __settle_first__
-      super
+  # A thread whose value is the status the command ended with, and which
+  # names the command's process id. It asks without waiting and hands over
+  # its turn, so the other threads carry on while the command runs.
+  def self.waiter(pid)
+    thread = Thread.new do
+      status = nil
+      loop do
+        _, status = Process.wait2 pid, Process::WNOHANG
+        break unless status.nil?
+        Thread.pass
+        sleep 0.001
+      end
+      status
     end
-
-    def readlines(*args)
-      __settle_first__
-      super
-    end
-
-    def each_line(*args, &block)
-      __settle_first__
-      super
-    end
-
-    def eof?
-      __settle_first__
-      super
-    end
-
-    def __settle_first__
-      return if @__settled
-      @__settled = true
-      @__command.__settle__
-    end
-  end
-
-  # A reader over the scratch file a command's errors were written to.
-  def self.error_reader(path, output)
-    made = File.open path, "r"
-    made.instance_variable_set :@__command, output
-    made.singleton_class.prepend SettleFirst
-    made
-  end
-
-  # Run each command in turn, each one reading what the one before it wrote.
-  def self.pipeline(*commands, **_options)
-    Open3.run_capturing Open3.joined_form(commands), nil, nil
-    [Process.last_status]
-  end
-
-  def self.pipeline_r(*commands, **_options)
-    stream = IO.popen Open3.joined_form(commands)
-    return [stream, [Open3.waiter]] unless block_given?
-    begin
-      yield stream, [Open3.waiter]
-    ensure
-      stream.close unless stream.closed?
-    end
-  end
-
-  def self.pipeline_w(*commands, **_options)
-    stream = IO.popen Open3.joined_form(commands)
-    return [stream, [Open3.waiter]] unless block_given?
-    begin
-      yield stream, [Open3.waiter]
-    ensure
-      stream.close unless stream.closed?
-    end
-  end
-
-  def self.pipeline_rw(*commands, **_options)
-    stream = IO.popen Open3.joined_form(commands)
-    return [stream, stream, [Open3.waiter]] unless block_given?
-    begin
-      yield stream, stream, [Open3.waiter]
-    ensure
-      stream.close unless stream.closed?
-    end
-  end
-
-  def self.pipeline_start(*commands, **_options)
-    Open3.pipeline_r(*commands) { |stream, waiters| return [waiters] } unless block_given?
-    Open3.pipeline_r(*commands) { |stream, waiters| yield waiters }
-  end
-
-  # The command as the shell reads it. An argument list is joined into one
-  # line, and a leading environment Hash is written in front of it.
-  def self.written_form(command)
-    pieces = command.dup
-    environment = pieces.first.is_a?(Hash) ? pieces.shift : {}
-    named = environment.map { |key, value| "#{key}=#{value}" }
-    (named + pieces.map { |piece| piece.to_s }).join " "
-  end
-
-  def self.joined_form(commands)
-    commands.map { |command| Open3.written_form(Array(command)) }.join " | "
-  end
-
-  # A scratch file nobody else is using, for the stream being held apart.
-  def self.scratch_name
-    File.join Dir.tmpdir, "metorex_open3_#{Process.pid}_#{rand 1000000}"
-  end
-
-  # The thread each of these answers with. Metorex runs the command to
-  # completion before handing anything back, so the thread has only the
-  # status left to report.
-  def self.waiter
-    status = Process.last_status
-    Thread.new { status }
-  end
-
-  # Run the command, writing `input` to it first when there is any.
-  def self.run_capturing(written, input, _unused)
-    return IO.popen(written) { |stream| stream.read } if input.nil?
-    IO.popen(written) do |stream|
-      stream.write input
-      stream.read
-    end
+    thread.define_singleton_method(:pid) { pid }
+    thread
   end
 end

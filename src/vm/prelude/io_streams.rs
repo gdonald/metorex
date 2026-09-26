@@ -51,6 +51,16 @@ class IO
     end
 
     # A size or an offset arrives as an Integer and nothing else.
+    # A number read the way Ruby reads one it was not handed as an Integer.
+    def self.implicit_integer(held)
+      return held if held.is_a? Integer
+      raise TypeError, "no implicit conversion from nil to integer" if held.nil?
+      unless held.respond_to? :to_int
+        raise TypeError, "no implicit conversion of #{held.class} into Integer"
+      end
+      held.to_int
+    end
+
     def self.whole_number(held)
       raise TypeError, "not an Integer" unless held.is_a? Integer
       if held > 9223372036854775807 || held < -9223372036854775808
@@ -135,9 +145,14 @@ class IO
 
     # A buffer over what a file holds.
     def self.map(file, size = nil, offset = 0, flags = 0)
-      offset = IO::Buffer.whole_number offset
+      offset = IO::Buffer.implicit_integer offset
       flags = IO::Buffer.whole_number flags
       raise ArgumentError, "Offset can't be negative!" if offset < 0
+      # A shared mapping that may be written needs a file that may be
+      # written. A private one writes to a copy of its own.
+      if (flags & (READONLY | PRIVATE)) == 0 && !file.__send__(:__writable__)
+        raise Errno::EACCES, "io_buffer_map_file:mmap"
+      end
       content = File.read(file.path).b
       whole = content.bytesize
       raise ArgumentError, "Invalid negative or zero file size!" if whole == 0
@@ -428,7 +443,16 @@ class IO
 
     def byte_view
       return [] if @text.nil?
-      @text.bytes[@offset, @size] || []
+      mapped_bytes[@offset, @size] || []
+    end
+
+    # A buffer shared with the file it maps reads the file as it stands now,
+    # so a change another process wrote through the same mapping is seen.
+    def mapped_bytes
+      return @text.bytes if @file.nil? || !shared?
+      length = @text.bytesize
+      held = File.binread(@file.path).bytes[@file_offset, length] || []
+      held + Array.new(length - held.length, 0)
     end
 
     def ensure_valid
@@ -436,7 +460,7 @@ class IO
     end
 
     def set_bytes(values, at = 0)
-      held = @text.bytes
+      held = mapped_bytes
       values.each_with_index do |value, step|
         place = @offset + at + step
         held[place] = value & 0xff if place < @offset + @size
