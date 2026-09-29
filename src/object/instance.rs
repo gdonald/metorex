@@ -27,15 +27,17 @@ pub struct Instance {
 }
 
 impl Instance {
-    /// Create a new instance of a class
-    pub fn new(class: Rc<Class>) -> Self {
-        Self {
+    /// Make an instance of a class, recorded among the objects still alive.
+    pub fn new(class: Rc<Class>) -> Rc<RefCell<Self>> {
+        let made = Rc::new(RefCell::new(Self {
             class,
             instance_vars: IndexMap::new(),
             singleton_methods: Rc::new(RefCell::new(HashMap::new())),
             singleton_class: Rc::new(RefCell::new(None)),
             frozen: false,
-        }
+        }));
+        super::live::record_instance(&made);
+        made
     }
 
     /// Attach a singleton method to this instance.

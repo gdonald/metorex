@@ -267,6 +267,19 @@ impl VirtualMachine {
             "superclass" => {
                 return match class_rc.superclass() {
                     Some(parent) => Ok(Answered(Object::Class(parent))),
+                    // The singleton class of a value, such as a String,
+                    // inherits from that value's class.
+                    None if class_rc.is_singleton_class() => {
+                        match class_rc.get_class_var("__attached__") {
+                            Some(Object::Instance(_) | Object::Class(_) | Object::Module(_)) => {
+                                Ok(Answered(Object::Nil))
+                            }
+                            Some(value) => {
+                                Ok(Answered(Object::Class(self.builtins().class_of(&value))))
+                            }
+                            None => Ok(Answered(Object::Nil)),
+                        }
+                    }
                     None => Ok(Answered(Object::Nil)),
                 };
             }
@@ -274,6 +287,20 @@ impl VirtualMachine {
                 let mut chain: Vec<Object> = Vec::new();
                 let mut seen: Vec<*const Class> = Vec::new();
                 push_class_ancestors(class_rc, &mut chain, &mut seen);
+                // The singleton class of a value, such as a Hash or a Regexp,
+                // stands in front of that value's class, whose ancestors
+                // follow its own.
+                if class_rc.is_singleton_class()
+                    && class_rc.superclass().is_none()
+                    && let Some(attached) = class_rc.get_class_var("__attached__")
+                    && !matches!(
+                        attached,
+                        Object::Instance(_) | Object::Class(_) | Object::Module(_)
+                    )
+                {
+                    let value_class = self.builtins().class_of(&attached);
+                    push_class_ancestors(&value_class, &mut chain, &mut seen);
+                }
                 return Ok(Answered(Object::Array(Rc::new(std::cell::RefCell::new(
                     chain,
                 )))));

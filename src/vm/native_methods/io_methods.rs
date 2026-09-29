@@ -4,7 +4,6 @@ use crate::lexer::Position;
 use crate::object::{Instance, Method, Object};
 use crate::vm::VirtualMachine;
 use crate::vm::utils::position_to_location;
-use std::cell::RefCell;
 use std::rc::Rc;
 
 /// Instance variable on a Process::Status: the exit code, or nil when signaled.
@@ -131,7 +130,7 @@ impl VirtualMachine {
             "Process::Status",
             &["exited?", "=="],
         );
-        let instance = Rc::new(RefCell::new(Instance::new(status_class)));
+        let instance = Instance::new(status_class);
         instance
             .borrow_mut()
             .set_var(STATUS_EXITSTATUS.to_string(), exitstatus);
@@ -179,21 +178,36 @@ impl VirtualMachine {
         flags: libc::c_int,
         position: Position,
     ) -> Result<(i32, Object), MetorexError> {
-        let mut raw_status: libc::c_int = 0;
-        // SAFETY: `waitpid` only writes through the status pointer given.
-        let pid = unsafe { libc::waitpid(requested, &mut raw_status, flags) };
-        // A child that has not finished answers a pid of zero, which the
-        // caller reports as nil.
-        if pid == 0 && flags & libc::WNOHANG != 0 {
-            return Ok((0, Object::Nil));
-        }
-        if pid <= 0 {
+        let Some((pid, status)) = self.reap_child(requested, flags) else {
             let message = "No child processes".to_string();
             return Err(MetorexError::UncaughtException {
                 exception: Object::exception("Errno::ECHILD", message.clone()),
                 location: position_to_location(position),
                 message,
             });
+        };
+        if pid != 0 {
+            self.globals_mut().set(LAST_STATUS_GLOBAL, status.clone());
+        }
+        Ok((pid, status))
+    }
+
+    /// Wait for a child without recording `$?`, answering None when there is
+    /// no child to wait for. A child still running under `WNOHANG` answers a
+    /// pid of zero and a nil status.
+    pub(crate) fn reap_child(
+        &mut self,
+        requested: i32,
+        flags: libc::c_int,
+    ) -> Option<(i32, Object)> {
+        let mut raw_status: libc::c_int = 0;
+        // SAFETY: `waitpid` only writes through the status pointer given.
+        let pid = unsafe { libc::waitpid(requested, &mut raw_status, flags) };
+        if pid == 0 && flags & libc::WNOHANG != 0 {
+            return Some((0, Object::Nil));
+        }
+        if pid <= 0 {
+            return None;
         }
         let exited = libc::WIFEXITED(raw_status);
         let (exitstatus, termsig) = if exited {
@@ -207,8 +221,7 @@ impl VirtualMachine {
             (Object::Int(0), Object::Nil)
         };
         let status = self.build_process_status(exitstatus, termsig, pid as i64);
-        self.globals_mut().set(LAST_STATUS_GLOBAL, status.clone());
-        Ok((pid, status))
+        Some((pid, status))
     }
 
     /// A class built once and kept in globals, so every instance of it shares
@@ -223,7 +236,7 @@ impl VirtualMachine {
             Some(Object::Class(found)) => Some(found),
             _ => None,
         };
-        let class = Rc::new(Class::new(name, parent));
+        let class = Class::new(name, parent);
         for method in methods {
             class.define_method(
                 *method,
@@ -241,13 +254,18 @@ impl VirtualMachine {
     }
 
     /// A Process::Status carrying the parts a wait reported.
-    fn build_process_status(&mut self, exitstatus: Object, termsig: Object, pid: i64) -> Object {
+    pub(crate) fn build_process_status(
+        &mut self,
+        exitstatus: Object,
+        termsig: Object,
+        pid: i64,
+    ) -> Object {
         let status_class = self.memoized_class(
             "__Process_Status_class",
             "Process::Status",
             &["exited?", "=="],
         );
-        let instance = Rc::new(RefCell::new(Instance::new(status_class)));
+        let instance = Instance::new(status_class);
         {
             let mut borrowed = instance.borrow_mut();
             borrowed.set_var(STATUS_EXITSTATUS.to_string(), exitstatus);

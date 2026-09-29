@@ -56,7 +56,8 @@ pub(super) const SOURCE: &str = r##"
   end
   private :__tag_read__
 
-  def readlines(separator = $/, limit = nil, chomp: false)
+  # Ruby reads only `chomp:` and passes over any other keyword.
+  def readlines(separator = $/, limit = nil, chomp: false, **_ignored)
     separator, limit = StringIO.line_arguments separator, limit
     raise ArgumentError, "invalid limit: 0 for readlines" if limit == 0
     collected = []

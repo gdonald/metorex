@@ -90,6 +90,9 @@ impl VirtualMachine {
             self.wait_for_other_threads(position);
             self.raise_if_thread_killed(position)?;
         }
+        // A signal that arrived while the program waited is handled before
+        // the wait answers.
+        self.deliver_pending_signals(position)?;
         Ok(Object::Int(wanted.unwrap_or(0.0) as i64))
     }
 

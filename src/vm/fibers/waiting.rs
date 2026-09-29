@@ -178,6 +178,18 @@ impl VirtualMachine {
         })
     }
 
+    /// Hand the turn over from inside a thread, from its own body or from a
+    /// fiber it resumed, and raise whatever was handed to it meanwhile.
+    pub(crate) fn hand_over_turn(&mut self, position: Position) -> Result<(), MetorexError> {
+        if !self.running_a_thread_body() {
+            self.blocking_in_fiber = true;
+            self.fiber_suspend(Object::Nil, position)?;
+            return self.raise_if_thread_killed(position);
+        }
+        self.wait_for_other_threads(position);
+        self.raise_if_thread_killed(position)
+    }
+
     pub(crate) fn wait_for_other_threads(&mut self, position: Position) {
         if self.running_a_thread_body() {
             // A thread that hands control over while it waits is asleep for
@@ -253,6 +265,7 @@ impl VirtualMachine {
             turns += 1;
             let carried = self.thread_fiber_object(thread, handle);
             let started_with = self.thread_start_arguments(thread);
+            self.locks_this_turn = 0;
             self.thread_current_stack.push(thread.clone());
             let stepped = self.fiber_resume(handle, carried, started_with, position);
             self.thread_current_stack.pop();

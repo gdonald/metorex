@@ -88,6 +88,20 @@ pub(crate) struct FiberState {
     /// What the fiber is to raise when it next holds the interpreter, which
     /// is how `Fiber#raise` reaches into a suspended one.
     pub(crate) raising: Option<Object>,
+    /// Whether the fiber last handed control back through `Fiber.yield`,
+    /// which only a `resume` may answer and a `transfer` may not.
+    pub(crate) yielding: bool,
+    /// The fiber whose stack the one this fiber was last run from sits on.
+    /// A fiber resumed from inside another runs on that one's stack, so it
+    /// is reached through it again.
+    pub(crate) host: Option<usize>,
+    /// The fiber this one resumed, while control has been handed past both
+    /// of them to the fiber a program starts on. This one waits where it
+    /// handed control on, part-way through resuming the other.
+    pub(crate) relaying: Option<usize>,
+    /// Which fiber a relaying one is to run when it is next resumed, and
+    /// what that fiber is handed.
+    pub(crate) relay_request: Option<(usize, Object, Vec<Object>)>,
 }
 
 impl FiberState {
@@ -103,4 +117,24 @@ impl FiberState {
 pub(crate) struct FiberFrame {
     pub(crate) handle: usize,
     pub(crate) fiber: Object,
+    pub(crate) handoff: Handoff,
+}
+
+/// How control reached a chain of fibers. A fiber resumed goes back to the
+/// one that resumed it when it runs out, while one reached by a transfer from
+/// the fiber a program starts on goes back there.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Handoff {
+    Resume,
+    Transfer,
+}
+
+/// What a fiber answers when it is handed some number of values: nothing,
+/// the one value, or the values together in an array.
+pub(crate) fn passing_value(mut given: Vec<Object>) -> Object {
+    match given.len() {
+        0 => Object::Nil,
+        1 => given.remove(0),
+        _ => Object::array(given),
+    }
 }

@@ -49,8 +49,7 @@ impl VirtualMachine {
             Object::Instance(inst_rc) => {
                 let copy = {
                     let inst = inst_rc.borrow();
-                    let mut new_inst =
-                        crate::object::Instance::new(std::rc::Rc::clone(&inst.class));
+                    let new_inst = crate::object::Instance::new(std::rc::Rc::clone(&inst.class));
                     for (k, v) in &inst.instance_vars {
                         // The characters or elements behind a subclass of a
                         // primitive belong to the instance, so the copy gets
@@ -85,9 +84,9 @@ impl VirtualMachine {
                             }
                             _ => v.clone(),
                         };
-                        new_inst.set_var(k.clone(), held);
+                        new_inst.borrow_mut().set_var(k.clone(), held);
                     }
-                    Object::Instance(std::rc::Rc::new(std::cell::RefCell::new(new_inst)))
+                    Object::Instance(new_inst)
                 };
                 // The copy gets `initialize_copy` with the original, so
                 // a class can deep-copy what the shallow copy shared.
@@ -239,6 +238,7 @@ impl VirtualMachine {
         };
         if let Some(to) = Self::collection_address(copy) {
             self.collection_variables.insert(to, held);
+            self.collection_variable_owners.insert(to, copy.clone());
         }
     }
 
@@ -351,7 +351,8 @@ impl VirtualMachine {
                 | Object::Set(_)
                 | Object::Method(_)
                 | Object::Block(_)
-                | Object::Binding(_) => {
+                | Object::Binding(_)
+                | Object::Regex(_, _) => {
                     if let Some(address) = Self::collection_address(copy) {
                         self.frozen_collections.insert(address, copy.clone());
                     }

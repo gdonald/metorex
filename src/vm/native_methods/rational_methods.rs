@@ -8,7 +8,6 @@ use crate::object::Object;
 use crate::vm::VirtualMachine;
 use crate::vm::errors::*;
 use crate::vm::utils::position_to_location;
-use std::rc::Rc;
 
 /// The most bits either half of a Rational may take once raised, which is the
 /// room Ruby gives one before refusing the power outright.
@@ -268,17 +267,17 @@ impl VirtualMachine {
                 position_to_location(position),
             ));
         };
-        let mut instance = crate::object::Instance::new(rational_class);
-        instance.set_var(
+        let instance = crate::object::Instance::new(rational_class);
+        instance.borrow_mut().set_var(
             "numerator".to_string(),
             Object::integer(numerator / &divisor),
         );
-        instance.set_var(
+        instance.borrow_mut().set_var(
             "denominator".to_string(),
             Object::integer(denominator / &divisor),
         );
-        instance.frozen = true;
-        Ok(Object::Instance(Rc::new(std::cell::RefCell::new(instance))))
+        instance.borrow_mut().frozen = true;
+        Ok(Object::Instance(instance))
     }
 
     /// An Integer or Float as an exact Rational, for arithmetic where the
@@ -312,10 +311,12 @@ impl VirtualMachine {
                 position_to_location(position),
             ));
         };
-        let mut instance = crate::object::Instance::new(complex_class);
-        instance.set_var("real".to_string(), real);
-        instance.set_var("imaginary".to_string(), imaginary);
-        Ok(Object::Instance(Rc::new(std::cell::RefCell::new(instance))))
+        let instance = crate::object::Instance::new(complex_class);
+        instance.borrow_mut().set_var("real".to_string(), real);
+        instance
+            .borrow_mut()
+            .set_var("imaginary".to_string(), imaginary);
+        Ok(Object::Instance(instance))
     }
 
     /// Execute native methods for the Rational class.

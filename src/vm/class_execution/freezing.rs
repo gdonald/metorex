@@ -28,6 +28,9 @@ impl VirtualMachine {
             Object::Method(method) => Some(Rc::as_ptr(method) as usize),
             Object::Block(block) => Some(Rc::as_ptr(block) as usize),
             Object::Binding(binding) => Some(Rc::as_ptr(binding) as usize),
+            // A Regexp is known by the pattern it holds, which each one made
+            // holds a copy of its own.
+            Object::Regex(pattern, _) => Some(Rc::as_ptr(pattern) as usize),
             _ => None,
         }
     }
@@ -96,7 +99,8 @@ impl VirtualMachine {
             | Object::Set(_)
             | Object::Method(_)
             | Object::Block(_)
-            | Object::Binding(_) => Self::collection_address(receiver)
+            | Object::Binding(_)
+            | Object::Regex(_, _) => Self::collection_address(receiver)
                 .is_some_and(|address| self.frozen_collections.contains_key(&address)),
             // Complex and Rational are value objects, frozen from birth.
             Object::Instance(inst) => {

@@ -13,6 +13,7 @@ impl VirtualMachine {
         if !self.tracepoints.is_empty() {
             self.fire_line_event(statement.position())?;
         }
+        self.deliver_pending_signals(statement.position())?;
         let line = statement.position().line;
         if self.coverage_skip_line.take() != Some(line) && self.coverage.is_some() {
             self.coverage_count(line);

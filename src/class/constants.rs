@@ -3,8 +3,15 @@
 use super::*;
 
 impl Class {
-    /// Create a new class with an optional superclass.
-    pub fn new(name: impl Into<String>, superclass: Option<Rc<Class>>) -> Self {
+    /// Make a class with an optional superclass, recorded among the objects
+    /// still alive.
+    pub fn new(name: impl Into<String>, superclass: Option<Rc<Class>>) -> Rc<Self> {
+        let made = Rc::new(Self::unrecorded(name, superclass));
+        crate::object::live::record_class(&made);
+        made
+    }
+
+    fn unrecorded(name: impl Into<String>, superclass: Option<Rc<Class>>) -> Self {
         Self {
             name: name.into(),
             assigned_name: RefCell::new(None),
@@ -33,7 +40,7 @@ impl Class {
     }
 
     /// Create a module: a class object that reports itself as a module.
-    pub fn new_module(name: impl Into<String>) -> Self {
+    pub fn new_module(name: impl Into<String>) -> Rc<Self> {
         let module = Self::new(name, None);
         module.module_flag.set(true);
         module

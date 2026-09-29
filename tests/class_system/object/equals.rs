@@ -138,7 +138,7 @@ fn test_equals_dict_nested() {
 
 #[test]
 fn test_equals_instance() {
-    let class = Rc::new(Class::new("TestClass", None));
+    let class = Class::new("TestClass", None);
 
     let inst1 = Rc::new(RefCell::new(Instance {
         class: Rc::clone(&class),
@@ -166,9 +166,9 @@ fn test_equals_instance() {
 
 #[test]
 fn test_equals_class() {
-    let class1 = Rc::new(Class::new("Class1", None));
+    let class1 = Class::new("Class1", None);
     let class2 = Rc::clone(&class1);
-    let class3 = Rc::new(Class::new("Class1", None));
+    let class3 = Class::new("Class1", None);
 
     let obj1 = Object::Class(class1);
     let obj2 = Object::Class(class2);
@@ -262,6 +262,7 @@ fn test_equals_block() {
         from_symbol: None,
         written_in: None,
         written_depth: None,
+        written_within: Rc::default(),
         ruby2_keywords: std::rc::Rc::new(std::cell::Cell::new(false)),
     });
     let block2 = Rc::clone(&block1);
@@ -283,6 +284,7 @@ fn test_equals_block() {
         from_symbol: None,
         written_in: None,
         written_depth: None,
+        written_within: Rc::default(),
         ruby2_keywords: std::rc::Rc::new(std::cell::Cell::new(false)),
     });
     let block4 = Rc::new((*block1).clone());
@@ -381,7 +383,7 @@ fn test_equals_different_types() {
 
 #[test]
 fn test_module_equals_same_rc() {
-    let module = Rc::new(Class::new("MyMod", None));
+    let module = Class::new("MyMod", None);
     let a = Object::Module(module.clone());
     let b = Object::Module(module);
     assert!(a.equals(&b));
@@ -389,8 +391,8 @@ fn test_module_equals_same_rc() {
 
 #[test]
 fn test_module_equals_different_rc() {
-    let a = Object::Module(Rc::new(Class::new("MyMod", None)));
-    let b = Object::Module(Rc::new(Class::new("MyMod", None)));
+    let a = Object::Module(Class::new("MyMod", None));
+    let b = Object::Module(Class::new("MyMod", None));
     assert!(!a.equals(&b));
 }
 

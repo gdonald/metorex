@@ -39,9 +39,12 @@ impl VirtualMachine {
                 })
                 .and_then(|target| self.find_refined_method(&target, &name_str));
                 if let Some(refined) = refined {
+                    // The refinement the method was written in owns it.
                     let mut unbound = (*refined).clone();
-                    unbound.owner = Some(class_rc.name().to_string());
-                    unbound.owner_class = Some(Rc::clone(class_rc));
+                    if unbound.owner_class.is_none() {
+                        unbound.owner = Some(class_rc.name().to_string());
+                        unbound.owner_class = Some(Rc::clone(class_rc));
+                    }
                     unbound.origin_class = Some(Rc::clone(class_rc));
                     return Ok(Answered(Object::Method(Rc::new(unbound))));
                 }

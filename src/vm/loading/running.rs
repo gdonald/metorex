@@ -289,7 +289,11 @@ impl VirtualMachine {
         // for from.
         let caller_def_scope = std::mem::take(&mut self.def_scope_stack);
         let caller_nesting = std::mem::take(&mut self.method_nesting_stack);
+        let caller_library = self
+            .loading_embedded_library
+            .replace(crate::vm::stdlib::embedded_library_file(name));
         let result = self.execute_program(&statements);
+        self.loading_embedded_library = caller_library;
         self.method_nesting_stack = caller_nesting;
         self.def_scope_stack = caller_def_scope;
         result?;

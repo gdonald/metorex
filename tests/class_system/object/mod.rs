@@ -2,6 +2,7 @@ mod basic;
 mod equals;
 mod hash;
 mod instance;
+mod live_objects;
 mod method;
 mod struct_tests;
 mod to_string;

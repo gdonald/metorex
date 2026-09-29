@@ -39,12 +39,12 @@ fn test_create_all_object_types() {
 #[test]
 fn test_create_complex_types() {
     // Class
-    let class = Rc::new(Class::new("TestClass".to_string(), None));
+    let class = Class::new("TestClass".to_string(), None);
     let class_obj = Object::Class(class);
 
     // Instance
-    let class = Rc::new(Class::new("TestClass".to_string(), None));
-    let instance = Rc::new(RefCell::new(Instance::new(Rc::clone(&class))));
+    let class = Class::new("TestClass".to_string(), None);
+    let instance = Instance::new(Rc::clone(&class));
     let instance_obj = Object::Instance(instance);
 
     // Method
@@ -263,8 +263,8 @@ fn test_result_equality() {
 #[test]
 fn test_reference_equality() {
     // Instances with same reference should be equal
-    let class = Rc::new(Class::new("Test".to_string(), None));
-    let inst1 = Rc::new(RefCell::new(Instance::new(class)));
+    let class = Class::new("Test".to_string(), None);
+    let inst1 = Instance::new(class);
     let inst2 = Rc::clone(&inst1);
 
     let obj1 = Object::Instance(inst1);
@@ -273,7 +273,7 @@ fn test_reference_equality() {
     assert!(obj1.equals(&obj2));
 
     // Classes with same reference should be equal
-    let class1 = Rc::new(Class::new("Test".to_string(), None));
+    let class1 = Class::new("Test".to_string(), None);
     let class2 = Rc::clone(&class1);
 
     let obj1 = Object::Class(class1);
@@ -356,12 +356,12 @@ fn test_non_hashable_types() {
     assert!(dict.hash().is_none());
 
     // Instances should not be hashable
-    let class = Rc::new(Class::new("Test".to_string(), None));
-    let instance = Object::Instance(Rc::new(RefCell::new(Instance::new(class))));
+    let class = Class::new("Test".to_string(), None);
+    let instance = Object::Instance(Instance::new(class));
     assert!(instance.hash().is_none());
 
     // Classes should not be hashable
-    let class = Rc::new(Class::new("Test".to_string(), None));
+    let class = Class::new("Test".to_string(), None);
     let class_obj = Object::Class(class);
     assert!(class_obj.hash().is_none());
 
@@ -460,11 +460,11 @@ fn test_to_string_dict() {
 
 #[test]
 fn test_to_string_class_and_instance() {
-    let class = Rc::new(Class::new("MyClass".to_string(), None));
+    let class = Class::new("MyClass".to_string(), None);
     let class_obj = Object::Class(Rc::clone(&class));
     assert_eq!(class_obj.to_string(), "MyClass");
 
-    let instance = Object::Instance(Rc::new(RefCell::new(Instance::new(class))));
+    let instance = Object::Instance(Instance::new(class));
     let s = instance.to_string();
     assert!(
         s.starts_with("#<MyClass:0x") && s.ends_with('>'),
@@ -537,8 +537,8 @@ fn test_float_equality_is_exact() {
 
 #[test]
 fn test_instance_variables() {
-    let class = Rc::new(Class::new("Person".to_string(), None));
-    let inst = Rc::new(RefCell::new(Instance::new(class)));
+    let class = Class::new("Person".to_string(), None);
+    let inst = Instance::new(class);
 
     // Set instance variables
     inst.borrow_mut()

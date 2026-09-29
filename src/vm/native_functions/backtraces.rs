@@ -7,7 +7,6 @@ impl VirtualMachine {
     /// `caller_locations(0)` reports them.
     pub(crate) fn caller_location_objects(&mut self, position: Position) -> Vec<Object> {
         use crate::object::Instance;
-        use std::cell::RefCell;
         use std::rc::Rc;
         let loc_class = self.backtrace_location_class();
         let current_file = self
@@ -19,14 +18,17 @@ impl VirtualMachine {
         // The call stack records where each frame was entered from, so the
         // line `caller_locations` itself sits on is not among them. Ruby
         // counts it as the innermost location, which is what level 0 names.
-        let mut here = Instance::new(Rc::clone(&loc_class));
-        here.set_var("lineno".to_string(), Object::Int(position.line as i64));
-        here.set_var("path".to_string(), Object::string(current_file.clone()));
+        let here = Instance::new(Rc::clone(&loc_class));
+        here.borrow_mut()
+            .set_var("lineno".to_string(), Object::Int(position.line as i64));
+        here.borrow_mut()
+            .set_var("path".to_string(), Object::string(current_file.clone()));
         let here_absolute = match self.absolute_path_for(&current_file) {
             Some(resolved) => Object::string(resolved),
             None => Object::Nil,
         };
-        here.set_var("absolute_path".to_string(), here_absolute);
+        here.borrow_mut()
+            .set_var("absolute_path".to_string(), here_absolute);
         let frames: Vec<_> = stack.iter().rev().collect();
         // Where each frame was called from, with a call made inside the core
         // library standing for the place that reached it: Ruby names the
@@ -35,8 +37,9 @@ impl VirtualMachine {
         // A frame's own name labels the location it is running at, and Ruby
         // names a block by the scope holding it: `block in <main>`.
         let label_at = |index: usize| -> String { frame_label_at(&frames, index) };
-        here.set_var("label".to_string(), Object::string(label_at(0)));
-        locations.push(Object::Instance(Rc::new(RefCell::new(here))));
+        here.borrow_mut()
+            .set_var("label".to_string(), Object::string(label_at(0)));
+        locations.push(Object::Instance(here));
         for (index, frame) in frames.iter().enumerate() {
             // A frame with no recorded call site was never called from
             // anywhere — the file body itself — so it is not a caller.
@@ -49,21 +52,25 @@ impl VirtualMachine {
             if line == 0 {
                 continue;
             }
-            let mut inst = Instance::new(Rc::clone(&loc_class));
-            inst.set_var("lineno".to_string(), Object::Int(line));
+            let inst = Instance::new(Rc::clone(&loc_class));
+            inst.borrow_mut()
+                .set_var("lineno".to_string(), Object::Int(line));
             let absolute = match self.absolute_path_for(&path) {
                 Some(resolved) => Object::string(resolved),
                 None => Object::Nil,
             };
-            inst.set_var("path".to_string(), Object::string(path));
-            inst.set_var("absolute_path".to_string(), absolute);
+            inst.borrow_mut()
+                .set_var("path".to_string(), Object::string(path));
+            inst.borrow_mut()
+                .set_var("absolute_path".to_string(), absolute);
             // A frame records where it was called from, so its location pairs
             // with the name of the frame below it: the one that made the call.
             // A frame records where it was called from, so its location
             // pairs with the name of the frame below it: the one that made
             // the call.
-            inst.set_var("label".to_string(), Object::string(label_at(index + 1)));
-            locations.push(Object::Instance(Rc::new(RefCell::new(inst))));
+            inst.borrow_mut()
+                .set_var("label".to_string(), Object::string(label_at(index + 1)));
+            locations.push(Object::Instance(inst));
         }
         locations
     }

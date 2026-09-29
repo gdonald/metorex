@@ -15,7 +15,14 @@ impl VirtualMachine {
     ) -> Result<i64, MetorexError> {
         let marked = |kind: i64, count: usize| kind.wrapping_mul(1_000_003) ^ count as i64;
         match held {
-            Object::Dict(entries) => Ok(marked(1, entries.borrow().len())),
+            Object::Dict(entries) => Ok(marked(
+                1,
+                entries
+                    .borrow()
+                    .keys()
+                    .filter(|key| !crate::vm::native_methods::hash_methods::is_internal_key(key))
+                    .count(),
+            )),
             Object::Array(items) => Ok(marked(2, items.borrow().len())),
             Object::Set(items) => Ok(marked(3, items.borrow().len())),
             other => self.hash_digest(other, position),

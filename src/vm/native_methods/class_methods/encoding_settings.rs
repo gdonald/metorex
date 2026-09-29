@@ -245,7 +245,6 @@ impl VirtualMachine {
                     "utf8" => "UTF_8",
                     "ascii" | "ansi_x3.4-1968" => "US_ASCII",
                     "binary" => "BINARY",
-                    "sjis" => "SHIFT_JIS",
                     // Every other name is matched against the table the constants
                     // were built from, so a constant and the name it reports find
                     // the same encoding.

@@ -345,6 +345,8 @@ impl VirtualMachine {
                         value = self.send_to_object(value, "to_hash", vec![], splat_position)?;
                     }
                     match &value {
+                        // `**nil` passes no keywords, the same as `**{}`.
+                        Object::Nil => {}
                         Object::Dict(entries) if entries.borrow().is_empty() => {}
                         Object::Dict(entries) => {
                             let mut keywords = entries.borrow().clone();
@@ -519,26 +521,9 @@ impl VirtualMachine {
         &mut self,
         expression: &Expression,
     ) -> Result<Object, MetorexError> {
-        // Guard against infinite recursion. The count belongs to the thread
-        // running the program, so two virtual machines running side by side
-        // do not add their nesting together.
-        thread_local! {
-            static DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
-        }
-        let reached = DEPTH.with(|depth| {
-            let reached = depth.get();
-            depth.set(reached + 1);
-            reached
-        });
-        if reached > 1000 {
-            DEPTH.with(|depth| depth.set(depth.get() - 1));
-            return Err(MetorexError::runtime_error(
-                "SystemStackError: stack level too deep".to_string(),
-                crate::vm::utils::position_to_location(expression.position()),
-            ));
-        }
+        enter_nesting(expression.position())?;
         let result = self.evaluate_expression_inner(expression);
-        DEPTH.with(|depth| depth.set(depth.get() - 1));
+        leave_nesting();
         result
     }
 }
@@ -629,4 +614,35 @@ impl VirtualMachine {
         }
         status
     }
+}
+
+/// How deeply expressions and method calls may nest, together, before one
+/// raises SystemStackError rather than running out of stack.
+const MOST_NESTED: usize = 1200;
+
+thread_local! {
+    /// How deeply the program running on this thread is nested. It belongs
+    /// to the thread, so two virtual machines running side by side do not
+    /// add their nesting together.
+    static NESTING: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Go one level deeper, or raise SystemStackError when the program is as deep
+/// as it may go. A level entered is left with `leave_nesting`.
+pub(crate) fn enter_nesting(position: crate::lexer::Position) -> Result<(), MetorexError> {
+    let reached = NESTING.with(|depth| depth.get());
+    if reached >= MOST_NESTED {
+        return Err(crate::vm::errors::simple_exception(
+            "SystemStackError",
+            "stack level too deep",
+            position,
+        ));
+    }
+    NESTING.with(|depth| depth.set(reached + 1));
+    Ok(())
+}
+
+/// Come back up the level `enter_nesting` went down.
+pub(crate) fn leave_nesting() {
+    NESTING.with(|depth| depth.set(depth.get() - 1));
 }

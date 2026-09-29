@@ -210,3 +210,34 @@ fn test_oop_definition_values_no_parens_execution() {
     let output = run_example("oop/definition_values_no_parens.rb");
     assert_eq!(output, DEFINITION_VALUES_OUTPUT);
 }
+
+/// The expected output of both `oop/class_definition_rules` variants.
+const CLASS_DEFINITION_RULES_OUTPUT: &str = concat!(
+    "PORT_NUMBER is not a class\n",
+    "Settings is not a class\n",
+    "can't make subclass of singleton class\n",
+    "Object: superclass mismatch for class AuditRecord\n",
+    "BasicObject: superclass mismatch for class AuditRecord\n",
+    "Record\n",
+    "[:@count]\n",
+    "[]\n",
+    ":body_value\n",
+    ":singleton_value\n",
+    ":module_value\n",
+    "\"ScopedLog\"\n",
+    ":info\n",
+    "false\n",
+    ":from_singleton_body\n",
+);
+
+#[test]
+fn test_oop_class_definition_rules_execution() {
+    let output = run_example("oop/class_definition_rules.rb");
+    assert_eq!(output, CLASS_DEFINITION_RULES_OUTPUT);
+}
+
+#[test]
+fn test_oop_class_definition_rules_no_parens_execution() {
+    let output = run_example("oop/class_definition_rules_no_parens.rb");
+    assert_eq!(output, CLASS_DEFINITION_RULES_OUTPUT);
+}

@@ -243,3 +243,22 @@ fn test_errors_exception_reports_parens_execution() {
     let output = run_example("errors/exception_reports_parens.rb");
     assert_eq!(output, EXCEPTION_REPORTS_OUTPUT);
 }
+
+/// The expected output of both `errors/recursing_too_deep` variants.
+const RECURSING_TOO_DEEP_OUTPUT: &str = concat!(
+    "SystemStackError\n",
+    "\"stack level too deep\"\n",
+    ":carried_on\n"
+);
+
+#[test]
+fn test_errors_recursing_too_deep_execution() {
+    let output = run_example("errors/recursing_too_deep.rb");
+    assert_eq!(output, RECURSING_TOO_DEEP_OUTPUT);
+}
+
+#[test]
+fn test_errors_recursing_too_deep_no_parens_execution() {
+    let output = run_example("errors/recursing_too_deep_no_parens.rb");
+    assert_eq!(output, RECURSING_TOO_DEEP_OUTPUT);
+}

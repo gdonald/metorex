@@ -50,7 +50,7 @@ impl VirtualMachine {
 
     /// Evaluate a unary operation (`+` or `-`).
     pub(crate) fn evaluate_unary_operation(
-        &self,
+        &mut self,
         op: &UnaryOp,
         value: Object,
         position: Position,
@@ -80,24 +80,9 @@ impl VirtualMachine {
                 Object::Int(v) => Ok(Object::integer(-num_bigint::BigInt::from(v))),
                 Object::BigInt(v) => Ok(Object::integer(-(*v).clone())),
                 Object::Float(v) => Ok(Object::Float(-v)),
-                // `-str` asks for a string that does not change, so one
-                // already frozen answers itself and any other answers a
-                // frozen copy.
-                Object::String(ref text) => {
-                    if text.is_frozen() {
-                        text.mark_deduplicated();
-                        return Ok(value.clone());
-                    }
-                    let copy = crate::object::StringValue::with_encoding(
-                        text.to_text(),
-                        text.encoding_name(),
-                    );
-                    if text.holds_bytes() {
-                        copy.mark_bytes();
-                    }
-                    copy.mark_deduplicated();
-                    Ok(Object::String(std::rc::Rc::new(copy)))
-                }
+                // `-str` is `String#-@`, which hands back the one frozen copy
+                // every equal string shares.
+                Object::String(_) => self.send_to_object(value, "-@", vec![], position),
                 _ => Err(unary_type_error(op, &value, position)),
             },
             UnaryOp::Not => Ok(Object::Bool(matches!(

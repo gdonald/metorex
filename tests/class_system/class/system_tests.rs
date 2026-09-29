@@ -8,7 +8,7 @@ fn make_empty_method(name: &str) -> Rc<Method> {
 
 #[test]
 fn class_tracks_name_and_superclass() {
-    let base = Rc::new(Class::new("Base", None));
+    let base = Class::new("Base", None);
     let child = Class::new("Child", Some(Rc::clone(&base)));
 
     assert_eq!(child.name(), "Child");
@@ -35,7 +35,7 @@ fn class_defines_and_finds_methods() {
 
 #[test]
 fn class_inheritance_resolves_methods() {
-    let base = Rc::new(Class::new("Base", None));
+    let base = Class::new("Base", None);
     base.define_method("greet", make_empty_method("greet"));
 
     let derived = Class::new("Derived", Some(Rc::clone(&base)));

@@ -502,6 +502,12 @@ class Time
   # The time the eight bytes Marshal writes stand for. The newer form packs
   # the date and clock into two words, and the older one holds a UNIX
   # timestamp and the microseconds beside it.
+  # The variables a program set on the Time, without the ones the Time keeps
+  # its own state in.
+  def instance_variables
+    Kernel.instance_method(:instance_variables).bind_call(self) - Marshal::TIME_STATE
+  end
+
   def self._load(written)
     high, low = written.dup.force_encoding(Encoding::BINARY).unpack "VV"
     if (high >> 31) & 1 == 0
@@ -515,14 +521,35 @@ class Time
                      (low >> 26) & 0x3f,
                      (low >> 20) & 0x3f,
                      low & 0xfffff)
-    named = written.instance_variable_get :@zone
-    unless named.nil?
-      return built.getlocal(find_timezone(named)) if respond_to? :find_timezone
-      made = built.getlocal(written.instance_variable_get(:@offset))
-      made.instance_variable_set :@zone_object, named
-      return made
+    nano_num = written.instance_variable_get :@__marshal_nano_num
+    nano_den = written.instance_variable_get :@__marshal_nano_den
+    submicro = written.instance_variable_get :@__marshal_submicro
+    nano = if !nano_num.nil? && !nano_den.nil?
+      Rational(nano_num, nano_den)
+    elsif !submicro.nil?
+      high_digits, low_digits = submicro.bytes
+      (high_digits >> 4) * 100 + (high_digits & 0xf) * 10 + (low_digits.to_i >> 4)
     end
-    in_utc ? built : built.localtime
+    built += Rational(nano, 1_000_000_000) unless nano.nil? || nano.zero?
+    named = written.instance_variable_get :@__marshal_zone
+    offset = written.instance_variable_get :@__marshal_offset
+    made = if !named.nil? && respond_to?(:find_timezone)
+      built.getlocal(find_timezone(named))
+    elsif in_utc
+      built
+    elsif !offset.nil?
+      shifted = built.getlocal(offset)
+      shifted.instance_variable_set :@zone_name, named unless named.nil?
+      shifted
+    else
+      built.localtime
+    end
+    # What the program set on the Time came along with the bytes.
+    written.instance_variables.each do |name|
+      next if name.to_s.start_with? "@__"
+      made.instance_variable_set name, written.instance_variable_get(name)
+    end
+    made
   end
   private_class_method :_load
 "##;

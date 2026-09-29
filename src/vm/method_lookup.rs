@@ -854,13 +854,14 @@ impl VirtualMachine {
                     ));
                     return Some((module_class, stub));
                 }
-                // A class renders as its own name, so an `inspect` or `to_s`
-                // written for its instances does not answer for the class
-                // object itself. The same holds for every name Kernel gives
-                // an object: `UNIXSocket.send(:open, path)` is Object#send,
-                // not the `send` its instances answer.
-                if !matches!(method_name, "inspect" | "to_s")
-                    && !crate::vm::native_methods::is_native_kernel_method(method_name)
+                // A class answers what Class and its ancestors define for
+                // their instances, never its own instance methods. An
+                // encoding is the exception: each one is kept as a class
+                // below Encoding, and answers what Encoding defines for its
+                // instances.
+                if class_rc
+                    .superclass()
+                    .is_some_and(|parent| parent.name() == "Encoding")
                     && let Some(method) = class_rc.find_method(method_name)
                 {
                     return Some((Rc::clone(class_rc), method));

@@ -1,7 +1,6 @@
 // Main execution loop for the bytecode VM
 
 use indexmap::IndexMap;
-use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::bytecode::opcode::OpCode;
@@ -207,8 +206,7 @@ impl BytecodeVm {
                         Object::Class(class) => {
                             // Calling a class as a function creates an instance
                             let args: Vec<Object> = self.stack.drain(callee_idx + 1..).collect();
-                            let instance = Instance::new(Rc::clone(&class));
-                            let inst_rc = Rc::new(RefCell::new(instance));
+                            let inst_rc = Instance::new(Rc::clone(&class));
 
                             // Call initialize if it exists
                             let init_key = format!("{}#initialize", class.name());
@@ -355,7 +353,7 @@ impl BytecodeVm {
                     let name_idx = self.current_frame_mut()?.read_byte() as usize;
                     let name = self.read_string_constant(name_idx)?;
                     let class = Class::new(name, None);
-                    self.push(Object::Class(Rc::new(class)));
+                    self.push(Object::Class(class));
                 }
 
                 OpCode::Method => {
@@ -427,8 +425,7 @@ impl BytecodeVm {
                                 }
                                 // Pop the class (receiver)
                                 let receiver_idx = self.stack.len() - 1;
-                                self.stack[receiver_idx] =
-                                    Object::Instance(Rc::new(RefCell::new(instance)));
+                                self.stack[receiver_idx] = Object::Instance(instance);
                             } else {
                                 return Err(self.runtime_err(&format!(
                                     "Undefined class method '{}'",

@@ -186,7 +186,6 @@ t
 #[test]
 fn rescue_standard_error_catches_zero_division_error() {
     let result = run(r#"
-class ZeroDivisionError < StandardError; end
 def t
   begin
     raise ZeroDivisionError
@@ -202,7 +201,6 @@ t
 #[test]
 fn rescue_standard_error_catches_index_error() {
     let result = run(r#"
-class IndexError < StandardError; end
 def t
   begin
     raise IndexError
@@ -218,7 +216,6 @@ t
 #[test]
 fn rescue_standard_error_catches_key_error() {
     let result = run(r#"
-class KeyError < StandardError; end
 def t
   begin
     raise KeyError
@@ -234,7 +231,6 @@ t
 #[test]
 fn rescue_standard_error_catches_stop_iteration() {
     let result = run(r#"
-class StopIteration < StandardError; end
 def t
   begin
     raise StopIteration
@@ -250,7 +246,6 @@ t
 #[test]
 fn rescue_standard_error_catches_io_error() {
     let result = run(r#"
-class IOError < StandardError; end
 def t
   begin
     raise IOError
@@ -266,7 +261,6 @@ t
 #[test]
 fn rescue_standard_error_catches_frozen_error() {
     let result = run(r#"
-class FrozenError < StandardError; end
 def t
   begin
     raise FrozenError
@@ -282,7 +276,6 @@ t
 #[test]
 fn rescue_standard_error_catches_range_error() {
     let result = run(r#"
-class RangeError < StandardError; end
 def t
   begin
     raise RangeError
@@ -298,7 +291,6 @@ t
 #[test]
 fn rescue_standard_error_catches_float_domain_error() {
     let result = run(r#"
-class FloatDomainError < StandardError; end
 def t
   begin
     raise FloatDomainError

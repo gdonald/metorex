@@ -64,7 +64,7 @@ fn test_hash_non_hashable() {
     let dict = Object::empty_dict();
     assert!(dict.hash().is_none());
 
-    let class = Rc::new(Class::new("Test", None));
+    let class = Class::new("Test", None);
     let inst = Object::Instance(Rc::new(RefCell::new(Instance {
         class,
         instance_vars: IndexMap::new(),

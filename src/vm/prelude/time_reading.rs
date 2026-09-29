@@ -11,14 +11,9 @@ pub(super) const SOURCE: &str = r##"
            held.mday << 5 |
            held.hour
     low = held.min << 26 | held.sec << 20 | held.usec
-    written = [high, low].pack "VV"
-    # A zone of its own travels as the name it goes by, which is what the
-    # zone is built again from when the bytes are read back.
-    unless @zone_object.nil?
-      written.instance_variable_set :@zone, @zone_object.name
-      written.instance_variable_set :@offset, utc_offset
-    end
-    written
+    # The offset and the zone travel beside the bytes, which is where Marshal
+    # writes them.
+    [high, low].pack "VV"
   end
   private :_dump
 

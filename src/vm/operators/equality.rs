@@ -50,6 +50,14 @@ impl VirtualMachine {
         }
         // For instances, dispatch to user-defined == method if present,
         // or to <=> (Comparable protocol) if the class has <=> defined.
+        // A plain String, Array, Hash, Set or Regexp compared with an
+        // instance of a subclass of one compares with what that instance
+        // holds.
+        if !matches!(left, Object::Instance(_))
+            && let Some(held) = crate::vm::native_methods::subclass_backing(&right)
+        {
+            return self.evaluate_equality(left, held, position);
+        }
         if let Object::Instance(inst_rc) = &left {
             // Identity shortcut: same object is always ==
             if let Object::Instance(rhs) = &right
@@ -57,12 +65,59 @@ impl VirtualMachine {
             {
                 return Ok(Object::Bool(true));
             }
+            // An instance of a subclass of String, Array, Hash, Set or
+            // Regexp that writes no `==` of its own compares what it holds.
+            if let Some(held) = crate::vm::native_methods::subclass_backing(&left) {
+                let written = self
+                    .lookup_method(&left, "==")
+                    .is_some_and(|(_, method)| !method.is_undefined && !method.body.is_empty());
+                if !written {
+                    let other =
+                        crate::vm::native_methods::subclass_backing(&right).unwrap_or(right);
+                    return self.evaluate_equality(held, other, position);
+                }
+            }
+            // A Struct that writes no `==` of its own compares its members.
+            let instance_class = Rc::clone(&inst_rc.borrow().class);
+            if let Some(members) =
+                crate::vm::native_methods::struct_methods::struct_members(&instance_class)
+            {
+                let written = self
+                    .lookup_method(&left, "==")
+                    .is_some_and(|(_, method)| !method.is_undefined && !method.body.is_empty());
+                if !written
+                    && let Some(answer) = self.call_struct_instance_method(
+                        &instance_class,
+                        &members,
+                        &left,
+                        "==",
+                        std::slice::from_ref(&right),
+                        position,
+                    )?
+                {
+                    return Ok(Object::Bool(answer.is_truthy()));
+                }
+            }
+            // A stub standing in for a native `==` may come back here with
+            // the same pair, and then it is not asked again.
+            let pair = (Rc::as_ptr(inst_rc) as usize, identity_of(&right));
+            let is_stub = |method: &crate::object::Method| {
+                method.body.is_empty() && method.captured_vars.is_none()
+            };
             if let Some((class, method)) = self.lookup_method(&left, "==")
                 && !method.is_undefined
+                && !(is_stub(&method) && STUB_PAIRS.with(|held| held.borrow().contains(&pair)))
             {
+                let through_stub = is_stub(&method);
+                if through_stub {
+                    STUB_PAIRS.with(|held| held.borrow_mut().push(pair));
+                }
                 let result =
-                    self.invoke_method(class, method, left.clone(), vec![right.clone()], position)?;
-                return Ok(Object::Bool(result.is_truthy()));
+                    self.invoke_method(class, method, left.clone(), vec![right.clone()], position);
+                if through_stub {
+                    STUB_PAIRS.with(|held| held.borrow_mut().pop());
+                }
+                return Ok(Object::Bool(result?.is_truthy()));
             }
             // Rational and Complex answer `==` from their native
             // tables rather than a method map, and a Complex with no
@@ -398,5 +453,25 @@ impl VirtualMachine {
             return self.evaluate_binary_operation(&Equal, left, right, position);
         }
         Ok(Object::Bool(left.equals(&right)))
+    }
+}
+
+thread_local! {
+    /// The pairs being compared through a stub standing in for a native
+    /// `==`, which that native method may ask about again.
+    static STUB_PAIRS: std::cell::RefCell<Vec<(usize, usize)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// A number standing for which object a value is, for the values compared
+/// through a stub.
+fn identity_of(value: &Object) -> usize {
+    match value {
+        Object::Instance(held) => Rc::as_ptr(held) as usize,
+        Object::Array(held) => Rc::as_ptr(held) as usize,
+        Object::Dict(held) => Rc::as_ptr(held) as usize,
+        Object::String(held) => Rc::as_ptr(held) as usize,
+        Object::Regex(held, _) => Rc::as_ptr(held) as usize,
+        _ => 0,
     }
 }

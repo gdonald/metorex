@@ -402,3 +402,34 @@ fn test_filesystem_converted_writes_parens_execution() {
     let output = run_example("filesystem/converted_writes_parens.rb");
     assert_eq!(output, CONVERTED_WRITES_OUTPUT);
 }
+
+/// The expected output of both `filesystem/file_for_descriptor` variants.
+const FILE_FOR_DESCRIPTOR_OUTPUT: &str = concat!("30\n", "\"written through the descriptor\"\n");
+
+#[test]
+fn test_filesystem_file_for_descriptor_execution() {
+    let output = run_example("filesystem/file_for_descriptor.rb");
+    assert_eq!(output, FILE_FOR_DESCRIPTOR_OUTPUT);
+}
+
+#[test]
+fn test_filesystem_file_for_descriptor_no_parens_execution() {
+    let output = run_example("filesystem/file_for_descriptor_no_parens.rb");
+    assert_eq!(output, FILE_FOR_DESCRIPTOR_OUTPUT);
+}
+
+/// The expected output of both `filesystem/reading_what_is_there` variants.
+const READING_WHAT_IS_THERE_OUTPUT: &str =
+    concat!("\"foo\"\n", "\"bar\"\n", "\"w\"\n", ":wait_readable\n");
+
+#[test]
+fn test_filesystem_reading_what_is_there_execution() {
+    let output = run_example("filesystem/reading_what_is_there.rb");
+    assert_eq!(output, READING_WHAT_IS_THERE_OUTPUT);
+}
+
+#[test]
+fn test_filesystem_reading_what_is_there_no_parens_execution() {
+    let output = run_example("filesystem/reading_what_is_there_no_parens.rb");
+    assert_eq!(output, READING_WHAT_IS_THERE_OUTPUT);
+}

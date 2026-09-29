@@ -46,6 +46,23 @@ impl VirtualMachine {
                         "Encoding" | "Object" | "BasicObject"
                     ))));
                 }
+                // A class is a kind of the singleton class of itself and of
+                // each class it inherits from, since those are the classes
+                // its own singleton class inherits from.
+                if let (Object::Class(named) | Object::Module(named), true) =
+                    (receiver, target_class.is_singleton_class())
+                    && let Some(Object::Class(attached) | Object::Module(attached)) =
+                        target_class.get_class_var("__attached__")
+                {
+                    let mut current = Some(std::rc::Rc::clone(named));
+                    while let Some(held) = current {
+                        if std::rc::Rc::ptr_eq(&held, &attached) {
+                            return Ok(Some(Object::Bool(true)));
+                        }
+                        current = held.superclass();
+                    }
+                    return Ok(Some(Object::Bool(false)));
+                }
                 if matches!(receiver, Object::Class(_) | Object::Module(_)) {
                     let target_name = target_class.name();
                     let meta_name = match receiver {

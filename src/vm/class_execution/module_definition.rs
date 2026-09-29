@@ -44,9 +44,7 @@ impl VirtualMachine {
         let parent_scope = if top_level {
             None
         } else {
-            explicit_ns
-                .clone()
-                .or_else(|| self.def_scope_stack.last().cloned())
+            explicit_ns.clone().or_else(|| self.constant_home())
         };
         // Build a qualified name for fresh modules so `Module#ruby_name`
         // (and warning messages like the autoload "didn't define"
@@ -71,7 +69,7 @@ impl VirtualMachine {
             if parent_is_anonymous {
                 module.set_assigned_name_if_anonymous(&full_name);
             }
-            Rc::new(module)
+            module
         };
         let (module, existing_as_class, is_new) = if let Some(parent) = parent_scope.as_ref() {
             // Object's constants are top-level constants: reopening inside

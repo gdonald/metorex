@@ -86,7 +86,7 @@ fn test_empty_dict() {
 
 #[test]
 fn test_class_object() {
-    let class = Rc::new(Class::new("MyClass", None));
+    let class = Class::new("MyClass", None);
     let obj = Object::Class(class);
     assert_eq!(obj.type_name(), "Class");
     assert_eq!(format!("{}", obj), "MyClass");
@@ -94,7 +94,7 @@ fn test_class_object() {
 
 #[test]
 fn test_instance_object() {
-    let class = Rc::new(Class::new("MyClass", None));
+    let class = Class::new("MyClass", None);
     let obj = Object::instance(class);
     assert_eq!(obj.type_name(), "Instance");
     let display = format!("{}", obj);
@@ -160,7 +160,7 @@ fn test_block_type_name() {
 
 #[test]
 fn test_module_type_name() {
-    let module_class = Rc::new(Class::new("MyModule", None));
+    let module_class = Class::new("MyModule", None);
     let obj = Object::Module(module_class);
     assert_eq!(obj.type_name(), "Module");
 }
@@ -175,7 +175,7 @@ fn test_binding_type_name() {
 
 #[test]
 fn test_instance_variables() {
-    let class = Rc::new(Class::new("Person", None));
+    let class = Class::new("Person", None);
     let obj = Object::instance(Rc::clone(&class));
 
     if let Object::Instance(inst) = obj {

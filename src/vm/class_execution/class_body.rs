@@ -54,7 +54,18 @@ impl VirtualMachine {
         let held_home = std::mem::take(&mut self.class_var_home);
         let answer = self.class_body_statements(class, body, position);
         self.class_var_home = held_home;
+        // A `class << obj` body opened inside a method returns from it.
+        if class.is_singleton_class() && self.running_a_method() {
+            return answer;
+        }
         refuse_return_from_a_body(answer, position)
+    }
+
+    /// Whether a method body is running, rather than the top level of the
+    /// program.
+    fn running_a_method(&self) -> bool {
+        self.current_method_frame
+            .is_some_and(|frame| frame != crate::vm::core::TOP_LEVEL_FRAME)
     }
 
     pub(crate) fn class_body_statements(
@@ -378,6 +389,18 @@ impl VirtualMachine {
                     // Constant assignment in class body (e.g., PI = 3.14159).
                     // Lowercase identifiers fall through to the `_` arm and are
                     // treated as normal local-variable assignments.
+                    // A block run as the body keeps its constants where the
+                    // block was written, which the plain assignment handles.
+                    if !self
+                        .constant_home()
+                        .is_some_and(|home| Rc::ptr_eq(&home, class))
+                    {
+                        last_value = match self.execute_statement(statement)? {
+                            ControlFlow::Value(value) => value,
+                            _ => Object::Nil,
+                        };
+                        continue;
+                    }
                     let assign_pos = statement.position();
                     let const_value = self.evaluate_constant_assignment(statement, value)?;
                     if class.get_class_var(const_name).is_some() {
@@ -499,7 +522,8 @@ impl VirtualMachine {
                         },
                     ..
                 } => {
-                    self.evaluate_singleton_class_expression(target, None, inner_body, *sc_pos)?;
+                    last_value = self
+                        .evaluate_singleton_class_expression(target, None, inner_body, *sc_pos)?;
                 }
                 // class << self block — treat inner statements as class-level
                 Statement::Block { statements, .. } => {
@@ -675,6 +699,17 @@ impl VirtualMachine {
                             _ => match self.execute_statement(statement)? {
                                 ControlFlow::Value(v) => {
                                     last_value = v;
+                                }
+                                // A `class << obj` body opened inside a method
+                                // returns from that method.
+                                ControlFlow::Return { value, position }
+                                    if class.is_singleton_class() && self.running_a_method() =>
+                                {
+                                    return Err(MetorexError::NonLocalReturn {
+                                        value,
+                                        location: position_to_location(position),
+                                        home_frame: self.current_method_frame,
+                                    });
                                 }
                                 // Ruby's parser refuses a `return` written in
                                 // a class or module body outright.

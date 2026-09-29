@@ -60,6 +60,21 @@ pub struct VirtualMachine {
     /// The tracepoints switched on, in the order they were. Empty almost
     /// always, which is what keeps the check on each statement cheap.
     pub(crate) tracepoints: Vec<Object>,
+    /// Where the method and block bodies running now were written, innermost
+    /// last. Each entry holds the places its code was written within, which
+    /// is what a trace aimed at one method or block checks an event against.
+    pub(crate) running_code: Vec<crate::vm::tracepoint::RunningCode>,
+    /// How many native methods are running inside the innermost Ruby body,
+    /// whose own calls are Ruby's C code and fire no `c_call` events.
+    pub(crate) native_calls_running: usize,
+    /// The file a library metorex carries is read from while it loads, which
+    /// is where a method it defines says it was written.
+    pub(crate) loading_embedded_library: Option<String>,
+    /// Where a constant or a `class` written in a block run as a class body
+    /// lands, paired with the depth of `def_scope_stack` it applies at. Ruby
+    /// keeps such a block's constants in the scope the block was written in,
+    /// None being the top level, while `def` still defines on the class.
+    pub(crate) constant_homes: Vec<(usize, Option<Rc<crate::class::Class>>)>,
     /// The line a `:line` event was last fired for, so one statement does not
     /// fire twice and a multi-line expression fires once.
     pub(crate) traced_line: Option<(String, usize)>,
@@ -191,6 +206,10 @@ pub struct VirtualMachine {
     /// inside a fiber holds up the whole thread, so whoever resumed it waits
     /// too and resumes it again afterwards.
     pub(crate) blocking_in_fiber: bool,
+    /// How many locks the thread running now has taken since it was last
+    /// given a turn. A thread that takes enough of them hands the turn over,
+    /// so one looping on a lock still lets the others run.
+    pub(crate) locks_this_turn: usize,
     /// What a thread that asked for its exceptions to take the program down
     /// died of, waiting to be raised where the program next waits.
     pub(crate) thread_abort: Option<Object>,
@@ -312,6 +331,10 @@ pub struct VirtualMachine {
     /// nowhere of its own to keep them, so the VM records them against the
     /// address it lives at.
     pub(crate) collection_variables: HashMap<usize, HashMap<String, Object>>,
+    /// The objects `collection_variables` holds variables for, kept so that
+    /// none is freed and its address given to a new object, which would then
+    /// read as carrying the old one's variables.
+    pub(crate) collection_variable_owners: HashMap<usize, Object>,
     /// Handlers `Signal.trap` installed, keyed by signal name without its
     /// `SIG` prefix. A String value names a built-in disposition; anything
     /// else is a callable `Process.kill` runs in place of raising.
@@ -431,6 +454,10 @@ impl VirtualMachine {
             fiber_source_files: HashMap::new(),
             reported_big_number_variables: std::collections::HashSet::new(),
             tracepoints: Vec::new(),
+            running_code: Vec::new(),
+            native_calls_running: 0,
+            loading_embedded_library: None,
+            constant_homes: Vec::new(),
             traced_line: None,
             tracing: false,
             next_object_id: 1,
@@ -468,6 +495,7 @@ impl VirtualMachine {
             stepping_threads: false,
             thread_body_fibers: Vec::new(),
             blocking_in_fiber: false,
+            locks_this_turn: 0,
             thread_abort: None,
             taken_mutexes: Vec::new(),
             source_line_shift: 0,
@@ -499,6 +527,7 @@ impl VirtualMachine {
             load_call_site: None,
             pattern_encodings: HashMap::new(),
             collection_variables: HashMap::new(),
+            collection_variable_owners: HashMap::new(),
             // The interpreter answers for an interrupt itself, so that one
             // reads as written for from the start while every other signal
             // is still the operating system's to answer.
@@ -683,11 +712,15 @@ impl VirtualMachine {
         // A `def` belongs to the file it was written in, which is not always
         // the file being run: a block from another file runs with that file
         // still current.
-        location.filename = self.current_source_file.clone().or_else(|| {
-            self.current_file
-                .as_ref()
-                .map(|file| file.display().to_string())
-        });
+        location.filename = self
+            .loading_embedded_library
+            .clone()
+            .or_else(|| self.current_source_file.clone())
+            .or_else(|| {
+                self.current_file
+                    .as_ref()
+                    .map(|file| file.display().to_string())
+            });
         location
     }
 

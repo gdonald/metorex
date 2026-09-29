@@ -429,7 +429,7 @@ impl VirtualMachine {
         // `load(path, true)` runs the file inside a fresh anonymous
         // module, and `load(path, SomeModule)` inside that one.
         let wrapper: Option<Rc<crate::class::Class>> = match arguments.get(1) {
-            Some(Object::Bool(true)) => Some(Rc::new(crate::class::Class::new_module(""))),
+            Some(Object::Bool(true)) => Some(crate::class::Class::new_module("")),
             Some(Object::Module(module) | Object::Class(module)) => Some(Rc::clone(module)),
             _ => None,
         };

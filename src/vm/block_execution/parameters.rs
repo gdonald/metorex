@@ -182,9 +182,17 @@ pub(crate) fn bind_block_params(
         .find(|param| param.starts_with("**") && *param != crate::object::NO_KEYWORDS_PARAM)
         .map(|param| param.trim_start_matches('*').to_string());
     let mut arguments = arguments;
+    // `**empty` passes no keywords at all, so it leaves nothing to bind.
+    if matches!(arguments.last(), Some(Object::Dict(entries))
+        if passed_as_keywords(entries) && keyword_entries_are_empty(entries))
+    {
+        arguments.pop();
+    }
     if !keyword_params.is_empty() || keyword_rest.is_some() {
+        // Only a hash passed as keywords feeds them. One passed by position
+        // stays a positional argument.
         let named = match arguments.last() {
-            Some(Object::Dict(entries)) => {
+            Some(Object::Dict(entries)) if passed_as_keywords(entries) => {
                 let taken = entries.borrow().clone();
                 arguments.pop();
                 taken
@@ -559,4 +567,29 @@ pub(crate) fn marked_keyword_tail(
         marked,
     ))));
     arguments
+}
+
+/// Whether a hash reached the block as keywords: written as keywords at the
+/// call, or marked by `ruby2_keywords` to be passed on as them.
+fn passed_as_keywords(
+    entries: &std::rc::Rc<std::cell::RefCell<indexmap::IndexMap<String, Object>>>,
+) -> bool {
+    let held = entries.borrow();
+    held.contains_key(crate::vm::param_binding::KWARGS_MARKER)
+        || held.contains_key(crate::vm::native_methods::hash_methods::RUBY2_KEYWORDS_KEY)
+}
+
+/// Whether a keyword hash names no keyword, once its own bookkeeping entries
+/// are left out.
+fn keyword_entries_are_empty(
+    entries: &std::rc::Rc<std::cell::RefCell<indexmap::IndexMap<String, Object>>>,
+) -> bool {
+    entries.borrow().keys().all(|key| {
+        matches!(
+            key.as_str(),
+            crate::vm::param_binding::KWARGS_MARKER
+                | crate::vm::native_methods::hash_methods::RUBY2_KEYWORDS_KEY
+                | crate::vm::native_methods::hash_methods::KEY_OBJECTS_KEY
+        )
+    })
 }

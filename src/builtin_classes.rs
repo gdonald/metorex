@@ -57,51 +57,40 @@ impl BuiltinClasses {
         // Create the base Object class, under the root every class descends
         // from. A primitive answers its own class, so the chain has to reach
         // BasicObject for `5.is_a?(BasicObject)` to be true.
-        let basic_object_class = Rc::new(Class::new("BasicObject", None));
-        let object_class = Rc::new(Class::new("Object", Some(Rc::clone(&basic_object_class))));
+        let basic_object_class = Class::new("BasicObject", None);
+        let object_class = Class::new("Object", Some(Rc::clone(&basic_object_class)));
 
         // Create primitive type classes
-        let string_class = Rc::new(Class::new("String", Some(Rc::clone(&object_class))));
-        let symbol_class = Rc::new(Class::new("Symbol", Some(Rc::clone(&object_class))));
+        let string_class = Class::new("String", Some(Rc::clone(&object_class)));
+        let symbol_class = Class::new("Symbol", Some(Rc::clone(&object_class)));
         // Integer and Float are Numerics, so `5.is_a?(Numeric)` holds.
-        let numeric_class = Rc::new(Class::new("Numeric", Some(Rc::clone(&object_class))));
-        let integer_class = Rc::new(Class::new("Integer", Some(Rc::clone(&numeric_class))));
-        let float_class = Rc::new(Class::new("Float", Some(Rc::clone(&numeric_class))));
+        let numeric_class = Class::new("Numeric", Some(Rc::clone(&object_class)));
+        let integer_class = Class::new("Integer", Some(Rc::clone(&numeric_class)));
+        let float_class = Class::new("Float", Some(Rc::clone(&numeric_class)));
 
         // Create collection classes
-        let array_class = Rc::new(Class::new("Array", Some(Rc::clone(&object_class))));
-        let hash_class = Rc::new(Class::new("Hash", Some(Rc::clone(&object_class))));
-        let set_class = Rc::new(Class::new("Set", Some(Rc::clone(&object_class))));
-        let range_class = Rc::new(Class::new("Range", Some(Rc::clone(&object_class))));
+        let array_class = Class::new("Array", Some(Rc::clone(&object_class)));
+        let hash_class = Class::new("Hash", Some(Rc::clone(&object_class)));
+        let set_class = Class::new("Set", Some(Rc::clone(&object_class)));
+        let range_class = Class::new("Range", Some(Rc::clone(&object_class)));
 
         // Create utility classes. A File is an IO opened on a name, which is
         // what `to_io` and every `kind_of?(IO)` reading depend on.
-        let io_class = Rc::new(Class::new("IO", Some(Rc::clone(&object_class))));
-        let file_class = Rc::new(Class::new("File", Some(Rc::clone(&io_class))));
-        let dir_class = Rc::new(Class::new("Dir", Some(Rc::clone(&object_class))));
-        let proc_class = Rc::new(Class::new("Proc", Some(Rc::clone(&object_class))));
-        let method_class = Rc::new(Class::new("Method", Some(Rc::clone(&object_class))));
-        let binding_class = Rc::new(Class::new("Binding", Some(Rc::clone(&object_class))));
-        let regexp_class = Rc::new(Class::new("Regexp", Some(Rc::clone(&object_class))));
+        let io_class = Class::new("IO", Some(Rc::clone(&object_class)));
+        let file_class = Class::new("File", Some(Rc::clone(&io_class)));
+        let dir_class = Class::new("Dir", Some(Rc::clone(&object_class)));
+        let proc_class = Class::new("Proc", Some(Rc::clone(&object_class)));
+        let method_class = Class::new("Method", Some(Rc::clone(&object_class)));
+        let binding_class = Class::new("Binding", Some(Rc::clone(&object_class)));
+        let regexp_class = Class::new("Regexp", Some(Rc::clone(&object_class)));
 
         // Create exception hierarchy
-        let exception_class = Rc::new(Class::new("Exception", Some(Rc::clone(&object_class))));
-        let standard_error_class = Rc::new(Class::new(
-            "StandardError",
-            Some(Rc::clone(&exception_class)),
-        ));
-        let runtime_error_class = Rc::new(Class::new(
-            "RuntimeError",
-            Some(Rc::clone(&standard_error_class)),
-        ));
-        let type_error_class = Rc::new(Class::new(
-            "TypeError",
-            Some(Rc::clone(&standard_error_class)),
-        ));
-        let value_error_class = Rc::new(Class::new(
-            "ValueError",
-            Some(Rc::clone(&standard_error_class)),
-        ));
+        let exception_class = Class::new("Exception", Some(Rc::clone(&object_class)));
+        let standard_error_class = Class::new("StandardError", Some(Rc::clone(&exception_class)));
+        let runtime_error_class =
+            Class::new("RuntimeError", Some(Rc::clone(&standard_error_class)));
+        let type_error_class = Class::new("TypeError", Some(Rc::clone(&standard_error_class)));
+        let value_error_class = Class::new("ValueError", Some(Rc::clone(&standard_error_class)));
 
         Self {
             object_class,
@@ -278,10 +267,7 @@ impl BuiltinClasses {
         // Ruby's Object-< BasicObject inheritance, but a separate Class gives
         // us an identity hook so `BasicObject.dup` can raise TypeError without
         // affecting Object.dup.
-        classes.insert(
-            "BasicObject".to_string(),
-            Rc::new(Class::new("BasicObject", None)),
-        );
+        classes.insert("BasicObject".to_string(), Class::new("BasicObject", None));
         classes.insert("Regexp".to_string(), Rc::clone(&self.regexp_class));
         classes.insert("Symbol".to_string(), Rc::clone(&self.symbol_class));
         classes.insert("Numeric".to_string(), Rc::clone(&self.numeric_class));

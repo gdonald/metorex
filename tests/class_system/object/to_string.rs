@@ -37,7 +37,7 @@ fn test_to_string_dict() {
 
 #[test]
 fn test_to_string_class() {
-    let class = Rc::new(Class::new("MyClass", None));
+    let class = Class::new("MyClass", None);
     let obj = Object::Class(class);
     assert_eq!(obj.to_string(), "MyClass");
 }

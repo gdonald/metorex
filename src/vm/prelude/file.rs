@@ -63,7 +63,10 @@ class File
   def self.for_fd(number, mode = nil, **options)
     held = IO.for_fd number, mode, **options
     made = allocate
-    made.__send__ :__take_stream__, held.__send__(:__stream_handle__), mode
+    # With no mode given, the file is used the way the descriptor was opened,
+    # which is what the IO standing over it already worked out.
+    worked_out = held.instance_variable_get(:@__file_mode)
+    made.__send__ :__take_stream__, held.__send__(:__stream_handle__), mode || worked_out
     made
   end
 

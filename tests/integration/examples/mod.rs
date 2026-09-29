@@ -15,6 +15,7 @@ mod encodings;
 mod enumerable;
 mod errors;
 mod eval;
+mod fibers;
 mod file_loading;
 mod filesystem;
 mod functions;
@@ -24,6 +25,7 @@ mod introspection;
 mod linear_algebra;
 mod metaprogramming;
 mod methods;
+mod object_space;
 mod oop;
 mod paths;
 mod programs;
@@ -53,9 +55,11 @@ fn run_example(path: &str) -> String {
     let output = cmd.output().expect("failed to execute example");
     assert!(
         output.status.success(),
-        "example {} exited with status {:?}",
+        "example {} exited with status {:?}\nstdout:\n{}\nstderr:\n{}",
         path,
-        output.status
+        output.status,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
     );
 
     String::from_utf8(output.stdout).expect("stdout was not utf8")

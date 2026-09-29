@@ -72,17 +72,13 @@ impl VirtualMachine {
     /// which is what both `caller_locations` and
     /// `Exception#backtrace_locations` hand out.
     pub(crate) fn backtrace_location_class(&mut self) -> std::rc::Rc<crate::class::Class> {
-        use std::rc::Rc;
         if let Some(Object::Class(thread)) = self.globals().get("Thread")
             && let Some(Object::Class(backtrace)) = thread.get_class_var("Backtrace")
             && let Some(Object::Class(location)) = backtrace.get_class_var("Location")
         {
             return location;
         }
-        Rc::new(crate::class::Class::new(
-            "Thread::Backtrace::Location",
-            None,
-        ))
+        crate::class::Class::new("Thread::Backtrace::Location", None)
     }
 
     pub(crate) fn write_to_stderr(
@@ -119,27 +115,52 @@ impl VirtualMachine {
                 return Ok(());
             }
         }
-        write_to_standard_stream(stream, text);
-        Ok(())
+        write_to_standard_stream(stream, text).map_err(|problem| {
+            crate::vm::errors::simple_exception("Errno::EBADF", &bad_descriptor(&problem), position)
+        })
+    }
+}
+
+/// How a failed write to a standard stream reads, without the os error
+/// number the standard library adds.
+fn bad_descriptor(problem: &std::io::Error) -> String {
+    let spelled = problem.to_string();
+    match spelled.find(" (os error") {
+        Some(at) => spelled[..at].to_string(),
+        None => spelled,
     }
 }
 
 /// Write to one of the standard streams. A stream whose other end has gone
 /// ends the program the way the signal would.
-pub(crate) fn write_to_standard_stream(stream: &str, text: &str) {
+pub(crate) fn write_to_standard_stream(stream: &str, text: &str) -> std::io::Result<()> {
     use std::io::Write as _;
-    let sent = if stream == "stderr" {
-        let mut held = std::io::stderr();
-        held.write_all(text.as_bytes()).and_then(|()| held.flush())
+    // Whatever the standard library holds for the stream goes out first, so
+    // the text lands after it. The text itself is written to the descriptor
+    // directly, since the standard library reports a write the descriptor
+    // refused with EBADF as done.
+    let descriptor = if stream == "stderr" {
+        let _ = std::io::stderr().flush();
+        2
     } else {
-        let mut held = std::io::stdout();
-        held.write_all(text.as_bytes()).and_then(|()| held.flush())
+        let _ = std::io::stdout().flush();
+        1
     };
-    if let Err(trouble) = sent
-        && trouble.kind() == std::io::ErrorKind::BrokenPipe
-    {
-        die_of_a_broken_pipe();
+    let mut left = text.as_bytes();
+    while !left.is_empty() {
+        // SAFETY: the pointer and length name the bytes still to write.
+        let written = unsafe { libc::write(descriptor, left.as_ptr().cast(), left.len()) };
+        if written < 0 {
+            let trouble = std::io::Error::last_os_error();
+            match trouble.kind() {
+                std::io::ErrorKind::Interrupted => continue,
+                std::io::ErrorKind::BrokenPipe => die_of_a_broken_pipe(),
+                _ => return Err(trouble),
+            }
+        }
+        left = &left[written as usize..];
     }
+    Ok(())
 }
 
 /// End the program the way a signal would when the other end of the standard

@@ -115,3 +115,6 @@ pub(crate) const NAME_ERROR_NAME_KEY: &str = "__name_value__";
 /// which `#args` answers. Not an `@` name, so a program's own instance
 /// variables cannot collide with it.
 pub(crate) const NO_METHOD_ARGS_KEY: &str = "__args__";
+/// Where an exception keeps the String it was given as its message, which
+/// Marshal writes with its encoding.
+pub(crate) const MESSAGE_STRING_KEY: &str = "__message_string__";

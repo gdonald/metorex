@@ -109,3 +109,18 @@ fn test_signals_what_answers_a_signal_no_parens_execution() {
     let output = run_example("signals/what_answers_a_signal_no_parens.rb");
     assert_eq!(output, WHAT_ANSWERS_A_SIGNAL);
 }
+
+/// The expected output of both `signals/trapped_from_outside` variants.
+const TRAPPED_FROM_OUTSIDE_OUTPUT: &str = concat!("[15]\n", "1\n");
+
+#[test]
+fn test_signals_trapped_from_outside_execution() {
+    let output = run_example("signals/trapped_from_outside.rb");
+    assert_eq!(output, TRAPPED_FROM_OUTSIDE_OUTPUT);
+}
+
+#[test]
+fn test_signals_trapped_from_outside_no_parens_execution() {
+    let output = run_example("signals/trapped_from_outside_no_parens.rb");
+    assert_eq!(output, TRAPPED_FROM_OUTSIDE_OUTPUT);
+}

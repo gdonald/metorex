@@ -256,14 +256,21 @@ impl Parser {
             TokenKind::Yield => self.parse_yield_expression(position),
             TokenKind::Begin => self.parse_begin_expression(position),
             TokenKind::Class => {
+                let class_at = self.stream.current_position() - 1;
                 self.skip_whitespace();
                 if !self.check(&[TokenKind::Shovel]) {
-                    return Err(self.error_at_previous(
-                        "`class` as an expression is only valid in the `class << ...` form",
-                    ));
+                    // A class definition where a value goes answers what its
+                    // body answered, the way `x = class Foo; 1; end` reads.
+                    self.stream.restore_position(class_at);
+                    return self.definition_as_expression(position);
                 }
                 self.advance();
                 self.parse_singleton_class_after_shovel(position)
+            }
+            TokenKind::Module => {
+                self.stream
+                    .restore_position(self.stream.current_position() - 1);
+                self.definition_as_expression(position)
             }
 
             // `name = def held; end` reads the definition where a value goes,
@@ -271,14 +278,7 @@ impl Parser {
             TokenKind::Def => {
                 self.stream
                     .restore_position(self.stream.current_position() - 1);
-                let defined = self.parse_statement()?;
-                Ok(Expression::BeginRescue {
-                    body: vec![defined],
-                    rescue_clauses: Vec::new(),
-                    else_clause: None,
-                    ensure_block: None,
-                    position,
-                })
+                self.definition_as_expression(position)
             }
 
             // ── Jumps where a value goes ────────────────────────────────────
@@ -309,5 +309,21 @@ impl Parser {
             // spells it, which is what a reader is looking for.
             other => Err(self.error_at_previous(&format!("unexpected '{}'", other))),
         }
+    }
+
+    /// A `def`, `class`, or `module` written where a value goes, read as the
+    /// statement it is and answering what that statement answers.
+    fn definition_as_expression(
+        &mut self,
+        position: crate::lexer::Position,
+    ) -> Result<Expression, MetorexError> {
+        let defined = self.parse_statement()?;
+        Ok(Expression::BeginRescue {
+            body: vec![defined],
+            rescue_clauses: Vec::new(),
+            else_clause: None,
+            ensure_block: None,
+            position,
+        })
     }
 }

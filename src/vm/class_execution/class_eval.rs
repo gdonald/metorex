@@ -19,6 +19,32 @@ impl VirtualMachine {
         )
     }
 
+    /// The class or module a constant written here lands in, None being the
+    /// top level.
+    pub(crate) fn constant_home(&self) -> Option<Rc<Class>> {
+        match self.constant_homes.last() {
+            Some((depth, home)) if *depth == self.def_scope_stack.len() => home.clone(),
+            _ => self.def_scope_stack.last().cloned(),
+        }
+    }
+
+    /// Run `block` as the body of `class` for `refine`, where Ruby makes the
+    /// refinement the scope its constants land in as well.
+    pub(crate) fn apply_refine_block(
+        &mut self,
+        class: &Rc<Class>,
+        block: &crate::object::BlockStatement,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        self.run_block_as_class_body(
+            class,
+            block,
+            position,
+            Object::Class(Rc::clone(class)),
+            false,
+        )
+    }
+
     /// Same as `apply_block_as_class_body` but explicit about the `self` kind
     /// (use `Object::Module(...)` when the receiver should behave as a module).
     pub(crate) fn apply_block_as_class_body_with_self(
@@ -27,6 +53,17 @@ impl VirtualMachine {
         block: &crate::object::BlockStatement,
         position: Position,
         self_obj: Object,
+    ) -> Result<Object, MetorexError> {
+        self.run_block_as_class_body(class, block, position, self_obj, true)
+    }
+
+    fn run_block_as_class_body(
+        &mut self,
+        class: &Rc<Class>,
+        block: &crate::object::BlockStatement,
+        position: Position,
+        self_obj: Object,
+        constants_stay_lexical: bool,
     ) -> Result<Object, MetorexError> {
         let prev_self = self.environment().get("self");
         self.environment_mut()
@@ -53,6 +90,12 @@ impl VirtualMachine {
         }
         self.def_scope_stack.push(Rc::clone(class));
         self.class_var_cref_stack.push(Some(Rc::clone(class)));
+        if constants_stay_lexical {
+            self.constant_homes.push((
+                self.def_scope_stack.len(),
+                block.captured_def_scope.last().cloned(),
+            ));
+        }
         // A class/module body is not a method context, so `using` is permitted
         // even when this block runs deep inside method calls (e.g. mspec's
         // runner invoking `Class.new do using ...; end`). The refinements it
@@ -63,6 +106,9 @@ impl VirtualMachine {
         let result = self.apply_class_body(class, &block.body, position);
         self.pop_refinement_scope();
         self.user_def_nesting = saved_nesting;
+        if constants_stay_lexical {
+            self.constant_homes.pop();
+        }
         self.def_scope_stack.pop();
         self.class_var_cref_stack.pop();
         if let Some(prev) = prev_self {
@@ -107,10 +153,15 @@ impl VirtualMachine {
         }
         self.def_scope_stack.push(Rc::clone(class));
         self.class_var_cref_stack.push(Some(Rc::clone(class)));
+        self.constant_homes.push((
+            self.def_scope_stack.len(),
+            block.captured_def_scope.last().cloned(),
+        ));
         let saved_nesting = self.user_def_nesting;
         self.user_def_nesting = 0;
         let result = self.apply_class_body(class, &block.body, position);
         self.user_def_nesting = saved_nesting;
+        self.constant_homes.pop();
         self.def_scope_stack.pop();
         self.class_var_cref_stack.pop();
         if let Some(prev) = prev_self {

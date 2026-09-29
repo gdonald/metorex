@@ -81,7 +81,7 @@ pub(crate) const PROCESS_CONSTANTS: &[(&str, i64)] = &[
     ),
 ];
 
-pub(crate) const ENCODING_NAMES: [(&str, &str, bool); 116] = [
+pub(crate) const ENCODING_NAMES: [(&str, &str, bool); 119] = [
     ("UTF_8", "UTF-8", false),
     ("CESU_8", "CESU-8", false),
     ("US_ASCII", "US-ASCII", false),
@@ -131,6 +131,9 @@ pub(crate) const ENCODING_NAMES: [(&str, &str, bool); 116] = [
     ("Shift_JIS", "Shift_JIS", false),
     ("SHIFT_JIS", "Shift_JIS", false),
     ("Windows_31J", "Windows-31J", false),
+    ("WINDOWS_31J", "Windows-31J", false),
+    ("SJIS", "Windows-31J", false),
+    ("CP932", "Windows-31J", false),
     ("KOI8_R", "KOI8-R", false),
     ("KOI8_U", "KOI8-U", false),
     ("Big5", "Big5", false),

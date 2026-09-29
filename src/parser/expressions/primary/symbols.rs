@@ -102,7 +102,10 @@ impl Parser {
         let next = self.advance();
         match next.kind {
             TokenKind::Ident(name) => {
+                // `:name=` names a setter only when the `=` is written against
+                // the name, so `:a ==> 1` is `:a` followed by `==`.
                 if self.check(&[TokenKind::Equal])
+                    && !self.peek().had_leading_space
                     && !matches!(self.peek_ahead(1).kind, TokenKind::Equal)
                 {
                     self.advance(); // consume '='

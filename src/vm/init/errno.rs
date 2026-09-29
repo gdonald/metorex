@@ -254,10 +254,10 @@ pub(crate) fn register_errno_classes(errno_module: &Rc<Class>, system_call_error
         ("EHWPOISON", libc::EHWPOISON),
     ];
     for (name, number) in ERRNO_NUMBERS {
-        let class = Rc::new(Class::new(
+        let class = Class::new(
             format!("Errno::{}", name),
             Some(Rc::clone(system_call_error)),
-        ));
+        );
         class.set_class_var("Errno", Object::Int(*number as i64));
         // The message the errno stands for, which an instance reports when
         // no custom one is given. Kept under a mangled key so it does not
@@ -270,10 +270,7 @@ pub(crate) fn register_errno_classes(errno_module: &Rc<Class>, system_call_error
     }
     // `Errno::NOERROR` stands for a successful call, which Ruby defines
     // alongside the numbered errors.
-    let no_error = Rc::new(Class::new(
-        "Errno::NOERROR",
-        Some(Rc::clone(system_call_error)),
-    ));
+    let no_error = Class::new("Errno::NOERROR", Some(Rc::clone(system_call_error)));
     no_error.set_class_var("Errno", Object::Int(0));
     no_error.set_class_var(ERRNO_MESSAGE_KEY, Object::string("Success".to_string()));
     errno_module.set_class_var("NOERROR", Object::Class(no_error));

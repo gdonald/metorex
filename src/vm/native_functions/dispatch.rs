@@ -57,6 +57,12 @@ impl VirtualMachine {
             // The primitive behind the Math module: the function named by the
             // first argument, applied to the numbers that follow.
             "__math_function__" => self.apply_math_function(&arguments, position),
+            // The binary running this program, which is what `RbConfig.ruby`
+            // names for starting another one.
+            "__interpreter_path__" => Ok(match std::env::current_exe() {
+                Ok(path) => Object::string(path.display().to_string()),
+                Err(_) => Object::Nil,
+            }),
             "puts" => self.put_lines(arguments, position),
             "method" => self.method_object(arguments, position),
             "autoload" | "autoload?" => self.register_autoload(name, arguments, position),

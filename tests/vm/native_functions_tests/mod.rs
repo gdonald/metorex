@@ -46,6 +46,7 @@ mod protected_methods;
 mod randomness;
 mod reporting;
 mod sockets;
+mod spawn_options;
 mod system_calls;
 mod top_level_visibility;
 mod tracing;

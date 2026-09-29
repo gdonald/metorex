@@ -284,7 +284,14 @@ impl Parser {
             self.advance();
             self.skip_whitespace();
             let value_position = self.peek().position;
-            let value = self.parse_expression()?;
+            // The expression is the method's body, where `yield` and
+            // `return` reach the method as they do in a written-out one.
+            self.def_body_depth += 1;
+            let enclosing_jump_targets = std::mem::take(&mut self.jump_target_depth);
+            let value = self.parse_expression();
+            self.def_body_depth -= 1;
+            self.jump_target_depth = enclosing_jump_targets;
+            let value = value?;
             let body = vec![Statement::Expression {
                 expression: value,
                 position: value_position,

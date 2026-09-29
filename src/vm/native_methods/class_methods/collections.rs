@@ -60,6 +60,11 @@ impl VirtualMachine {
             let copy = self.call_object_method(&arguments[0], "dup", &[], position)?;
             let made = copy.unwrap_or_else(|| arguments[0].clone());
             if let Some(Object::Dict(copied)) = crate::vm::native_methods::as_dict(&made) {
+                // The copy is a Hash of its own, not the keywords the call
+                // handed over.
+                copied
+                    .borrow_mut()
+                    .shift_remove(crate::vm::param_binding::KWARGS_MARKER);
                 copied.borrow_mut().insert(
                     crate::vm::native_methods::hash_methods::RUBY2_KEYWORDS_KEY.to_string(),
                     Object::Bool(true),
@@ -177,14 +182,12 @@ impl VirtualMachine {
             if class_rc.name() == "Array" {
                 return Ok(Answered(Object::array(elements)));
             }
-            let mut instance = crate::object::Instance::new(Rc::clone(class_rc));
-            instance.set_var(
+            let instance = crate::object::Instance::new(Rc::clone(class_rc));
+            instance.borrow_mut().set_var(
                 crate::vm::native_methods::ARRAY_SUBCLASS_VAR.to_string(),
                 Object::array(elements),
             );
-            return Ok(Answered(Object::Instance(Rc::new(
-                std::cell::RefCell::new(instance),
-            ))));
+            return Ok(Answered(Object::Instance(instance)));
         }
         if method_name == "new" && class_rc.name() == "Array" {
             let elements = self.build_array_elements(arguments, position)?;

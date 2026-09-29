@@ -7,7 +7,7 @@ pub(crate) fn register_builtin_modules(globals: &mut GlobalRegistry, builtins: &
     // Comparable — stub module, methods will be added later. Ruby mixes it
     // into the classes whose values have an order, which is what
     // `Integer.include?(Comparable)` reports.
-    let comparable = Rc::new(Class::new_module("Comparable"));
+    let comparable = Class::new_module("Comparable");
     // Integer and Float reach Comparable through Numeric, so only the classes
     // Ruby mixes it into directly carry it.
     for name in ["Numeric", "String", "Symbol"] {
@@ -19,7 +19,7 @@ pub(crate) fn register_builtin_modules(globals: &mut GlobalRegistry, builtins: &
 
     // Enumerable — stub module, mixed into the classes whose values can be
     // walked, which is what `Array.include?(Enumerable)` reports.
-    let enumerable = Rc::new(Class::new_module("Enumerable"));
+    let enumerable = Class::new_module("Enumerable");
     for name in ["Array", "Hash", "Range", "Set", "Struct", "Enumerator"] {
         if let Some(Object::Class(class)) = globals.get(name) {
             class.add_mixin(Rc::clone(&enumerable));
@@ -33,7 +33,7 @@ pub(crate) fn register_builtin_modules(globals: &mut GlobalRegistry, builtins: &
     // currently in globals at this point. Note that Object is replaced again
     // later in register_singletons, so `wire_kernel_into_object` is called
     // from VirtualMachine::new() after that step to re-establish the link.
-    let kernel = Rc::new(Class::new_module("Kernel"));
+    let kernel = Class::new_module("Kernel");
     // The Object every primitive answers is the one the builtins hold, so
     // Kernel is mixed into it as well as into the one registered later.
     builtins.object_class.add_mixin(Rc::clone(&kernel));
@@ -41,7 +41,7 @@ pub(crate) fn register_builtin_modules(globals: &mut GlobalRegistry, builtins: &
 
     // Encoding — metorex strings are UTF-8, so the named encodings exist as
     // distinct objects but every string reports UTF-8.
-    let encoding = Rc::new(Class::new("Encoding", None));
+    let encoding = Class::new("Encoding", None);
     // Two constants that name the same encoding, such as BINARY and
     // ASCII_8BIT, reach one object, so `Encoding.find` on the name it reports
     // answers the same encoding whichever constant it came from.
@@ -50,7 +50,7 @@ pub(crate) fn register_builtin_modules(globals: &mut GlobalRegistry, builtins: &
         let constant = Rc::clone(
             built
                 .entry(display)
-                .or_insert_with(|| Rc::new(Class::new(display, Some(Rc::clone(&encoding))))),
+                .or_insert_with(|| Class::new(display, Some(Rc::clone(&encoding)))),
         );
         encoding.set_class_var(name, Object::Class(Rc::clone(&constant)));
         globals.set(format!("Encoding::{}", name), Object::Class(constant));
@@ -83,7 +83,7 @@ pub(crate) fn register_builtin_modules(globals: &mut GlobalRegistry, builtins: &
     // File::Constants carries the open and match flags, and File includes it,
     // which is where `File.include?(File::Constants)` reads them from.
     if let Some(Object::Class(file_class)) = globals.get("File") {
-        let constants = Rc::new(Class::new_module("File::Constants"));
+        let constants = Class::new_module("File::Constants");
         for (name, value) in FILE_OPEN_FLAGS {
             constants.set_class_var(name, Object::Int(value));
         }
@@ -123,14 +123,14 @@ pub(crate) fn register_builtin_modules(globals: &mut GlobalRegistry, builtins: &
     }
 
     // Signal — stub module (trap is a no-op)
-    let signal = Rc::new(Class::new_module("Signal"));
+    let signal = Class::new_module("Signal");
     globals.set("Signal", Object::Module(signal));
 
     // Process — stub module (pid is a no-op)
-    let process = Rc::new(Class::new_module("Process"));
+    let process = Class::new_module("Process");
     // `Process::Status` describes how a child ended. The instances come from
     // whatever waits for one, and this is the class they share.
-    let process_status = Rc::new(Class::new("Process::Status", None));
+    let process_status = Class::new("Process::Status", None);
     process.set_class_var("Status", Object::Class(Rc::clone(&process_status)));
     globals.set("Process::Status", Object::Class(Rc::clone(&process_status)));
     globals.set("__Process_Status_class", Object::Class(process_status));
@@ -143,14 +143,14 @@ pub(crate) fn register_builtin_modules(globals: &mut GlobalRegistry, builtins: &
     // `Process::GID`, `Process::UID`, and `Process::Sys` name the same ids
     // Process itself does, gathered under the words Ruby gathers them under.
     for named in ["GID", "UID", "Sys"] {
-        let holder = Rc::new(Class::new_module(format!("Process::{}", named)));
+        let holder = Class::new_module(format!("Process::{}", named));
         process.set_class_var(named, Object::Module(Rc::clone(&holder)));
         globals.set(format!("Process::{}", named), Object::Module(holder));
     }
     globals.set("Process", Object::Module(process));
 
     // Math — stub module (constants will be added later if needed)
-    let math = Rc::new(Class::new_module("Math"));
+    let math = Class::new_module("Math");
     // The two constants Math carries, which every trigonometric answer is
     // measured against.
     math.set_class_var("PI", Object::Float(std::f64::consts::PI));
@@ -158,25 +158,22 @@ pub(crate) fn register_builtin_modules(globals: &mut GlobalRegistry, builtins: &
     globals.set("Math", Object::Module(math));
 
     // GC — no-op stub
-    let gc = Rc::new(Class::new_module("GC"));
+    let gc = Class::new_module("GC");
     globals.set("GC", Object::Module(gc));
 
     // ObjectSpace — no-op stub
-    let object_space = Rc::new(Class::new_module("ObjectSpace"));
+    let object_space = Class::new_module("ObjectSpace");
     globals.set("ObjectSpace", Object::Module(object_space));
 
     // Warning — `Warning[:category]` reads and `Warning[:category] = bool`
     // writes the per-category warning switches. Categories are stored as
     // class variables on the module and start off, matching MRI's default
     // for `:deprecated`.
-    let warning = Rc::new(Class::new_module("Warning"));
+    let warning = Class::new_module("Warning");
     globals.set("Warning", Object::Module(warning));
 
     // Time / IO — placeholder stubs (used in mspec)
-    let time = Rc::new(Class::new(
-        "Time",
-        Some(Rc::new(Class::new("Object", None))),
-    ));
+    let time = Class::new("Time", Some(Class::new("Object", None)));
     globals.set("Time", Object::Class(time));
     // File already stands under IO, so the global name has to reach that same
     // class rather than a second one wearing the name.
@@ -192,24 +189,15 @@ pub(crate) fn register_builtin_modules(globals: &mut GlobalRegistry, builtins: &
     globals.set("IO", Object::Class(io));
 
     // Thread — stub
-    let thread = Rc::new(Class::new(
-        "Thread",
-        Some(Rc::new(Class::new("Object", None))),
-    ));
+    let thread = Class::new("Thread", Some(Class::new("Object", None)));
     globals.set("Thread", Object::Class(Rc::clone(&thread)));
 
     // Fiber — a block that runs on a stack of its own and suspends part-way
     // through. Its methods are answered natively, since the coroutine behind
     // one lives in the interpreter rather than in the object.
-    let fiber = Rc::new(Class::new(
-        "Fiber",
-        Some(Rc::new(Class::new("Object", None))),
-    ));
+    let fiber = Class::new("Fiber", Some(Class::new("Object", None)));
     globals.set("Fiber", Object::Class(Rc::clone(&fiber)));
-    let fiber_error = Rc::new(Class::new(
-        "FiberError",
-        Some(Rc::new(Class::new("StandardError", None))),
-    ));
+    let fiber_error = Class::new("FiberError", Some(Class::new("StandardError", None)));
     globals.set("FiberError", Object::Class(fiber_error));
 
     // Queue / SizedQueue — minimal FIFO stub. metorex runs Thread blocks
@@ -217,15 +205,9 @@ pub(crate) fn register_builtin_modules(globals: &mut GlobalRegistry, builtins: &
     // `pop` returns nil on an empty queue rather than blocking. Enough
     // for spec helpers and autoload coordination patterns to make
     // forward progress.
-    let queue = Rc::new(Class::new(
-        "Queue",
-        Some(Rc::new(Class::new("Object", None))),
-    ));
+    let queue = Class::new("Queue", Some(Class::new("Object", None)));
     globals.set("Queue", Object::Class(queue));
-    let sized_queue = Rc::new(Class::new(
-        "SizedQueue",
-        Some(Rc::new(Class::new("Object", None))),
-    ));
+    let sized_queue = Class::new("SizedQueue", Some(Class::new("Object", None)));
     globals.set("SizedQueue", Object::Class(sized_queue));
     // Ruby names both of these under Thread as well as at the top level, and
     // the two names reach the same class.
@@ -242,15 +224,9 @@ pub(crate) fn register_builtin_modules(globals: &mut GlobalRegistry, builtins: &
     // OS threads (Thread.new runs synchronously), so locks never contend and
     // condvars never need to actually wake anyone. Just enough surface for
     // fixtures (CyclicBarrier, ThreadSafeCounter, ...) to compile and run.
-    let mutex = Rc::new(Class::new(
-        "Mutex",
-        Some(Rc::new(Class::new("Object", None))),
-    ));
+    let mutex = Class::new("Mutex", Some(Class::new("Object", None)));
     globals.set("Mutex", Object::Class(mutex));
-    let cv = Rc::new(Class::new(
-        "ConditionVariable",
-        Some(Rc::new(Class::new("Object", None))),
-    ));
+    let cv = Class::new("ConditionVariable", Some(Class::new("Object", None)));
     globals.set("ConditionVariable", Object::Class(cv));
 
     // ENV — use a Dict so ENV['KEY'] works. Keys are plain strings (no quotes)

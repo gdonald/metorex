@@ -358,18 +358,18 @@ impl VirtualMachine {
                 // itself, which sits where the caller's own innermost place
                 // does and is named for the method rather than the caller.
                 if let Some(Object::Instance(innermost)) = places.first() {
-                    let mut here = crate::object::Instance::new(self.backtrace_location_class());
+                    let here = crate::object::Instance::new(self.backtrace_location_class());
                     for named in ["lineno", "path", "absolute_path"] {
                         let held = innermost.borrow().get_var(named).cloned();
                         if let Some(value) = held {
-                            here.set_var(named.to_string(), value);
+                            here.borrow_mut().set_var(named.to_string(), value);
                         }
                     }
-                    here.set_var(
+                    here.borrow_mut().set_var(
                         "label".to_string(),
                         Object::string("Thread#backtrace_locations"),
                     );
-                    places.insert(0, Object::Instance(Rc::new(std::cell::RefCell::new(here))));
+                    places.insert(0, Object::Instance(here));
                 }
                 let Some((skip, length)) = self.caller_slice_bounds(arguments, places.len(), 0)
                 else {
@@ -572,6 +572,14 @@ impl VirtualMachine {
         {
             return false;
         }
+        self.mutex_held_by_this_thread(inst)
+    }
+
+    /// Whether the thread running now holds the lock, under any of its fibers.
+    pub(crate) fn mutex_held_by_this_thread(
+        &mut self,
+        inst: &Rc<std::cell::RefCell<crate::object::Instance>>,
+    ) -> bool {
         let holder = inst.borrow().get_var("__mutex_thread").cloned();
         let running = self.running_thread();
         matches!(
@@ -594,7 +602,7 @@ impl VirtualMachine {
             return Object::Nil;
         };
         let made = crate::object::Instance::new(Rc::clone(&thread_class));
-        let main = Object::Instance(Rc::new(std::cell::RefCell::new(made)));
+        let main = Object::Instance(made);
         self.globals_mut().set("__Thread_main", main.clone());
         main
     }

@@ -65,10 +65,7 @@ impl VirtualMachine {
                     return existing;
                 }
                 let superclass = Some(Rc::clone(&inst.class));
-                let sc = Rc::new(Class::new(
-                    singleton_class_display_name(receiver),
-                    superclass,
-                ));
+                let sc = Class::new(singleton_class_display_name(receiver), superclass);
                 sc.set_class_var("__singleton__", Object::Bool(true));
                 sc.set_class_var("__attached__", receiver.clone());
                 *inst.singleton_class.borrow_mut() = Some(Rc::clone(&sc));
@@ -100,10 +97,7 @@ impl VirtualMachine {
                     },
                     None => None,
                 };
-                let sc = Rc::new(Class::new(
-                    singleton_class_display_name(receiver),
-                    parent_singleton,
-                ));
+                let sc = Class::new(singleton_class_display_name(receiver), parent_singleton);
                 sc.set_class_var("__singleton__", Object::Bool(true));
                 sc.set_class_var("__attached__", receiver.clone());
                 class_rc.set_singleton_class(Rc::clone(&sc));
@@ -121,7 +115,7 @@ impl VirtualMachine {
                 if let Some(existing) = self.primitive_singleton_classes.get(&key) {
                     return Rc::clone(existing);
                 }
-                let sc = Rc::new(Class::new(singleton_class_display_name(other), None));
+                let sc = Class::new(singleton_class_display_name(other), None);
                 sc.set_class_var("__singleton__", Object::Bool(true));
                 sc.set_class_var("__attached__", other.clone());
                 self.primitive_singleton_classes.insert(key, Rc::clone(&sc));

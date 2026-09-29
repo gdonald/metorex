@@ -56,6 +56,48 @@ impl VirtualMachine {
         };
 
         match method_name {
+            // What Marshal writes for the message: the one given, or nil when
+            // the exception reports its class name for lack of one.
+            "__given_message__" => {
+                let details = exception.borrow();
+                if let Some(given) = details.instance_vars.get(crate::vm::MESSAGE_STRING_KEY) {
+                    return Ok(Some(given.clone()));
+                }
+                Ok(Some(
+                    if details.message_given || !details.message.is_empty() {
+                        Object::string(details.message.clone())
+                    } else {
+                        Object::Nil
+                    },
+                ))
+            }
+            // What Marshal reads back for the message and the cause.
+            "__restore_message__" => {
+                let mut details = exception.borrow_mut();
+                match arguments.first() {
+                    Some(given @ Object::String(text)) => {
+                        details.message = text.as_str().to_string();
+                        details.message_given = true;
+                        details
+                            .instance_vars
+                            .insert(crate::vm::MESSAGE_STRING_KEY.to_string(), given.clone());
+                    }
+                    _ => {
+                        details.message = String::new();
+                        details.message_given = false;
+                    }
+                }
+                Ok(Some(Object::Nil))
+            }
+            "__restore_cause__" => {
+                let mut details = exception.borrow_mut();
+                details.cause = match arguments.first() {
+                    None | Some(Object::Nil) => None,
+                    Some(held) => Some(Box::new(held.clone())),
+                };
+                details.cause_settled = true;
+                Ok(Some(Object::Nil))
+            }
             // Ruby's `#message` is `to_s`, which answers the class name when
             // there is no message of its own. The call is dispatched, so a
             // subclass that redefines `to_s` decides what its message is.
@@ -589,16 +631,19 @@ impl VirtualMachine {
                 let entries: Vec<Object> = sites
                     .iter()
                     .map(|(path, line, label)| {
-                        let mut instance =
+                        let instance =
                             crate::object::Instance::new(std::rc::Rc::clone(&location_class));
-                        instance.set_var("path".to_string(), Object::string(path.clone()));
-                        instance.set_var("lineno".to_string(), Object::Int(*line as i64));
-                        instance.set_var("label".to_string(), Object::string(label.clone()));
-                        instance.set_var(
-                            "absolute_path".to_string(),
-                            Object::string(absolute_path(path)),
-                        );
-                        Object::Instance(Rc::new(RefCell::new(instance)))
+                        {
+                            let mut filling = instance.borrow_mut();
+                            filling.set_var("path".to_string(), Object::string(path.clone()));
+                            filling.set_var("lineno".to_string(), Object::Int(*line as i64));
+                            filling.set_var("label".to_string(), Object::string(label.clone()));
+                            filling.set_var(
+                                "absolute_path".to_string(),
+                                Object::string(absolute_path(path)),
+                            );
+                        }
+                        Object::Instance(instance)
                     })
                     .collect();
                 let array = Object::Array(Rc::new(RefCell::new(entries)));

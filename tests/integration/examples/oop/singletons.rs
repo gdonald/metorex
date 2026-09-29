@@ -152,3 +152,44 @@ fn test_oop_basic_object_answers_nothing_no_parens_execution() {
     let output = run_example("oop/basic_object/answers_nothing_no_parens.rb");
     assert_eq!(output, BASIC_OBJECT_ANSWERS_NOTHING_OUTPUT);
 }
+
+/// The expected output of both `oop/singleton_class_kinds` variants.
+const SINGLETON_CLASS_KINDS_OUTPUT: &str =
+    concat!("true\n", "true\n", "true\n", "true\n", "false\n");
+
+#[test]
+fn test_oop_singleton_class_kinds_execution() {
+    let output = run_example("oop/singleton_class_kinds.rb");
+    assert_eq!(output, SINGLETON_CLASS_KINDS_OUTPUT);
+}
+
+#[test]
+fn test_oop_singleton_class_kinds_no_parens_execution() {
+    let output = run_example("oop/singleton_class_kinds_no_parens.rb");
+    assert_eq!(output, SINGLETON_CLASS_KINDS_OUTPUT);
+}
+
+/// The expected output of both `oop/singleton_class_rules` variants.
+const SINGLETON_CLASS_RULES_OUTPUT: &str = concat!(
+    "true\n",
+    "false\n",
+    "true\n",
+    "true\n",
+    "false\n",
+    "String\n",
+    "can't create instance of singleton class\n",
+    "can't create instance of singleton class\n",
+    "undefined method 'total' for class Invoice\n",
+);
+
+#[test]
+fn test_oop_singleton_class_rules_execution() {
+    let output = run_example("oop/singleton_class_rules.rb");
+    assert_eq!(output, SINGLETON_CLASS_RULES_OUTPUT);
+}
+
+#[test]
+fn test_oop_singleton_class_rules_no_parens_execution() {
+    let output = run_example("oop/singleton_class_rules_no_parens.rb");
+    assert_eq!(output, SINGLETON_CLASS_RULES_OUTPUT);
+}

@@ -334,7 +334,7 @@ fn test_init_object_methods() {
 
 #[test]
 fn test_init_string_methods() {
-    let object_class = Rc::new(Class::new("Object", None));
+    let object_class = Class::new("Object", None);
     let string_class = Class::new("String", Some(object_class));
     init_string_methods(&string_class);
 
@@ -346,7 +346,7 @@ fn test_init_string_methods() {
 
 #[test]
 fn test_init_array_methods() {
-    let object_class = Rc::new(Class::new("Object", None));
+    let object_class = Class::new("Object", None);
     let array_class = Class::new("Array", Some(object_class));
     init_array_methods(&array_class);
 
@@ -372,7 +372,7 @@ fn test_object_respond_to_parameters() {
 
 #[test]
 fn test_string_concat_parameters() {
-    let object_class = Rc::new(Class::new("Object", None));
+    let object_class = Class::new("Object", None);
     let string_class = Class::new("String", Some(object_class));
     init_string_methods(&string_class);
 
@@ -383,7 +383,7 @@ fn test_string_concat_parameters() {
 
 #[test]
 fn test_array_index_parameters() {
-    let object_class = Rc::new(Class::new("Object", None));
+    let object_class = Class::new("Object", None);
     let array_class = Class::new("Array", Some(object_class));
     init_array_methods(&array_class);
 

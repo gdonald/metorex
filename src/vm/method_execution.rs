@@ -25,6 +25,57 @@ impl VirtualMachine {
         class: Rc<Class>,
         method: Rc<Method>,
         receiver: Object,
+        arguments: Vec<Object>,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        // Methods answered natively can call one another without evaluating
+        // an expression in between, so calls count toward how deep the
+        // program is nested as well.
+        crate::vm::program::enter_nesting(position)?;
+        // A stub with no body and no source stands for a native method,
+        // which a trace sees as a method written in C.
+        let traced_as_c = !self.tracepoints.is_empty()
+            && method.body.is_empty()
+            && method
+                .source_location
+                .as_ref()
+                .is_none_or(|written| written.filename.is_none());
+        let answered = if traced_as_c {
+            self.invoke_native_stub(class, method, receiver, arguments, position)
+        } else {
+            self.invoke_method_unguarded(class, method, receiver, arguments, position)
+        };
+        crate::vm::program::leave_nesting();
+        answered
+    }
+
+    /// Run a method that stands for a native one between its `c_call` and
+    /// `c_return` events. The calls it makes itself are Ruby's C code calling
+    /// on, which fire no events of their own.
+    fn invoke_native_stub(
+        &mut self,
+        class: Rc<Class>,
+        method: Rc<Method>,
+        receiver: Object,
+        arguments: Vec<Object>,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let name = method.name.clone();
+        self.fire_native_event("c_call", &name, &receiver, None, position)?;
+        self.native_calls_running += 1;
+        let answered =
+            self.invoke_method_unguarded(class, method, receiver.clone(), arguments, position);
+        self.native_calls_running -= 1;
+        let value = answered?;
+        self.fire_native_event("c_return", &name, &receiver, Some(&value), position)?;
+        Ok(value)
+    }
+
+    fn invoke_method_unguarded(
+        &mut self,
+        class: Rc<Class>,
+        method: Rc<Method>,
+        receiver: Object,
         mut arguments: Vec<Object>,
         position: Position,
     ) -> Result<Object, MetorexError> {
@@ -331,23 +382,32 @@ impl VirtualMachine {
                 .or_else(|| method.captured_def_scope.last().cloned())
                 .or_else(|| Some(Rc::clone(&class))),
         );
-        self.fire_method_event("call", &method_name, &method, &class, None, position)?;
-        let execution_result = self.with_call_frame(
-            CallFrame::method(
-                frame_name.clone(),
-                frame_location_string,
-                method_name.clone(),
-                defined_name.clone(),
-            )
-            .with_source_file(self.current_source_file.clone()),
-            move |vm| {
-                vm.execute_method_body(
-                    method_for_body.as_ref(),
-                    self_for_body.clone(),
-                    arguments_for_body.clone(),
-                )
-            },
-        );
+        let written = method
+            .source_location
+            .as_ref()
+            .and_then(|written| Some((written.filename.clone()?, written.line)));
+        let opened_on = written.as_ref().map_or(position.line, |(_, line)| *line);
+        self.enter_running_code(Rc::new(written.into_iter().collect()), opened_on);
+        let execution_result =
+            match self.fire_method_event("call", &method_name, &method, &class, None, position) {
+                Ok(()) => self.with_call_frame(
+                    CallFrame::method(
+                        frame_name.clone(),
+                        frame_location_string,
+                        method_name.clone(),
+                        defined_name.clone(),
+                    )
+                    .with_source_file(self.current_source_file.clone()),
+                    move |vm| {
+                        vm.execute_method_body(
+                            method_for_body.as_ref(),
+                            self_for_body.clone(),
+                            arguments_for_body.clone(),
+                        )
+                    },
+                ),
+                Err(error) => Err(error),
+            };
         self.method_nesting_stack.pop();
         self.class_var_cref_stack.pop();
         self.method_owner_stack.pop();
@@ -355,20 +415,21 @@ impl VirtualMachine {
         self.refinement_scopes = caller_scopes;
         self.user_def_nesting = self.user_def_nesting.saturating_sub(1);
 
-        match execution_result {
-            Ok(value) => {
-                self.fire_method_event(
+        let finished = match execution_result {
+            Ok(value) => self
+                .fire_method_event(
                     "return",
                     &method_name,
                     &method,
                     &class,
                     Some(&value),
                     position,
-                )?;
-                Ok(value)
-            }
+                )
+                .map(|()| value),
             Err(error) => Err(error.with_stack_frame(StackFrame::new(frame_name, frame_location))),
-        }
+        };
+        self.leave_running_code();
+        finished
     }
 
     /// Execute the body of a method within a fresh scope.
@@ -460,6 +521,7 @@ impl VirtualMachine {
                 }
             }
 
+            let keyword_hash = arguments.last().cloned();
             let (positional, kwargs) = crate::vm::param_binding::split_keyword_args_for(
                 arguments,
                 !method.keyword_parameters.is_empty() || method.keyword_rest_parameter.is_some(),
@@ -476,6 +538,11 @@ impl VirtualMachine {
                 &method.keyword_parameters,
                 method.keyword_rest_parameter.as_deref(),
                 kwargs,
+            )?;
+            self.refuse_unknown_keywords(
+                keyword_hash.as_ref(),
+                &method.keyword_parameters,
+                method.keyword_rest_parameter.as_deref(),
             )?;
 
             // Bind the block: define block_given? as a Bool, __block__ for internal use,
@@ -569,6 +636,7 @@ impl VirtualMachine {
 
         let result = (|| -> Result<Object, MetorexError> {
             // Bind parameters to arguments (no self for standalone functions)
+            let keyword_hash = arguments.last().cloned();
             let (positional, kwargs) = split_keyword_args(
                 arguments,
                 !function.keyword_parameters.is_empty()
@@ -585,6 +653,11 @@ impl VirtualMachine {
                 &function.keyword_parameters,
                 function.keyword_rest_parameter.as_deref(),
                 kwargs,
+            )?;
+            self.refuse_unknown_keywords(
+                keyword_hash.as_ref(),
+                &function.keyword_parameters,
+                function.keyword_rest_parameter.as_deref(),
             )?;
 
             // Bind the block: define block_given? as a Bool, __block__ for internal use,
@@ -722,6 +795,11 @@ impl VirtualMachine {
         for (i, statement) in body.iter().enumerate() {
             let is_last = i == body.len() - 1;
 
+            // The last statement is answered below rather than through
+            // `execute_statement`, and it is a `:line` event all the same.
+            if is_last && !self.tracepoints.is_empty() && answers_its_own_value(statement) {
+                self.fire_line_event(statement.position())?;
+            }
             // If this is the last statement, capture its value
             if is_last && let Some(value) = self.terminal_statement_value(statement)? {
                 // The last statement answered here rather than through
@@ -782,6 +860,57 @@ impl VirtualMachine {
         }
 
         Ok(last_value)
+    }
+
+    /// Refuse the keywords a call passed that the method declared no
+    /// parameter for, unless it takes the rest in a `**` parameter. A method
+    /// that declares no keywords at all takes them as a positional Hash.
+    fn refuse_unknown_keywords(
+        &mut self,
+        keyword_hash: Option<&Object>,
+        keyword_parameters: &[(String, Option<Expression>)],
+        keyword_rest_parameter: Option<&str>,
+    ) -> Result<(), MetorexError> {
+        if keyword_parameters.is_empty() || keyword_rest_parameter.is_some() {
+            return Ok(());
+        }
+        let Some(Object::Dict(entries)) = keyword_hash else {
+            return Ok(());
+        };
+        let held = entries.borrow().clone();
+        if !held.contains_key(crate::vm::param_binding::KWARGS_MARKER) {
+            return Ok(());
+        }
+        let unknown: Vec<Object> = held
+            .keys()
+            .filter(|key| !crate::vm::native_methods::hash_methods::is_internal_key(key))
+            .filter(|key| {
+                !key.strip_prefix(':').is_some_and(|name| {
+                    keyword_parameters
+                        .iter()
+                        .any(|(declared, _)| declared == name)
+                })
+            })
+            .map(|key| crate::vm::native_methods::hash_methods::reconstruct_key(&held, key))
+            .collect();
+        if unknown.is_empty() {
+            return Ok(());
+        }
+        let position = crate::lexer::Position::new(0, 0, 0);
+        let mut named = Vec::with_capacity(unknown.len());
+        for key in &unknown {
+            named.push(self.get_inspect_representation(key, position)?);
+        }
+        let message = if named.len() == 1 {
+            format!("unknown keyword: {}", named[0])
+        } else {
+            format!("unknown keywords: {}", named.join(", "))
+        };
+        Err(crate::vm::errors::simple_exception(
+            "ArgumentError",
+            &message,
+            position,
+        ))
     }
 
     /// Bind named keyword parameters to the current scope.
@@ -873,4 +1002,17 @@ fn written_by_the_program(method: &std::rc::Rc<crate::object::Method>) -> bool {
         .body
         .first()
         .is_some_and(|statement| !statement.position().prelude)
+}
+
+/// Whether `terminal_statement_value` answers for this statement, rather
+/// than leaving it to `execute_statement`.
+fn answers_its_own_value(statement: &Statement) -> bool {
+    matches!(
+        statement,
+        Statement::Expression { .. }
+            | Statement::Assignment { .. }
+            | Statement::If { .. }
+            | Statement::Unless { .. }
+            | Statement::Begin { .. }
+    )
 }

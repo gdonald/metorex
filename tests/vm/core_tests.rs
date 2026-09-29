@@ -259,7 +259,7 @@ fn auto_call_method_in_block_context() {
 }
 
 // ── @var read when self is a Class (core.rs lines 460-462) ────────────────────
-// When an instance method is called on the class (Foo.method), self = Class.
+// A class method runs with the class as self.
 // Reading @var in that context hits the Some(_) non-instance branch.
 
 #[test]
@@ -267,7 +267,7 @@ fn instance_var_read_on_class_self_returns_nil() {
     // In Ruby, @x on a Class returns nil (class-level instance variable)
     let result = run(r#"
 class Foo
-  def read_ivar
+  def self.read_ivar
     @x
   end
 end
@@ -276,12 +276,11 @@ Foo.read_ivar
     assert!(result == Some(Object::Nil) || result.is_none());
 }
 
-// ── super when self is a Class (core.rs lines 507-509) ───────────────────────
-// When an instance method containing super is called on the class directly,
-// self = Class → triggers the Some(_) non-instance super error.
+// A class does not answer its own instance methods, so calling one on the
+// class is a NoMethodError.
 
 #[test]
-fn super_when_self_is_class_error() {
+fn instance_method_called_on_its_class_is_undefined() {
     let err = run_err(
         r#"
 class Base
@@ -297,12 +296,7 @@ end
 Child.greet
 "#,
     );
-    assert!(
-        err.contains("super")
-            || err.contains("instance")
-            || err.contains("method")
-            || err.contains("context")
-    );
+    assert!(err.contains("undefined method 'greet'"), "{}", err);
 }
 
 // ── execute_file: parse error in file (core.rs lines 274-276) ────────────────

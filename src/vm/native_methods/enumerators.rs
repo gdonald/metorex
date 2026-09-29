@@ -26,7 +26,14 @@ impl VirtualMachine {
         let counted = !matches!(method_name, "rindex" | "index" | "find_index");
         let size = match receiver {
             Object::Array(elements) if counted => Object::Int(elements.borrow().len() as i64),
-            Object::Dict(entries) if counted => Object::Int(entries.borrow().len() as i64),
+            // A Hash counts its pairs, not the entries it keeps for itself.
+            Object::Dict(entries) if counted => Object::Int(
+                entries
+                    .borrow()
+                    .keys()
+                    .filter(|key| !crate::vm::native_methods::hash_methods::is_internal_key(key))
+                    .count() as i64,
+            ),
             _ => Object::Nil,
         };
         let call = vec![

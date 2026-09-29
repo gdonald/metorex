@@ -1,6 +1,47 @@
 // The libraries metorex ships with, held in the binary so `require` finds
 // them without a directory on the load path.
 
+/// The file a library metorex carries says its code was written in.
+pub(crate) fn embedded_library_file(name: &str) -> String {
+    format!(
+        "{}{}.rb",
+        EMBEDDED_LIBRARY_PREFIX,
+        name.strip_suffix(".rb").unwrap_or(name)
+    )
+}
+
+const EMBEDDED_LIBRARY_PREFIX: &str = "<metorex>/";
+
+/// The libraries metorex carries that Ruby writes in C, as `ext/` holds them.
+const C_EXTENSIONS: &[&str] = &[
+    "bigdecimal",
+    "coverage",
+    "date",
+    "etc",
+    "fcntl",
+    "io/console",
+    "io/nonblock",
+    "monitor",
+    "objspace",
+    "rbconfig/sizeof",
+    "stringio",
+    "strscan",
+    "syslog",
+    "zlib",
+];
+
+/// Whether code written in `file` stands for code Ruby writes in C: the
+/// core library metorex loads at startup, or a library Ruby ships as a C
+/// extension.
+pub(crate) fn written_for_c(file: &str) -> bool {
+    if file.starts_with("<internal:") {
+        return true;
+    }
+    file.strip_prefix(EMBEDDED_LIBRARY_PREFIX)
+        .and_then(|named| named.strip_suffix(".rb"))
+        .is_some_and(|named| C_EXTENSIONS.contains(&named))
+}
+
 /// The source of a library metorex carries, or None for a name it does not
 /// have. A file on the load path wins over one of these.
 pub(crate) fn embedded_library(name: &str) -> Option<&'static str> {

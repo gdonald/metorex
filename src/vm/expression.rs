@@ -245,19 +245,51 @@ impl VirtualMachine {
         // writing it again is not the duplicate Ruby reports.
         let mut spread_names: std::collections::HashSet<String> = std::collections::HashSet::new();
 
-        for (key_expr, value_expr) in entries {
+        for (key_expr, value_expr) in flattened_entries(entries) {
             // `{**held}` copies every pair `held` carries into the hash.
-            if let Expression::KeywordSplat { expression, .. } = key_expr {
+            if let Expression::KeywordSplat {
+                expression,
+                position,
+            } = key_expr
+            {
                 let spread = self.evaluate_expression(expression)?;
-                if let Object::Dict(pairs) = spread {
-                    for (name, held) in pairs.borrow().iter() {
-                        map.insert(name.clone(), held.clone());
-                        spread_names.insert(name.clone());
+                let Some(pairs) = self.hash_for_splat(spread, *position)? else {
+                    continue;
+                };
+                let pairs = pairs.borrow();
+                if let Some(Object::Dict(objects)) =
+                    pairs.get(crate::vm::native_methods::hash_methods::KEY_OBJECTS_KEY)
+                {
+                    for (slot, held) in objects.borrow().iter() {
+                        key_objs.insert(slot.clone(), held.clone());
                     }
+                }
+                for (name, held) in pairs.iter() {
+                    if crate::vm::native_methods::hash_methods::is_internal_key(name) {
+                        continue;
+                    }
+                    map.insert(name.clone(), held.clone());
+                    spread_names.insert(name.clone());
                 }
                 continue;
             }
             let key_value = self.evaluate_expression(key_expr)?;
+            // A String key is copied and frozen, so changing the String it
+            // was written with afterwards leaves the key alone.
+            // The interpreter's own bookkeeping keys are left as they are, and
+            // so is a key spelled `:name`, which is how the parser writes the
+            // Symbol keys of the keywords a call passes.
+            let program_string_key = matches!(&key_value, Object::String(text)
+                if !crate::vm::native_methods::hash_methods::is_internal_key(&text.as_str())
+                    && !text.as_str().starts_with(':'));
+            let key_value = match &key_value {
+                Object::String(text) if program_string_key && !text.is_frozen() => {
+                    let copy = crate::object::StringValue::clone(text);
+                    copy.freeze();
+                    Object::String(Rc::new(copy))
+                }
+                _ => key_value,
+            };
             let key_position = key_expr.position();
             let mut probe = map.clone();
             for (slot, held) in &key_objs {
@@ -268,7 +300,7 @@ impl VirtualMachine {
                 Object::Dict(Rc::new(RefCell::new(key_objs.clone()))),
             );
             let key_string = self.dict_slot_in(&probe, &key_value, false, key_position)?;
-            if !crate::vm::utils::is_primitive_key(&key_value) {
+            if !crate::vm::utils::is_primitive_key(&key_value) || program_string_key {
                 key_objs
                     .entry(key_string.clone())
                     .or_insert_with(|| key_value.clone());
@@ -292,6 +324,49 @@ impl VirtualMachine {
         }
 
         Ok(Object::Dict(Rc::new(RefCell::new(map))))
+    }
+
+    /// The Hash a `**value` spreads: the value itself, what its `to_hash`
+    /// answers, or nothing at all for nil.
+    pub(crate) fn hash_for_splat(
+        &mut self,
+        value: Object,
+        position: crate::lexer::Position,
+    ) -> Result<Option<SharedPairs>, MetorexError> {
+        match value {
+            Object::Dict(pairs) => Ok(Some(pairs)),
+            Object::Nil => Ok(None),
+            other if self.lookup_method(&other, "to_hash").is_some() => {
+                let class_name = self.conversion_name(&other);
+                match self.send_to_object(other, "to_hash", vec![], position)? {
+                    Object::Dict(pairs) => Ok(Some(pairs)),
+                    answered => {
+                        let message = format!(
+                            "can't convert {} to Hash ({}#to_hash gives {})",
+                            class_name,
+                            class_name,
+                            self.conversion_name(&answered)
+                        );
+                        Err(crate::vm::errors::simple_exception(
+                            "TypeError",
+                            &message,
+                            position,
+                        ))
+                    }
+                }
+            }
+            other => {
+                let message = format!(
+                    "no implicit conversion of {} into Hash",
+                    self.conversion_name(&other)
+                );
+                Err(crate::vm::errors::simple_exception(
+                    "TypeError",
+                    &message,
+                    position,
+                ))
+            }
+        }
     }
 
     /// Ruby names a key written twice in the same literal, reporting the line
@@ -904,6 +979,25 @@ impl VirtualMachine {
 
 /// Whether a key is written out in the literal itself, which is what Ruby
 /// checks for a duplicate rather than what the key evaluates to.
+/// The pairs a Hash holds, shared with every reference to it.
+type SharedPairs = Rc<RefCell<IndexMap<String, Object>>>;
+
+/// The pairs of a Hash literal with each `**{...}` literal written inside it
+/// spread in place, since its keys count as written in the outer literal.
+fn flattened_entries(entries: &[(Expression, Expression)]) -> Vec<(&Expression, &Expression)> {
+    let mut flat = Vec::with_capacity(entries.len());
+    for (key, value) in entries {
+        if let Expression::KeywordSplat { expression, .. } = key
+            && let Expression::Dictionary { entries: inner, .. } = expression.as_ref()
+        {
+            flat.extend(flattened_entries(inner));
+            continue;
+        }
+        flat.push((key, value));
+    }
+    flat
+}
+
 fn is_literal_key(key: &Expression) -> bool {
     matches!(
         key,

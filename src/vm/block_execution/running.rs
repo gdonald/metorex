@@ -153,17 +153,7 @@ impl VirtualMachine {
 
         // A trace sees a block body opening and closing, and reads the
         // parameters the block declared off either event.
-        let block_position = block
-            .body
-            .first()
-            .map(|held| held.position())
-            .unwrap_or_else(|| Position::new(0, 0, 0));
-        let declared = crate::vm::native_methods::block_parameter_list(block);
-        self.fire_event(
-            "b_call",
-            block_position,
-            vec![("parameters", declared.clone())],
-        )?;
+        let (block_position, declared) = self.enter_block_body(block)?;
 
         // A lambda is something a `return` carried out of an eval can return
         // from, so its body says while it runs that one is there.
@@ -293,6 +283,15 @@ impl VirtualMachine {
 
             Ok(last_value)
         })();
+        let result = match result {
+            Ok(value) => self
+                .leave_block_body(block, block_position, declared, &value)
+                .map(|()| value),
+            failed => {
+                self.leave_running_code();
+                failed
+            }
+        };
 
         if block.is_lambda {
             self.lambda_body_depth -= 1;
@@ -420,59 +419,137 @@ impl VirtualMachine {
                 .and_then(|named| self.file_encodings.get(named).cloned()),
         );
 
-        let result = (|| -> Result<ControlFlow, MetorexError> {
-            // Define captured variables using shared references
-            for (name, value_ref) in block.captured_vars() {
-                self.environment_mut()
-                    .define_captured(name.clone(), value_ref.clone());
-            }
+        let result = match self.enter_block_body(block) {
+            Err(error) => Err(error),
+            Ok((block_position, declared)) => {
+                let mut last_value = Object::Nil;
+                let ran = (|| -> Result<ControlFlow, MetorexError> {
+                    // Define captured variables using shared references
+                    for (name, value_ref) in block.captured_vars() {
+                        self.environment_mut()
+                            .define_captured(name.clone(), value_ref.clone());
+                    }
 
-            // Define parameters as regular variables (handles *args/&block prefixes)
-            bind_block_params(
-                self,
-                &block.binding_parameters(),
-                &block.parameter_defaults,
-                arguments,
-                Position::new(0, 0, 0),
-            )?;
+                    // Define parameters as regular variables (handles *args/&block prefixes)
+                    bind_block_params(
+                        self,
+                        &block.binding_parameters(),
+                        &block.parameter_defaults,
+                        arguments,
+                        Position::new(0, 0, 0),
+                    )?;
 
-            // Pre-bind syntactically assigned locals to nil — see
-            // execute_block_body for the rationale.
-            for name in collect_assigned_locals(block.body()) {
-                if self.environment().assignment_introduces_a_local(&name) {
-                    self.environment_mut().hoist(name);
-                }
-            }
-
-            // `redo` runs the block's body again over the same arguments,
-            // which are already bound in this scope.
-            loop {
-                let mut again = false;
-                for statement in block.body() {
-                    match self.execute_statement(statement)? {
-                        ControlFlow::Next | ControlFlow::Value(_) => {}
-                        ControlFlow::Retry { .. } | ControlFlow::Redo { .. } => {
-                            again = true;
-                            break;
-                        }
-                        flow @ (ControlFlow::Return { .. }
-                        | ControlFlow::Break { .. }
-                        | ControlFlow::Continue { .. }
-                        | ControlFlow::Exception { .. }) => {
-                            return Ok(flow);
+                    // Pre-bind syntactically assigned locals to nil — see
+                    // execute_block_body for the rationale.
+                    for name in collect_assigned_locals(block.body()) {
+                        if self.environment().assignment_introduces_a_local(&name) {
+                            self.environment_mut().hoist(name);
                         }
                     }
-                }
-                if !again {
-                    return Ok(ControlFlow::Next);
+
+                    // `redo` runs the block's body again over the same arguments,
+                    // which are already bound in this scope.
+                    loop {
+                        let mut again = false;
+                        for statement in block.body() {
+                            match self.execute_statement(statement)? {
+                                ControlFlow::Next => {}
+                                ControlFlow::Value(value) => last_value = value,
+                                ControlFlow::Retry { .. } | ControlFlow::Redo { .. } => {
+                                    again = true;
+                                    break;
+                                }
+                                flow @ (ControlFlow::Return { .. }
+                                | ControlFlow::Break { .. }
+                                | ControlFlow::Continue { .. }
+                                | ControlFlow::Exception { .. }) => {
+                                    return Ok(flow);
+                                }
+                            }
+                        }
+                        if !again {
+                            return Ok(ControlFlow::Next);
+                        }
+                    }
+                })();
+                match ran {
+                    Ok(flow) => self
+                        .leave_block_body(block, block_position, declared, &last_value)
+                        .map(|()| flow),
+                    failed => {
+                        self.leave_running_code();
+                        failed
+                    }
                 }
             }
-        })();
+        };
 
         self.current_source_file = saved_source_file;
         self.current_source_encoding = saved_source_encoding;
         self.environment_mut().pop_scope();
         self.call_stack_pop();
         result
+    }
+
+    /// Start a block body the way a trace sees it: the body is running, and
+    /// `b_call` fires at the line the block was opened on. Answers that
+    /// position and the parameters the block declared, which `b_return`
+    /// reports too.
+    fn enter_block_body(
+        &mut self,
+        block: &BlockStatement,
+    ) -> Result<(Position, Object), MetorexError> {
+        let block_position = match block.opened_at {
+            Some(line) => Position::new(line, 0, 0),
+            None => block
+                .body
+                .first()
+                .map(|held| held.position())
+                .unwrap_or_else(|| Position::new(0, 0, 0)),
+        };
+        let declared = crate::vm::native_methods::block_parameter_list(block);
+        self.enter_running_code(
+            std::rc::Rc::clone(&block.written_within),
+            block_position.line,
+        );
+        let mut extra = vec![("parameters", declared.clone())];
+        extra.extend(block_method_names(block));
+        if let Err(error) = self.fire_event("b_call", block_position, extra) {
+            self.leave_running_code();
+            return Err(error);
+        }
+        Ok((block_position, declared))
+    }
+
+    /// Finish a block body that answered `value`, firing `b_return` at the
+    /// line it ran last.
+    fn leave_block_body(
+        &mut self,
+        block: &BlockStatement,
+        block_position: Position,
+        declared: Object,
+        value: &Object,
+    ) -> Result<(), MetorexError> {
+        let line = self
+            .running_code
+            .last()
+            .map_or(block_position.line, |running| running.line);
+        let mut extra = vec![("parameters", declared), ("return_value", value.clone())];
+        extra.extend(block_method_names(block));
+        let fired = self.fire_event("b_return", Position::new(line, 0, 0), extra);
+        self.leave_running_code();
+        fired
+    }
+}
+
+/// The method a block was written in, as the names a block event reports
+/// for `method_id` and `callee_id`.
+fn block_method_names(block: &BlockStatement) -> Vec<(&'static str, Object)> {
+    match &block.defining_method {
+        Some((callee, defined)) => vec![
+            ("method_id", Object::symbol(defined.clone())),
+            ("callee_id", Object::symbol(callee.clone())),
+        ],
+        None => Vec::new(),
     }
 }

@@ -279,3 +279,40 @@ fn test_builtins_pointer_packing_parens_execution() {
     let output = run_example("builtins/pointer_packing_parens.rb");
     assert_eq!(output, POINTER_PACKING_OUTPUT);
 }
+
+/// The expected output of both `builtins/subclass_details` variants.
+const SUBCLASS_DETAILS_OUTPUT: &str = concat!(
+    "#<Encoding:Windows-31J>\n",
+    "#<Encoding:Windows-31J>\n",
+    "#<Encoding:BINARY (ASCII-8BIT)>\n",
+    ":kept\n",
+    "#<Encoding:US-ASCII>\n",
+    "nil\n",
+);
+
+#[test]
+fn test_builtins_subclass_details_execution() {
+    let output = run_example("builtins/subclass_details.rb");
+    assert_eq!(output, SUBCLASS_DETAILS_OUTPUT);
+}
+
+#[test]
+fn test_builtins_subclass_details_no_parens_execution() {
+    let output = run_example("builtins/subclass_details_no_parens.rb");
+    assert_eq!(output, SUBCLASS_DETAILS_OUTPUT);
+}
+
+/// The expected output of both `builtins/string_variables_after_free` variants.
+const STRING_VARIABLES_AFTER_FREE_OUTPUT: &str = concat!("0\n", "[:@kept]\n");
+
+#[test]
+fn test_builtins_string_variables_after_free_execution() {
+    let output = run_example("builtins/string_variables_after_free.rb");
+    assert_eq!(output, STRING_VARIABLES_AFTER_FREE_OUTPUT);
+}
+
+#[test]
+fn test_builtins_string_variables_after_free_no_parens_execution() {
+    let output = run_example("builtins/string_variables_after_free_no_parens.rb");
+    assert_eq!(output, STRING_VARIABLES_AFTER_FREE_OUTPUT);
+}

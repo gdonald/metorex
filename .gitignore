@@ -22,3 +22,6 @@ add_tests.md
 rubyspec_temp/
 
 cobertura.xml
+
+# Crash dumps written by a process that died in the Linux container.
+/core

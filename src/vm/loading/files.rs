@@ -69,7 +69,7 @@ impl VirtualMachine {
         if self.globals().get(name).is_some() {
             return;
         }
-        let made = Object::Module(std::rc::Rc::new(crate::class::Class::new_module(name)));
+        let made = Object::Module(crate::class::Class::new_module(name));
         self.globals_mut().set(name, made.clone());
         // The name is a constant the program reads, which the scope every
         // file runs in has to hold alongside the built-in ones.

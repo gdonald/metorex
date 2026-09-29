@@ -250,6 +250,15 @@ impl Parser {
             )
     }
 
+    /// Whether the `*` or `**` at the cursor opens a splatted argument rather
+    /// than multiplying. Ruby reads `name *list` and `name **options` as
+    /// arguments, by the space before the operator and none after it.
+    pub(crate) fn spaced_splat_argument(&mut self) -> bool {
+        matches!(self.peek().kind, TokenKind::Star | TokenKind::StarStar)
+            && self.peek().had_leading_space
+            && !self.peek_ahead(1).had_leading_space
+    }
+
     /// Whether the `:` at the cursor opens a symbol argument. A name follows
     /// it either way, but an operator name only counts when it is glued to the
     /// colon, since `condition ? value : -1` puts one there too.

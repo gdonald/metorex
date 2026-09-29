@@ -34,7 +34,7 @@ impl Parser {
         // `foo -1` passes a negative number while `foo - 1` subtracts one from
         // what `foo` answers. Ruby tells them apart by the spacing: a sign with
         // a space before it and none after belongs to the argument.
-        if self.signed_literal_argument() {
+        if self.signed_literal_argument() || self.spaced_splat_argument() {
             return !names_a_variable;
         }
 
@@ -176,7 +176,7 @@ impl Parser {
         // `foo -1` passes a negative number while `foo - 1` subtracts one from
         // what `foo` answers. Ruby tells them apart by the spacing: a sign with
         // a space before it and none after belongs to the argument.
-        if self.signed_literal_argument() {
+        if self.signed_literal_argument() || self.spaced_splat_argument() {
             return true;
         }
         if matches!(
@@ -375,6 +375,21 @@ impl Parser {
             self.skip_whitespace();
             let value = self.parse_expression()?;
             keyword_pairs.push((name, value));
+        } else if self.match_token(&[TokenKind::Star]) {
+            let position = self.previous().position;
+            let expr = self.parse_expression()?;
+            arguments.push(Expression::Splat {
+                expression: Box::new(expr),
+                position,
+            });
+        } else if self.match_token(&[TokenKind::StarStar]) {
+            let position = self.previous().position;
+            let expr = self.parse_expression()?;
+            splat_slots.push((arguments.len(), keyword_pairs.len() + rocket_pairs.len()));
+            arguments.push(Expression::KeywordSplat {
+                expression: Box::new(expr),
+                position,
+            });
         } else {
             // Handle &expr (block-to-proc conversion)
             self.match_token(&[TokenKind::Ampersand]);

@@ -18,6 +18,7 @@ pub mod repl;
 pub mod resolver;
 pub mod runtime;
 pub mod scope;
+pub mod standard_streams;
 pub mod symbol_registry;
 pub mod test_discovery;
 pub mod vm;

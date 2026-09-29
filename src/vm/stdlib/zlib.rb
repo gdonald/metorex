@@ -55,37 +55,40 @@ module Zlib
     value & 0xffffffff
   end
 
-  def self.crc32(text = "", running = 0)
+  def crc32(text = "", running = 0)
     Zlib.__stream__ "crc32", Zlib.coerce_text(text), Zlib.wrapped(running)
   end
 
-  def self.adler32(text = "", running = 1)
+  def adler32(text = "", running = 1)
     Zlib.__stream__ "adler32", Zlib.coerce_text(text), Zlib.wrapped(running)
   end
 
-  def self.crc_table
+  def crc_table
     Zlib.__stream__ "crc_table", "", 0
   end
 
-  def self.zlib_version
+  def zlib_version
     ZLIB_VERSION
   end
 
-  def self.deflate(text, _level = DEFAULT_COMPRESSION)
+  def deflate(text, _level = DEFAULT_COMPRESSION)
     Zlib.__stream__ "deflate", Zlib.coerce_text(text), 0
   end
 
-  def self.inflate(text)
+  def inflate(text)
     Zlib.__stream__ "inflate", Zlib.coerce_text(text), 0
   end
 
-  def self.gzip(text, level: nil, strategy: nil)
+  def gzip(text, level: nil, strategy: nil)
     Zlib.__stream__ "gzip", Zlib.coerce_text(text), 0
   end
 
-  def self.gunzip(text)
+  def gunzip(text)
     Zlib.__stream__ "gunzip", Zlib.coerce_text(text), 0
   end
+  # Ruby's zlib makes these module functions, which a module that includes
+  # Zlib reaches as private instance methods.
+  module_function :crc32, :adler32, :crc_table, :zlib_version, :deflate, :inflate, :gzip, :gunzip
 
   # The text a stream was given, which has to be a String or say how to read
   # one out of itself.

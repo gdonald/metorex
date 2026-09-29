@@ -39,12 +39,6 @@ impl VirtualMachine {
                 }
             }
             "transfer" => {
-                // Transferring to the fiber already holding the interpreter
-                // leaves it where it is. The root fiber is what a program
-                // transfers back to when it is finished with another.
-                if handle == crate::vm::fibers::ROOT_FIBER && self.fiber_frames.is_empty() {
-                    return Ok(Some(Object::Nil));
-                }
                 let stepped =
                     self.fiber_transfer(handle, receiver.clone(), arguments.to_vec(), position)?;
                 match stepped {
@@ -60,7 +54,7 @@ impl VirtualMachine {
                 self.fiber_kill(handle, position);
                 Ok(Some(Object::Nil))
             }
-            "raise" => {
+            "__raise__" => {
                 let raised = self.build_raise_exception(arguments, position)?;
                 let stepped = self.fiber_raise(handle, receiver.clone(), raised, position)?;
                 match stepped {

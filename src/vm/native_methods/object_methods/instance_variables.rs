@@ -41,6 +41,16 @@ impl VirtualMachine {
                                 .collect()
                         })
                         .unwrap_or_default()
+                } else if let Object::Exception(details) = receiver {
+                    // An exception keeps the program's variables beside the
+                    // ones the interpreter uses, which start with `__`.
+                    details
+                        .borrow()
+                        .instance_vars
+                        .keys()
+                        .filter(|name| !name.starts_with("__"))
+                        .map(|name| Object::symbol(format!("@{}", name)))
+                        .collect()
                 } else if let Object::Class(class_rc) | Object::Module(class_rc) = receiver {
                     // A class keeps its own instance variables among its
                     // class-level storage, under an `@` prefix.
@@ -88,6 +98,9 @@ impl VirtualMachine {
                     Object::Class(class_rc) | Object::Module(class_rc) => {
                         class_rc.get_class_var(&format!("@{}", bare_name)).is_some()
                     }
+                    Object::Exception(details) => {
+                        details.borrow().instance_vars.contains_key(bare_name)
+                    }
                     _ => false,
                 };
                 Ok(Some(Object::Bool(defined)))
@@ -125,7 +138,8 @@ impl VirtualMachine {
                     | Object::String(_)
                     | Object::Method(_)
                     | Object::Block(_)
-                    | Object::Binding(_) => Ok(Some(
+                    | Object::Binding(_)
+                    | Object::Regex(_, _) => Ok(Some(
                         Self::collection_address(receiver)
                             .and_then(|address| self.collection_variables.get(&address))
                             .and_then(|held| held.get(clean_name))
@@ -135,6 +149,14 @@ impl VirtualMachine {
                     Object::Module(module_rc) => Ok(Some(
                         module_rc
                             .get_class_var(&format!("@{}", clean_name))
+                            .unwrap_or(Object::Nil),
+                    )),
+                    Object::Exception(details) => Ok(Some(
+                        details
+                            .borrow()
+                            .instance_vars
+                            .get(clean_name)
+                            .cloned()
                             .unwrap_or(Object::Nil),
                     )),
                     _ => Ok(Some(Object::Nil)),
@@ -156,7 +178,14 @@ impl VirtualMachine {
                 }
                 let var_name =
                     self.coerce_instance_variable_name(&arguments[0], receiver, position)?;
-                if self.object_is_frozen(receiver) || !matches!(receiver, Object::Instance(_)) {
+                let holds_variables = matches!(
+                    receiver,
+                    Object::Instance(_)
+                        | Object::Class(_)
+                        | Object::Module(_)
+                        | Object::Exception(_)
+                ) || Self::collection_address(receiver).is_some();
+                if self.object_is_frozen(receiver) || !holds_variables {
                     let class_name = self.builtins().class_of(receiver).name().to_string();
                     let msg = format!("can't modify frozen {}: {}", class_name, receiver);
                     let exc = Object::exception("FrozenError", msg.clone());
@@ -166,13 +195,25 @@ impl VirtualMachine {
                         message: msg,
                     });
                 }
-                let Object::Instance(instance_rc) = receiver else {
-                    unreachable!("only an instance reaches here")
+                // Each kind keeps its variables where `instance_variable_set`
+                // put them.
+                let removed = match receiver {
+                    Object::Instance(instance_rc) => instance_rc
+                        .borrow_mut()
+                        .instance_vars
+                        .shift_remove(&var_name),
+                    Object::Class(class_rc) | Object::Module(class_rc) => {
+                        class_rc.remove_class_var(&format!("@{}", var_name))
+                    }
+                    Object::Exception(details) => {
+                        details.borrow_mut().instance_vars.shift_remove(&var_name)
+                    }
+                    _ => Self::collection_address(receiver).and_then(|address| {
+                        self.collection_variables
+                            .get_mut(&address)
+                            .and_then(|held| held.remove(&var_name))
+                    }),
                 };
-                let removed = instance_rc
-                    .borrow_mut()
-                    .instance_vars
-                    .shift_remove(&var_name);
                 match removed {
                     Some(value) => Ok(Some(value)),
                     None => {
@@ -229,6 +270,13 @@ impl VirtualMachine {
                         module_rc.set_class_var(format!("@{}", var_name), value.clone());
                         Ok(Some(value))
                     }
+                    Object::Exception(details) => {
+                        details
+                            .borrow_mut()
+                            .instance_vars
+                            .insert(var_name, value.clone());
+                        Ok(Some(value))
+                    }
                     // A collection has nowhere of its own to keep an instance
                     // variable, so the VM records it against the collection.
                     Object::Array(_)
@@ -237,7 +285,8 @@ impl VirtualMachine {
                     | Object::String(_)
                     | Object::Method(_)
                     | Object::Block(_)
-                    | Object::Binding(_) => {
+                    | Object::Binding(_)
+                    | Object::Regex(_, _) => {
                         if self.object_is_frozen(receiver) {
                             return Err(self.frozen_modification_error(receiver, position));
                         }
@@ -246,6 +295,8 @@ impl VirtualMachine {
                                 .entry(address)
                                 .or_default()
                                 .insert(var_name, value.clone());
+                            self.collection_variable_owners
+                                .insert(address, receiver.clone());
                         }
                         Ok(Some(value))
                     }

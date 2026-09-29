@@ -36,7 +36,7 @@ impl VirtualMachine {
         // would had the body raised.
         state.killing = true;
         let object = state.object.clone().unwrap_or(Object::Nil);
-        let _ = self.fiber_step(handle, object, Vec::new(), position);
+        let _ = self.fiber_step(handle, object, Vec::new(), Handoff::Resume, position);
         if let Some(state) = self.fibers.get_mut(handle) {
             state.killing = false;
             state.finished = true;
@@ -53,8 +53,9 @@ impl VirtualMachine {
             .unwrap_or(ROOT_FIBER)
     }
 
-    /// Raise an exception inside a fiber, where it stands. A fiber that has
-    /// not started yet is started and raises at its first statement.
+    /// Raise an exception inside a fiber, where it stands. The fiber running
+    /// now raises it at once, and one part-way through resuming another
+    /// passes it on to that one.
     pub(crate) fn fiber_raise(
         &mut self,
         handle: usize,
@@ -62,41 +63,45 @@ impl VirtualMachine {
         raised: Object,
         position: Position,
     ) -> Result<FiberStep, MetorexError> {
-        if handle == ROOT_FIBER {
-            let message = match &raised {
-                Object::Exception(details) => details.borrow().message.clone(),
-                other => format!("{other}"),
-            };
-            return Err(MetorexError::UncaughtException {
-                exception: raised,
-                location: crate::vm::utils::position_to_location(position),
-                message,
-            });
+        if let Some(resumed) = self.fiber_resumed_by(handle) {
+            let object = self.fiber_object(resumed);
+            return self.fiber_raise(resumed, object, raised, position);
         }
-        let Some(state) = self.fibers.get_mut(handle) else {
+        let current = self.fiber_current_handle();
+        let refused = match self.fibers.get(handle) {
+            _ if handle == current => None,
+            None => None,
+            Some(state) if state.finished => Some("attempt to resume a terminated fiber"),
+            Some(state) if state.held.is_none() => Some("cannot raise exception on unborn fiber"),
+            Some(_) => {
+                self.fiber_check_thread(handle, position)?;
+                let state = &mut self.fibers[handle];
+                state.raising = Some(raised.clone());
+                // A fiber waiting in `Fiber.yield` is resumed, and one that
+                // handed control on by a transfer is transferred to.
+                return if state.yielding {
+                    self.fiber_resume(handle, fiber, Vec::new(), position)
+                } else {
+                    self.fiber_transfer(handle, fiber, Vec::new(), position)
+                };
+            }
+        };
+        if let Some(message) = refused {
             return Err(crate::vm::errors::simple_exception(
                 "FiberError",
-                "attempt to resume a terminated fiber",
+                message,
                 position,
             ));
-        };
-        // A fiber that has never run has no suspend point to raise at, so it
-        // is started and told to raise as soon as it hands control back.
-        if state.held.is_none() {
-            state.finished = true;
-            state.running = None;
-            let message = match &raised {
-                Object::Exception(details) => details.borrow().message.clone(),
-                other => format!("{other}"),
-            };
-            return Err(MetorexError::UncaughtException {
-                exception: raised,
-                location: crate::vm::utils::position_to_location(position),
-                message,
-            });
         }
-        state.raising = Some(raised);
-        self.fiber_resume(handle, fiber, Vec::new(), position)
+        let message = match &raised {
+            Object::Exception(details) => details.borrow().message.clone(),
+            other => format!("{other}"),
+        };
+        Err(MetorexError::UncaughtException {
+            exception: raised,
+            location: crate::vm::utils::position_to_location(position),
+            message,
+        })
     }
 
     /// Whether a fiber blocks when it waits rather than handing control to a
@@ -176,8 +181,7 @@ impl VirtualMachine {
         let Some(Object::Class(fiber_class)) = self.globals().get("Fiber") else {
             return Object::Nil;
         };
-        let instance = crate::object::Instance::new(fiber_class);
-        let made = std::rc::Rc::new(std::cell::RefCell::new(instance));
+        let made = crate::object::Instance::new(fiber_class);
         made.borrow_mut()
             .set_var("__fiber__".to_string(), Object::Int(ROOT_FIBER as i64));
         let held = Object::Instance(made);

@@ -321,6 +321,15 @@ impl VirtualMachine {
                     // Where the block was opened, which is the line
                     // `source_location` names however far down the body starts.
                     block.opened_at = Some(position.line);
+                    if let Some(file) = block.source_file.clone() {
+                        let mut within = self
+                            .running_code
+                            .last()
+                            .map(|running| running.within.as_ref().clone())
+                            .unwrap_or_default();
+                        within.push((file, position.line));
+                        block.written_within = Rc::new(within);
+                    }
                 }
                 // The scopes open here are what the body reads its own
                 // lexical nesting as, whatever scope it is later called from.

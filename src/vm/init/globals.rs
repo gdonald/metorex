@@ -82,7 +82,7 @@ pub(crate) fn register_native_functions(globals: &mut GlobalRegistry) {
     globals.set("gets", Object::NativeFunction("gets".to_string()));
     // ARGF — the stream `gets` reads from. An instance rather than a module,
     // so a singleton method can stand in for `gets` during a test.
-    let argf_class = Rc::new(Class::new("ARGF.class", None));
+    let argf_class = Class::new("ARGF.class", None);
     globals.set("ARGF.class", Object::Class(Rc::clone(&argf_class)));
     let argf = Object::instance(argf_class);
     globals.set("ARGF", argf.clone());
@@ -233,6 +233,10 @@ pub(crate) fn register_native_functions(globals: &mut GlobalRegistry) {
     globals.set(
         "__math_function__",
         Object::NativeFunction("__math_function__".to_string()),
+    );
+    globals.set(
+        "__interpreter_path__",
+        Object::NativeFunction("__interpreter_path__".to_string()),
     );
     // Top-level `to_s` — Ruby's top-level self is "main", so bare to_s returns "main"
     globals.set("to_s", Object::NativeFunction("top_level_to_s".to_string()));

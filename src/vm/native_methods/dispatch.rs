@@ -70,8 +70,21 @@ impl VirtualMachine {
                             position,
                         ));
                     }
-                    use crate::object::Binding;
-                    let binding = Binding::new(block.captured_vars().clone());
+                    // The block's `self` is the one where it was written,
+                    // which at file scope is `main`.
+                    let receiver = block
+                        .captured_vars()
+                        .get("self")
+                        .map(|cell| cell.borrow().clone())
+                        .or_else(|| match self.globals().get("TOPLEVEL_BINDING") {
+                            Some(Object::Binding(top)) => top.receiver.clone(),
+                            _ => None,
+                        })
+                        .unwrap_or(Object::Nil);
+                    let binding = crate::object::Binding::with_receiver(
+                        block.captured_vars().clone(),
+                        receiver,
+                    );
                     return Ok(Some(Object::Binding(Rc::new(binding))));
                 }
                 _ => {}
@@ -206,11 +219,10 @@ impl VirtualMachine {
                     && let Object::Instance(instance) = receiver
                 {
                     let class = Rc::clone(&instance.borrow().class);
-                    let mut made = crate::object::Instance::new(class);
-                    made.set_var(ARRAY_SUBCLASS_VAR.to_string(), result);
-                    return Ok(Some(Object::Instance(Rc::new(std::cell::RefCell::new(
-                        made,
-                    )))));
+                    let made = crate::object::Instance::new(class);
+                    made.borrow_mut()
+                        .set_var(ARRAY_SUBCLASS_VAR.to_string(), result);
+                    return Ok(Some(Object::Instance(made)));
                 }
                 return Ok(Some(result));
             }
@@ -285,11 +297,10 @@ impl VirtualMachine {
                     && let Object::Instance(instance) = receiver
                 {
                     let class = std::rc::Rc::clone(&instance.borrow().class);
-                    let mut made = crate::object::Instance::new(class);
-                    made.set_var(HASH_SUBCLASS_VAR.to_string(), result);
-                    return Ok(Some(Object::Instance(Rc::new(std::cell::RefCell::new(
-                        made,
-                    )))));
+                    let made = crate::object::Instance::new(class);
+                    made.borrow_mut()
+                        .set_var(HASH_SUBCLASS_VAR.to_string(), result);
+                    return Ok(Some(Object::Instance(made)));
                 }
                 return Ok(Some(result));
             }
@@ -370,6 +381,13 @@ impl VirtualMachine {
                 return Ok(Some(Object::Bool(
                     self.pattern_fixes_encoding(&pattern, &flags),
                 )));
+            }
+            // The encoding and the source it is tagged in are the pattern's,
+            // which the Regexp the instance holds answers for.
+            if matches!(method_name, "encoding" | "source") {
+                let pattern = Object::Regex(pattern, flags);
+                let class = self.builtins().class_of(&pattern);
+                return self.call_native_method(&class, &pattern, method_name, arguments, position);
             }
             if let Some(result) =
                 self.call_regexp_method(&pattern, &flags, method_name, arguments, position)?

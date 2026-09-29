@@ -127,6 +127,7 @@ fn class_of_block() {
         from_symbol: None,
         written_in: None,
         written_depth: None,
+        written_within: Rc::default(),
         ruby2_keywords: std::rc::Rc::new(std::cell::Cell::new(false)),
     }));
     let class = builtins.class_of(&block);
@@ -145,7 +146,7 @@ fn class_of_native_function() {
 fn class_of_class() {
     let builtins = BuiltinClasses::new();
     use metorex::class::Class;
-    let cls = Object::Class(Rc::new(Class::new("MyClass", None)));
+    let cls = Object::Class(Class::new("MyClass", None));
     let class = builtins.class_of(&cls);
     assert_eq!(class.name(), "Object");
 }
@@ -154,7 +155,7 @@ fn class_of_class() {
 fn class_of_module() {
     let builtins = BuiltinClasses::new();
     use metorex::class::Class;
-    let module = Object::Module(Rc::new(Class::new("MyModule", None)));
+    let module = Object::Module(Class::new("MyModule", None));
     let class = builtins.class_of(&module);
     assert_eq!(class.name(), "Object");
 }

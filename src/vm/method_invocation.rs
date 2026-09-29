@@ -367,10 +367,10 @@ impl VirtualMachine {
         if class.name() == "Rational" && arguments.len() <= 2 {
             let num = arguments.first().cloned().unwrap_or(Object::Int(0));
             let den = arguments.get(1).cloned().unwrap_or(Object::Int(1));
-            let mut inst = crate::object::Instance::new(Rc::clone(&class));
-            inst.set_var("numerator".to_string(), num);
-            inst.set_var("denominator".to_string(), den);
-            return Ok(Object::Instance(Rc::new(RefCell::new(inst))));
+            let inst = crate::object::Instance::new(Rc::clone(&class));
+            inst.borrow_mut().set_var("numerator".to_string(), num);
+            inst.borrow_mut().set_var("denominator".to_string(), den);
+            return Ok(Object::Instance(inst));
         }
         if class.name() == "Complex"
             && let Some(converted) = self.call_kernel_conversion("Complex", &arguments, position)?
@@ -390,16 +390,19 @@ impl VirtualMachine {
             // characters are, so it starts with none; one that does not takes
             // the characters it was built with.
             let defines_initialize = class.find_method("initialize").is_some();
-            let mut instance = crate::object::Instance::new(Rc::clone(&class));
-            instance.set_var(
+            // The characters it starts with are what `String.new` makes of
+            // nothing, which are bytes rather than text.
+            let starting = if defines_initialize {
+                self.string_from_new_arguments(&[], position)?
+            } else {
+                spelled
+            };
+            let instance = crate::object::Instance::new(Rc::clone(&class));
+            instance.borrow_mut().set_var(
                 crate::vm::native_methods::STRING_SUBCLASS_VAR.to_string(),
-                if defines_initialize {
-                    Object::string("")
-                } else {
-                    spelled
-                },
+                starting,
             );
-            let made = Object::Instance(Rc::new(RefCell::new(instance)));
+            let made = Object::Instance(instance);
             if !defines_initialize {
                 self.pending_block.take();
                 return Ok(made);
@@ -426,12 +429,12 @@ impl VirtualMachine {
             if class.name() == "Range" {
                 return Ok(made);
             }
-            let mut instance = crate::object::Instance::new(Rc::clone(&class));
-            instance.set_var(
+            let instance = crate::object::Instance::new(Rc::clone(&class));
+            instance.borrow_mut().set_var(
                 crate::vm::native_methods::RANGE_SUBCLASS_VAR.to_string(),
                 made,
             );
-            let object = Object::Instance(Rc::new(RefCell::new(instance)));
+            let object = Object::Instance(instance);
             if let Some(initialize) = class.find_method("initialize")
                 && !initialize.is_undefined
                 && !initialize.body.is_empty()
@@ -452,19 +455,27 @@ impl VirtualMachine {
         // in place before `initialize` runs, so `self[key] = value` inside it
         // reaches the hash the instance is backed by.
         if descends_from(&class, "Hash") && class.name() != "Hash" {
-            let mut instance = crate::object::Instance::new(Rc::clone(&class));
+            let instance = crate::object::Instance::new(Rc::clone(&class));
             let mut entries = indexmap::IndexMap::new();
-            if let Some(block) = self.pending_block.take() {
-                entries.insert("__MX_DEFAULT_PROC__".to_string(), block);
+            // The default and the block are Hash's own `initialize`'s to take,
+            // so a subclass that writes one of its own takes them only by
+            // handing them on with `super`.
+            let own_initialize = class
+                .find_method("initialize")
+                .is_some_and(|initialize| !initialize.is_undefined && !initialize.body.is_empty());
+            if !own_initialize {
+                if let Some(block) = self.pending_block.take() {
+                    entries.insert("__MX_DEFAULT_PROC__".to_string(), block);
+                }
+                if let Some(default) = arguments.first() {
+                    entries.insert("__MX_DEFAULT__".to_string(), default.clone());
+                }
             }
-            if let Some(default) = arguments.first() {
-                entries.insert("__MX_DEFAULT__".to_string(), default.clone());
-            }
-            instance.set_var(
+            instance.borrow_mut().set_var(
                 crate::vm::native_methods::HASH_SUBCLASS_VAR.to_string(),
                 Object::Dict(Rc::new(RefCell::new(entries))),
             );
-            let object = Object::Instance(Rc::new(RefCell::new(instance)));
+            let object = Object::Instance(instance);
             if let Some(initialize) = class.find_method("initialize")
                 && !initialize.is_undefined
                 && !initialize.body.is_empty()
@@ -485,12 +496,12 @@ impl VirtualMachine {
         // storage is in place before `initialize` runs, so `self << x` inside
         // it appends to the array the instance is backed by.
         if descends_from(&class, "Array") {
-            let mut instance = crate::object::Instance::new(Rc::clone(&class));
-            instance.set_var(
+            let instance = crate::object::Instance::new(Rc::clone(&class));
+            instance.borrow_mut().set_var(
                 crate::vm::native_methods::ARRAY_SUBCLASS_VAR.to_string(),
                 Object::array(Vec::new()),
             );
-            let object = Object::Instance(Rc::new(RefCell::new(instance)));
+            let object = Object::Instance(instance);
             match class.find_method("initialize") {
                 Some(initialize) if !initialize.is_undefined && !initialize.body.is_empty() => {
                     self.invoke_method(
@@ -538,12 +549,12 @@ impl VirtualMachine {
                     ));
                 }
             };
-            let mut instance = crate::object::Instance::new(Rc::clone(&class));
-            instance.set_var(
+            let instance = crate::object::Instance::new(Rc::clone(&class));
+            instance.borrow_mut().set_var(
                 crate::vm::native_methods::PROC_SUBCLASS_VAR.to_string(),
                 held,
             );
-            let object = Object::Instance(Rc::new(RefCell::new(instance)));
+            let object = Object::Instance(instance);
             if let Some(initialize) = class.find_method("initialize")
                 && !initialize.is_undefined
                 && !initialize.body.is_empty()
@@ -562,12 +573,12 @@ impl VirtualMachine {
         // A subclass of Set holds its elements in an instance variable, the
         // same way an Array subclass holds its own.
         if descends_from(&class, "Set") {
-            let mut instance = crate::object::Instance::new(Rc::clone(&class));
-            instance.set_var(
+            let instance = crate::object::Instance::new(Rc::clone(&class));
+            instance.borrow_mut().set_var(
                 crate::vm::native_methods::SET_SUBCLASS_VAR.to_string(),
                 Object::empty_set(),
             );
-            let object = Object::Instance(Rc::new(RefCell::new(instance)));
+            let object = Object::Instance(instance);
             match class.find_method("initialize") {
                 Some(initialize) if !initialize.is_undefined && !initialize.body.is_empty() => {
                     self.invoke_method(
@@ -698,6 +709,15 @@ impl VirtualMachine {
                 details.message_given = !writes_its_own_initialize
                     && !arguments.is_empty()
                     && !matches!(arguments.first(), Some(Object::Nil));
+                // The String given is kept as it was, encoding and all, for
+                // Marshal to write.
+                if details.message_given
+                    && let Some(given @ Object::String(_)) = arguments.first()
+                {
+                    details
+                        .instance_vars
+                        .insert(crate::vm::MESSAGE_STRING_KEY.to_string(), given.clone());
+                }
                 if let Some(value) = named_receiver {
                     details.receiver = Some(Box::new(value));
                 }
@@ -737,9 +757,7 @@ impl VirtualMachine {
         }
 
         // Create a new instance of the class
-        let instance = Rc::new(RefCell::new(crate::object::Instance::new(Rc::clone(
-            &class,
-        ))));
+        let instance = crate::object::Instance::new(Rc::clone(&class));
         let instance_obj = Object::Instance(Rc::clone(&instance));
 
         // Look for an 'initialize' method and call it if present. A class

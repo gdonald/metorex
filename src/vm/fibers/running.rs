@@ -44,7 +44,20 @@ impl VirtualMachine {
             .written_in_scope(block.written_in.clone())
             .with_source_file(block.source_file.clone());
             vm.call_stack_push(frame);
-            let answered = vm.execute_block_body(&block, first);
+            // A thread's body is where a trace hears the thread start and end.
+            let body_of_a_thread = vm.thread_body_fibers.contains(&handle);
+            let started = if body_of_a_thread {
+                vm.fire_event("thread_begin", Position::new(0, 0, 0), Vec::new())
+            } else {
+                Ok(())
+            };
+            let answered = started.and_then(|()| vm.execute_block_body(&block, first));
+            let answered = match answered {
+                Ok(value) if body_of_a_thread => vm
+                    .fire_event("thread_end", Position::new(0, 0, 0), Vec::new())
+                    .map(|()| value),
+                other => other,
+            };
             vm.call_stack_pop();
             // A `break` or a `return` written in a fiber's block has nothing
             // to jump out to, which Ruby reports where the fiber was entered.
@@ -69,21 +82,34 @@ impl VirtualMachine {
             storage,
             owner,
             raising: None,
+            yielding: false,
+            host: None,
+            relaying: None,
+            relay_request: None,
         });
         handle
     }
 
     /// Hand control to a fiber, with the arguments `resume` was called with.
-    /// A fiber that transfers control on rather than yielding is followed
-    /// here, so the chain runs on this stack rather than nesting.
-    /// Run a fiber, keeping the last match to itself. `$~` and the numbered
-    /// globals reading it belong to the fiber that set them, so a thread
-    /// starts with none and a match it makes is not seen outside.
     pub(crate) fn fiber_resume(
         &mut self,
         handle: usize,
         fiber: Object,
         given: Vec<Object>,
+        position: Position,
+    ) -> Result<FiberStep, MetorexError> {
+        self.fiber_run(handle, fiber, given, Handoff::Resume, position)
+    }
+
+    /// Run a fiber, keeping the last match to itself. `$~` and the numbered
+    /// globals reading it belong to the fiber that set them, so a thread
+    /// starts with none and a match it makes is not seen outside.
+    pub(crate) fn fiber_run(
+        &mut self,
+        handle: usize,
+        fiber: Object,
+        given: Vec<Object>,
+        handoff: Handoff,
         position: Position,
     ) -> Result<FiberStep, MetorexError> {
         let held = self
@@ -116,7 +142,7 @@ impl VirtualMachine {
         if let Some(own_file) = self.fiber_source_files.remove(&handle) {
             self.current_source_file = own_file;
         }
-        let stepped = self.fiber_resume_within(handle, fiber, given, position);
+        let stepped = self.fiber_resume_within(handle, fiber, given, handoff, position);
         let left_file = std::mem::replace(&mut self.current_source_file, outer_file);
         self.fiber_source_files.insert(handle, left_file);
         let left_error = (
@@ -136,14 +162,19 @@ impl VirtualMachine {
         stepped
     }
 
+    /// Run a chain of fibers from this stack. A fiber that transfers control
+    /// on rather than yielding is followed here, so the chain runs on this
+    /// stack rather than nesting.
     pub(crate) fn fiber_resume_within(
         &mut self,
         handle: usize,
         fiber: Object,
         given: Vec<Object>,
+        handoff: Handoff,
         position: Position,
     ) -> Result<FiberStep, MetorexError> {
         let entry = handle;
+        let owner = self.fiber_current_handle();
         let mut running_handle = handle;
         let mut running_fiber = fiber;
         let mut running_given = given;
@@ -152,6 +183,7 @@ impl VirtualMachine {
                 running_handle,
                 running_fiber.clone(),
                 running_given,
+                handoff,
                 position,
             )?;
             match stepped {
@@ -162,7 +194,11 @@ impl VirtualMachine {
                     if self.blocking_in_fiber {
                         self.blocking_in_fiber = false;
                         self.wait_for_other_threads(position);
-                        if let Err(stopping) = self.raise_if_thread_killed(position) {
+                        // An exception handed to the thread is raised by the
+                        // fiber where it waits, so a `rescue` there sees it.
+                        let handed_one = self.thread_holds_an_interrupt();
+                        if !handed_one && let Err(stopping) = self.raise_if_thread_killed(position)
+                        {
                             // The fiber the thread is waiting inside unwinds
                             // first, so the `ensure` clauses it sits inside
                             // run before the thread itself is gone.
@@ -173,8 +209,13 @@ impl VirtualMachine {
                             {
                                 self.fibers[running_handle].killing = true;
                                 let carried = self.fiber_object(running_handle);
-                                let _ =
-                                    self.fiber_step(running_handle, carried, Vec::new(), position);
+                                let _ = self.fiber_step(
+                                    running_handle,
+                                    carried,
+                                    Vec::new(),
+                                    handoff,
+                                    position,
+                                );
                             }
                             return Err(stopping);
                         }
@@ -186,6 +227,42 @@ impl VirtualMachine {
                 }
                 // A transfer names the fiber to run next, and the one that
                 // asked for it stays suspended until something resumes it.
+                // Control handed back to the fiber this chain runs from answers
+                // the `transfer` it started the chain with.
+                FiberStep::Suspended(SuspendOutput::TransferTo {
+                    handle: wanted,
+                    given: carried,
+                    ..
+                }) if wanted == owner => {
+                    return Ok(FiberStep::Suspended(SuspendOutput::Yielded(passing_value(
+                        carried,
+                    ))));
+                }
+                // The fiber a program starts on is below the one this chain
+                // runs on, which hands the transfer down and waits there,
+                // part-way through resuming the chain, to be reached again.
+                FiberStep::Suspended(SuspendOutput::TransferTo {
+                    handle: ROOT_FIBER,
+                    fiber: named,
+                    given: carried,
+                }) => {
+                    self.fibers[owner].relaying = Some(entry);
+                    let relayed = self.fiber_suspend_with(
+                        SuspendOutput::TransferTo {
+                            handle: ROOT_FIBER,
+                            fiber: named,
+                            given: carried,
+                        },
+                        position,
+                    );
+                    self.fibers[owner].relaying = None;
+                    let back = relayed?;
+                    let entry_fiber = self.fiber_object(entry);
+                    (running_handle, running_fiber, running_given) = self.fibers[owner]
+                        .relay_request
+                        .take()
+                        .unwrap_or((entry, entry_fiber, back));
+                }
                 FiberStep::Suspended(SuspendOutput::TransferTo {
                     handle: wanted,
                     fiber: named,
@@ -195,15 +272,19 @@ impl VirtualMachine {
                     running_fiber = named;
                     running_given = carried;
                 }
-                // The fiber the chain started from is what control goes back
-                // to when a fiber reached by transfer runs out.
+                // A fiber reached by transfer that runs out hands what it
+                // answered to the fiber the chain was resumed into, or to the
+                // fiber a program starts on when that one transferred.
                 FiberStep::Finished(value) => {
-                    if running_handle == entry || !self.fiber_is_alive(entry) {
+                    if running_handle == entry
+                        || handoff == Handoff::Transfer
+                        || !self.fiber_is_alive(entry)
+                    {
                         return Ok(FiberStep::Finished(value));
                     }
                     running_handle = entry;
                     running_fiber = self.fiber_object(entry);
-                    running_given = Vec::new();
+                    running_given = vec![value];
                 }
                 FiberStep::Failed(trouble) => return Ok(FiberStep::Failed(trouble)),
             }
@@ -216,27 +297,23 @@ impl VirtualMachine {
         handle: usize,
         fiber: Object,
         given: Vec<Object>,
+        handoff: Handoff,
         position: Position,
     ) -> Result<FiberStep, MetorexError> {
-        // A fiber belongs to the thread it was made on, and no other thread
-        // may run it.
-        if let Some(state) = self.fibers.get(handle) {
-            let running_on = self.thread_current_stack.last();
-            let made_on = state.owner.as_ref();
-            let same = match (made_on, running_on) {
-                (None, None) => true,
-                (Some(Object::Instance(made)), Some(Object::Instance(running))) => {
-                    std::rc::Rc::ptr_eq(made, running)
-                }
-                _ => false,
-            };
-            if !same {
-                return Err(crate::vm::errors::simple_exception(
-                    "FiberError",
-                    "fiber called across threads",
-                    position,
-                ));
-            }
+        self.fiber_check_thread(handle, position)?;
+        // A fiber resumed from inside one that is now relaying runs on that
+        // one's stack, so that one is resumed and told to run it.
+        let current = self.fiber_current_handle();
+        if let Some(host) = self.fibers.get(handle).and_then(|state| state.host)
+            && host != current
+            && self
+                .fibers
+                .get(host)
+                .is_some_and(|state| state.relaying.is_some())
+        {
+            let carrier = self.fiber_object(host);
+            self.fibers[host].relay_request = Some((handle, fiber, given));
+            return self.fiber_step(host, carrier, Vec::new(), handoff, position);
         }
         // A fiber cannot resume itself, and one part-way through resuming
         // another cannot be resumed either. The fiber a program starts on is
@@ -248,7 +325,13 @@ impl VirtualMachine {
                 position,
             ));
         }
-        if handle == ROOT_FIBER || self.fiber_frames.iter().any(|frame| frame.handle == handle) {
+        if handle == ROOT_FIBER
+            || self.fiber_frames.iter().any(|frame| frame.handle == handle)
+            || self
+                .fibers
+                .get(handle)
+                .is_some_and(|state| state.relaying.is_some() && state.relay_request.is_none())
+        {
             return Err(crate::vm::errors::simple_exception(
                 "FiberError",
                 "attempt to resume a resuming fiber",
@@ -277,11 +360,17 @@ impl VirtualMachine {
             ));
         };
         state.object = Some(fiber.clone());
+        state.host = Some(current);
+        state.yielding = false;
         // The interpreter's scopes and frames belong to whoever is running,
         // so the resumer's are set aside and the fiber's own put in place.
         let held = self.fibers[handle].held.take();
         let resumer = self.swap_context(held);
-        self.fiber_frames.push(FiberFrame { handle, fiber });
+        self.fiber_frames.push(FiberFrame {
+            handle,
+            fiber,
+            handoff,
+        });
         let stepped = running.resume(given);
         self.fiber_frames.pop();
         let left = self.swap_context(Some(resumer));
@@ -333,8 +422,33 @@ impl VirtualMachine {
         given: Vec<Object>,
         position: Position,
     ) -> Result<FiberStep, MetorexError> {
+        // Handing control to the fiber that holds it already leaves it there.
+        if handle == self.fiber_current_handle() {
+            return Ok(FiberStep::Suspended(SuspendOutput::Yielded(passing_value(
+                given,
+            ))));
+        }
+        // What stops a transfer is raised here, in the fiber asking for it,
+        // before control leaves it.
+        self.fiber_check_thread(handle, position)?;
+        let refused = if self.fiber_resumed_by(handle).is_some() {
+            Some("attempt to transfer to a resuming fiber")
+        } else if self.fibers.get(handle).is_some_and(|state| state.yielding) {
+            Some("attempt to transfer to a yielding fiber")
+        } else if !self.fiber_is_alive(handle) {
+            Some("dead fiber called")
+        } else {
+            None
+        };
+        if let Some(message) = refused {
+            return Err(crate::vm::errors::simple_exception(
+                "FiberError",
+                message,
+                position,
+            ));
+        }
         if self.fiber_frames.is_empty() {
-            return self.fiber_resume(handle, fiber, given, position);
+            return self.fiber_run(handle, fiber, given, Handoff::Transfer, position);
         }
         let back = self.fiber_suspend_with(
             SuspendOutput::TransferTo {
@@ -344,9 +458,59 @@ impl VirtualMachine {
             },
             position,
         )?;
-        Ok(FiberStep::Suspended(SuspendOutput::Yielded(
-            back.into_iter().next().unwrap_or(Object::Nil),
-        )))
+        Ok(FiberStep::Suspended(SuspendOutput::Yielded(passing_value(
+            back,
+        ))))
+    }
+
+    /// A fiber belongs to the thread it was made on, and no other thread may
+    /// run it. The fiber a program starts on belongs to the main thread.
+    pub(crate) fn fiber_check_thread(
+        &self,
+        handle: usize,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        let made_on = match self.fibers.get(handle) {
+            Some(state) => state.owner.as_ref(),
+            None => None,
+        };
+        let running_on = self.thread_current_stack.last();
+        let same = match (made_on, running_on) {
+            (None, None) => true,
+            (Some(Object::Instance(made)), Some(Object::Instance(running))) => {
+                std::rc::Rc::ptr_eq(made, running)
+            }
+            _ => false,
+        };
+        if same {
+            return Ok(());
+        }
+        Err(crate::vm::errors::simple_exception(
+            "FiberError",
+            "fiber called across threads",
+            position,
+        ))
+    }
+
+    /// The fiber a fiber is part-way through resuming, if it is: the next one
+    /// up the stack, the one it relays for, or for the fiber a program starts
+    /// on, the one it resumed at the bottom of the stack.
+    pub(crate) fn fiber_resumed_by(&self, handle: usize) -> Option<usize> {
+        if handle == ROOT_FIBER {
+            return self
+                .fiber_frames
+                .first()
+                .filter(|frame| frame.handoff == Handoff::Resume)
+                .map(|frame| frame.handle);
+        }
+        if let Some(at) = self
+            .fiber_frames
+            .iter()
+            .position(|frame| frame.handle == handle)
+        {
+            return self.fiber_frames.get(at + 1).map(|frame| frame.handle);
+        }
+        self.fibers.get(handle).and_then(|state| state.relaying)
     }
 
     /// Suspend the fiber that holds the interpreter, handing `value` to

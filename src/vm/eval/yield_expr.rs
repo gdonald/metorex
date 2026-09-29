@@ -41,24 +41,9 @@ impl VirtualMachine {
             }
         };
 
-        // `yield(*values)` hands the block the elements one by one, the way a
-        // splat does in any other argument list.
-        let mut evaluated_args = Vec::with_capacity(arguments.len());
-        for argument in arguments {
-            if let Expression::Splat { expression, .. } = argument {
-                match self.evaluate_expression(expression)? {
-                    Object::Array(elements) => {
-                        evaluated_args.extend(elements.borrow().iter().cloned());
-                    }
-                    // Splatting nil names nothing at all, so `yield(*nil)`
-                    // hands the block no values.
-                    Object::Nil => {}
-                    other => evaluated_args.push(other),
-                }
-                continue;
-            }
-            evaluated_args.push(self.evaluate_expression(argument)?);
-        }
+        // A yield takes its arguments the way a call does: splats spread,
+        // and `**hash` passes keywords, or nothing when the hash is empty.
+        let evaluated_args = self.evaluate_arguments(arguments)?;
 
         block.call(self, evaluated_args, position)
     }

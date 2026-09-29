@@ -456,9 +456,14 @@ impl VirtualMachine {
                 Ok(Some(Object::Int(std::hash::Hasher::finish(&hasher) as i64)))
             }
             "==" | "eql?" => {
-                let same = matches!(arguments.first(), Some(Object::Regex(other, other_flags))
+                // An instance of a subclass compares by the pattern it holds.
+                let other = arguments.first().map(|held| {
+                    crate::vm::native_methods::regexp_subclass_value(held)
+                        .unwrap_or_else(|| held.clone())
+                });
+                let same = matches!(other, Some(Object::Regex(other, other_flags))
                     if *other.as_str() == *pattern
-                        && comparable_flags(other_flags) == comparable_flags(flags));
+                        && comparable_flags(&other_flags) == comparable_flags(flags));
                 Ok(Some(Object::Bool(same)))
             }
             "freeze" | "itself" => Ok(Some(Object::Regex(

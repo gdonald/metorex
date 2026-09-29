@@ -280,15 +280,14 @@ fn get_and_set_instance_variable() {
     use metorex::bytecode::chunk::Chunk;
     use metorex::bytecode::opcode::OpCode;
     use metorex::object::{Class, Instance};
-    use std::cell::RefCell;
     use std::rc::Rc;
 
     let mut chunk = Chunk::new();
 
     // Constant 0: the Instance object
-    let class = Rc::new(Class::new("TestClass".to_string(), None));
+    let class = Class::new("TestClass".to_string(), None);
     let instance = Instance::new(Rc::clone(&class));
-    let inst_obj = Object::Instance(Rc::new(RefCell::new(instance)));
+    let inst_obj = Object::Instance(instance);
     let inst_idx = chunk.add_constant(inst_obj).unwrap();
 
     // Constant 1: the ivar name "x"
@@ -329,13 +328,12 @@ fn get_instance_variable_returns_nil_when_unset() {
     use metorex::bytecode::chunk::Chunk;
     use metorex::bytecode::opcode::OpCode;
     use metorex::object::{Class, Instance};
-    use std::cell::RefCell;
     use std::rc::Rc;
 
     let mut chunk = Chunk::new();
-    let class = Rc::new(Class::new("T".to_string(), None));
+    let class = Class::new("T".to_string(), None);
     let instance = Instance::new(Rc::clone(&class));
-    let inst_obj = Object::Instance(Rc::new(RefCell::new(instance)));
+    let inst_obj = Object::Instance(instance);
     let inst_idx = chunk.add_constant(inst_obj).unwrap();
     let name_idx = chunk
         .add_constant(Object::string("missing".to_string()))

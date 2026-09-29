@@ -7,6 +7,39 @@ use crate::object::Object;
 use crate::vm::VirtualMachine;
 use std::rc::Rc;
 
+/// A method or block body that is running, as a trace sees it.
+pub(crate) struct RunningCode {
+    /// The places the body was written within, ending with its own.
+    pub(crate) within: crate::object::CodePlaces,
+    /// The line the body last ran, which a `return` or `b_return` event
+    /// reports.
+    pub(crate) line: usize,
+    /// How many native calls were running when the body started, put back
+    /// when it ends.
+    native_calls_before: usize,
+}
+
+impl VirtualMachine {
+    /// Note that a method or block body starts running. Code written in Ruby
+    /// fires `c_call` events for the native methods it calls, even when a
+    /// native method is what called it.
+    pub(crate) fn enter_running_code(&mut self, within: crate::object::CodePlaces, line: usize) {
+        let native_calls_before = std::mem::take(&mut self.native_calls_running);
+        self.running_code.push(RunningCode {
+            within,
+            line,
+            native_calls_before,
+        });
+    }
+
+    /// Note that the body `enter_running_code` noted has finished.
+    pub(crate) fn leave_running_code(&mut self) {
+        if let Some(finished) = self.running_code.pop() {
+            self.native_calls_running = finished.native_calls_before;
+        }
+    }
+}
+
 impl VirtualMachine {
     /// Take a tracepoint's own record of whether it is on and bring the
     /// interpreter's list into line with it.
@@ -20,6 +53,36 @@ impl VirtualMachine {
         if switched_on {
             self.tracepoints.push(tracepoint.clone());
         }
+    }
+
+    /// Fire a `c_call` or `c_return` event for a method the interpreter
+    /// carries natively, which Ruby reports as a method written in C.
+    pub(crate) fn fire_native_event(
+        &mut self,
+        event: &str,
+        method_name: &str,
+        receiver: &Object,
+        value: Option<&Object>,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        if self.tracepoints.is_empty()
+            || self.tracing
+            || position.prelude
+            || self.native_calls_running > 0
+        {
+            return Ok(());
+        }
+        let class = self.builtins().class_of(receiver);
+        let mut extra = vec![
+            ("method_id", Object::symbol(method_name.to_string())),
+            ("callee_id", Object::symbol(method_name.to_string())),
+            ("defined_class", Object::Class(class)),
+            ("self", receiver.clone()),
+        ];
+        if let Some(value) = value {
+            extra.push(("return_value", value.clone()));
+        }
+        self.fire_event(event, position, extra)
     }
 
     /// Whether a tracepoint handler is running, which is what
@@ -52,7 +115,13 @@ impl VirtualMachine {
     pub(crate) fn fire_line_event(&mut self, position: Position) -> Result<(), MetorexError> {
         // The core library stands in for Ruby's C code, which a trace never
         // sees.
-        if self.tracepoints.is_empty() || self.tracing || position.prelude {
+        if self.tracepoints.is_empty() || position.prelude {
+            return Ok(());
+        }
+        if let Some(running) = self.running_code.last_mut() {
+            running.line = position.line;
+        }
+        if self.tracing {
             return Ok(());
         }
         // One line reports once, and the same line number in another file is
@@ -78,7 +147,13 @@ impl VirtualMachine {
         // Everything from here on runs the trace's own code, which never
         // fires events of its own.
         self.tracing = true;
+        // A `call` event fires before the method called has taken the block
+        // it was given, and the calls made to the trace would take it first.
+        let held_block = self.pending_block.take();
+        let held_from_ampersand = self.pending_block_from_ampersand;
         let outcome = self.deliver_event(event, position, &extra);
+        self.pending_block = held_block;
+        self.pending_block_from_ampersand = held_from_ampersand;
         self.tracing = false;
         outcome
     }
@@ -91,7 +166,16 @@ impl VirtualMachine {
         position: Position,
         extra: &[(&str, Object)],
     ) -> Result<(), MetorexError> {
-        let listening = self.tracepoints.clone();
+        // A trace aimed at one method or block runs after every other, and
+        // the one switched on last runs first.
+        let (mut listening, targeted): (Vec<Object>, Vec<Object>) =
+            self.tracepoints.iter().cloned().partition(|held| {
+                matches!(
+                    self.read_instance_var(held, "target_place"),
+                    None | Some(Object::Nil)
+                )
+            });
+        listening.extend(targeted.into_iter().rev());
         let name = Object::symbol(event.to_string());
         for tracepoint in listening {
             let wants = self.send_to_object(
@@ -128,6 +212,23 @@ impl VirtualMachine {
         for (name, value) in extra {
             entries.insert((*name).to_string(), value.clone());
         }
+        let within = self
+            .running_code
+            .last()
+            .map(|running| {
+                running
+                    .within
+                    .iter()
+                    .map(|(file, line)| {
+                        Object::array(vec![
+                            Object::string(file.clone()),
+                            Object::Int(*line as i64),
+                        ])
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        entries.insert("__within__".to_string(), Object::array(within));
         Object::Dict(Rc::new(std::cell::RefCell::new(entries)))
     }
 
@@ -173,14 +274,31 @@ impl VirtualMachine {
             return Ok(());
         }
         // The core library stands in for Ruby's C code, so a method written
-        // there fires nothing however it was reached.
-        if method
+        // there is reported as a C method, at the place it was called from.
+        let written_in_core = method
             .body
             .first()
-            .is_some_and(|held| held.position().prelude)
-        {
-            return Ok(());
-        }
+            .is_some_and(|held| held.position().prelude);
+        let (event, position) = match (written_in_core, event) {
+            (true, "call") => ("c_call", position),
+            (true, _) => ("c_return", position),
+            // A method's call names the line it was defined on, and its
+            // return the line it ran last.
+            (false, "call") => (
+                event,
+                match &method.source_location {
+                    Some(written) => Position::new(written.line, written.column, written.offset),
+                    None => position,
+                },
+            ),
+            (false, _) => (
+                event,
+                match self.running_code.last() {
+                    Some(running) => Position::new(running.line, 0, 0),
+                    None => position,
+                },
+            ),
+        };
         let plain = method_name
             .strip_prefix("__class__")
             .unwrap_or(method_name)

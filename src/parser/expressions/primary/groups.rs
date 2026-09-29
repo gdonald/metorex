@@ -315,6 +315,14 @@ impl Parser {
                     // `{a:, b:}` takes the value from the variable or method
                     // of the same name, which Ruby calls a shorthand value.
                     if self.check(&[TokenKind::Comma, TokenKind::RBrace]) {
+                        // A name ending in `!` or `?` names a method only,
+                        // never a variable to read the value from.
+                        if name.ends_with('!') || name.ends_with('?') {
+                            return Err(self.error_at_previous(&format!(
+                                "identifier {} is not valid to get",
+                                name
+                            )));
+                        }
                         entries.push((
                             Expression::Symbol {
                                 value: name.clone(),
@@ -375,6 +383,37 @@ impl Parser {
                             Expression::StringLiteral {
                                 value, position, ..
                             } => Expression::Symbol { value, position },
+                            // A label written with byte escapes names the
+                            // Symbol those bytes spell, which they have to do
+                            // as UTF-8.
+                            Expression::MethodCall {
+                                receiver,
+                                method,
+                                position,
+                                ..
+                            } if matches!(
+                                method.as_str(),
+                                "__holds_bytes__" | "__binary_literal__"
+                            ) && matches!(
+                                receiver.as_ref(),
+                                Expression::StringLiteral { .. }
+                            ) =>
+                            {
+                                let Expression::StringLiteral { value, .. } = *receiver else {
+                                    unreachable!("the receiver was checked")
+                                };
+                                let bytes: Vec<u8> =
+                                    value.chars().map(|held| held as u32 as u8).collect();
+                                match String::from_utf8(bytes) {
+                                    Ok(spelled) => Expression::Symbol {
+                                        value: spelled,
+                                        position,
+                                    },
+                                    Err(_) => {
+                                        return Err(self.error_at_previous("invalid symbol"));
+                                    }
+                                }
+                            }
                             other => other,
                         }
                     }

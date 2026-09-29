@@ -62,7 +62,7 @@ impl VirtualMachine {
                     }
                 }),
             };
-            let anon = Rc::new(Class::new("", superclass.clone()));
+            let anon = Class::new("", superclass.clone());
             if let Some(sc) = &superclass {
                 sc.add_subclass(&anon);
             }
@@ -81,7 +81,7 @@ impl VirtualMachine {
             return Ok(Answered(Object::Class(anon)));
         }
         if method_name == "new" && class_rc.name() == "Module" {
-            let anon = Rc::new(Class::new_module(""));
+            let anon = Class::new_module("");
             if let Some(Object::Block(block)) = self.pending_block.take() {
                 self.apply_block_as_class_body_with_self(
                     &anon,

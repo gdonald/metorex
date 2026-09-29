@@ -460,3 +460,36 @@ fn test_builtins_frozen_answers_no_parens_execution() {
     let output = run_example("builtins/frozen_answers_no_parens.rb");
     assert_eq!(output, FROZEN_ANSWERS_OUTPUT);
 }
+
+/// The expected output of both `builtins/hash_literal_rules` variants.
+const HASH_LITERAL_RULES_OUTPUT: &str = concat!(
+    "\"region\"\n",
+    "true\n",
+    "\"REGION\"\n",
+    "1\n",
+    "{timeout: 5}\n",
+    "{timeout: 5, retries: 2}\n",
+    "{verbose: true, timeout: 5}\n",
+    "can't convert BadOverrides to Hash (BadOverrides#to_hash gives Symbol)\n",
+    "no implicit conversion of Integer into Hash\n",
+    "key :a is duplicated\n",
+    "{a: 2, b: 3}\n",
+    "[:job, {}]\n",
+    "true\n",
+    "syntax error: {:a ==> 1}\n",
+    "syntax error: {:a!=> 1}\n",
+    "syntax error: {\"\\xC3\": 1}\n",
+    "syntax error: {name!:}\n",
+);
+
+#[test]
+fn test_builtins_hash_literal_rules_execution() {
+    let output = run_example("builtins/hash_literal_rules.rb");
+    assert_eq!(output, HASH_LITERAL_RULES_OUTPUT);
+}
+
+#[test]
+fn test_builtins_hash_literal_rules_no_parens_execution() {
+    let output = run_example("builtins/hash_literal_rules_no_parens.rb");
+    assert_eq!(output, HASH_LITERAL_RULES_OUTPUT);
+}

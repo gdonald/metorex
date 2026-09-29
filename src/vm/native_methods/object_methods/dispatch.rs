@@ -128,23 +128,23 @@ impl VirtualMachine {
                     }
                     // Return Rational(0, 1) — create an instance via global function
                     if let Some(Object::Class(rational_class)) = self.globals().get("Rational") {
-                        let mut inst = crate::object::Instance::new(rational_class);
-                        inst.set_var("numerator".to_string(), Object::Int(0));
-                        inst.set_var("denominator".to_string(), Object::Int(1));
-                        return Ok(Some(Object::Instance(std::rc::Rc::new(
-                            std::cell::RefCell::new(inst),
-                        ))));
+                        let inst = crate::object::Instance::new(rational_class);
+                        inst.borrow_mut()
+                            .set_var("numerator".to_string(), Object::Int(0));
+                        inst.borrow_mut()
+                            .set_var("denominator".to_string(), Object::Int(1));
+                        return Ok(Some(Object::Instance(inst)));
                     }
                     return Ok(Some(Object::Int(0)));
                 }
                 "to_c" => {
                     if let Some(Object::Class(complex_class)) = self.globals().get("Complex") {
-                        let mut inst = crate::object::Instance::new(complex_class);
-                        inst.set_var("real".to_string(), Object::Int(0));
-                        inst.set_var("imaginary".to_string(), Object::Int(0));
-                        return Ok(Some(Object::Instance(std::rc::Rc::new(
-                            std::cell::RefCell::new(inst),
-                        ))));
+                        let inst = crate::object::Instance::new(complex_class);
+                        inst.borrow_mut()
+                            .set_var("real".to_string(), Object::Int(0));
+                        inst.borrow_mut()
+                            .set_var("imaginary".to_string(), Object::Int(0));
+                        return Ok(Some(Object::Instance(inst)));
                     }
                     return Ok(Some(Object::Int(0)));
                 }

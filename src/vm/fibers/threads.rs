@@ -38,9 +38,10 @@ impl VirtualMachine {
         // The body runs on a Fiber of its own, which is the thread's root
         // one and what `Fiber.current` answers inside it.
         if let Some(Object::Class(fiber_class)) = self.globals().get("Fiber") {
-            let mut made = crate::object::Instance::new(std::rc::Rc::clone(&fiber_class));
-            made.set_var("__fiber__".to_string(), Object::Int(handle as i64));
-            let held = Object::Instance(std::rc::Rc::new(std::cell::RefCell::new(made)));
+            let made = crate::object::Instance::new(std::rc::Rc::clone(&fiber_class));
+            made.borrow_mut()
+                .set_var("__fiber__".to_string(), Object::Int(handle as i64));
+            let held = Object::Instance(made);
             self.fibers[handle].object = Some(held.clone());
             instance
                 .borrow_mut()
@@ -143,6 +144,7 @@ impl VirtualMachine {
             ran = true;
             let carried = self.thread_fiber_object(&thread, handle);
             let started_with = self.thread_start_arguments(&thread);
+            self.locks_this_turn = 0;
             self.thread_current_stack.push(thread.clone());
             let stepped = self.fiber_resume(handle, carried, started_with, position);
             self.thread_current_stack.pop();

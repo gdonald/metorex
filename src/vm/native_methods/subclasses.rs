@@ -134,3 +134,13 @@ pub(crate) fn as_dict(value: &Object) -> Option<Object> {
         _ => None,
     }
 }
+
+/// The String, Array, Hash, Set or Regexp an instance of a subclass of one of
+/// them holds, or None when `value` is no such instance.
+pub(crate) fn subclass_backing(value: &Object) -> Option<Object> {
+    string_subclass_value(value)
+        .or_else(|| array_subclass_value(value))
+        .or_else(|| hash_subclass_value(value))
+        .or_else(|| set_subclass_value(value))
+        .or_else(|| regexp_subclass_value(value))
+}

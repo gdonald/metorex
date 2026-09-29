@@ -168,10 +168,15 @@ impl VirtualMachine {
                 // A constant that names something other than a class stands
                 // for that value, so `when ROUND_FLOOR` compares against the
                 // number rather than asking what class the value is.
-                if let Some(named) = self.constant_for_pattern(type_name)
-                    && !matches!(named, Object::Class(_) | Object::Module(_))
-                {
-                    return Ok(named == *value);
+                // One that names a class or a module asks it with `===`,
+                // which counts instances of its subclasses and of classes
+                // that include it.
+                match self.constant_for_pattern(type_name) {
+                    Some(named @ (Object::Class(_) | Object::Module(_))) => {
+                        return self.pattern_case_equal(&named, value, position);
+                    }
+                    Some(named) => return Ok(named == *value),
+                    None => {}
                 }
                 let actual_type = value.type_name();
 

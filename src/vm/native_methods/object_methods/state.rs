@@ -46,7 +46,8 @@ impl VirtualMachine {
                     | Object::Set(_)
                     | Object::Method(_)
                     | Object::Block(_)
-                    | Object::Binding(_) => {
+                    | Object::Binding(_)
+                    | Object::Regex(_, _) => {
                         if let Some(address) = Self::collection_address(receiver) {
                             self.frozen_collections.insert(address, receiver.clone());
                         }
@@ -85,6 +86,20 @@ impl VirtualMachine {
                 Ok(Some(Object::Nil))
             }
             "__tracing__" => Ok(Some(Object::Bool(self.is_tracing()))),
+            // The lines the statements of a method or a block body start on,
+            // which is where a trace aimed at it can report `:line` events.
+            "__code_lines__" if arguments.len() == 1 => {
+                let body = match &arguments[0] {
+                    Object::Method(method) => method.body.clone(),
+                    Object::Block(block) => block.body.clone(),
+                    _ => Vec::new(),
+                };
+                Ok(Some(Object::array(
+                    body.iter()
+                        .map(|statement| Object::Int(statement.position().line as i64))
+                        .collect(),
+                )))
+            }
             // Run a block with tracing switched off, so an event the block
             // causes reaches the tracepoints again. `TracePoint.allow_reentry`
             // is what asks for this.

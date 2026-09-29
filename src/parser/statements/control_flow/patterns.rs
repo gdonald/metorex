@@ -226,11 +226,18 @@ impl Parser {
                     TokenKind::Ident(n) => n,
                     TokenKind::InstanceVar(n) => format!("@{}", n),
                     TokenKind::ClassVar(n) => format!("@@{}", n),
-                    _ => {
-                        return Err(
-                            self.error_at_previous("Expected identifier after ':' in pattern")
-                        );
-                    }
+                    // A keyword spelled after the colon is a Symbol by that
+                    // name, which is how `:return` reads in a pattern.
+                    other => match crate::parser::expressions::primary::groups::keyword_symbol_key(
+                        &other,
+                    ) {
+                        Some(keyword) => keyword.to_string(),
+                        None => {
+                            return Err(
+                                self.error_at_previous("Expected identifier after ':' in pattern")
+                            );
+                        }
+                    },
                 };
                 Ok(MatchPattern::SymbolLiteral(name))
             }

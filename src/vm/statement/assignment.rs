@@ -115,7 +115,7 @@ impl VirtualMachine {
                 // it holds under that namespace, so `M::Foo` reports its own
                 // path rather than the bare constant name.
                 if is_const {
-                    match self.def_scope_stack.last().cloned() {
+                    match self.constant_home() {
                         Some(enclosing) => name_constant_value(&enclosing, name, &value),
                         None => {
                             if let Object::Class(v) | Object::Module(v) = &value {
@@ -137,7 +137,7 @@ impl VirtualMachine {
                     .reported_current_file()
                     .map(|p| p.display().to_string())
                     .unwrap_or_default();
-                if is_const && let Some(enclosing) = self.def_scope_stack.last().cloned() {
+                if is_const && let Some(enclosing) = self.constant_home() {
                     let is_new = enclosing.get_class_var(name).is_none();
                     if !is_new {
                         self.warn_already_initialized(&enclosing, name, *position);

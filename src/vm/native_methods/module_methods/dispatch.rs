@@ -62,6 +62,14 @@ impl VirtualMachine {
             )))));
         }
 
+        if method_name == "import_methods"
+            && module_rc.get_class_var(REFINEMENT_TARGET_KEY).is_some()
+        {
+            return self
+                .import_methods_into_refinement(module_rc, arguments, position)
+                .map(Some);
+        }
+
         if method_name == "refine" {
             if arguments.len() != 1 {
                 return Err(method_argument_error(
@@ -99,7 +107,7 @@ impl VirtualMachine {
                     // The refinement is anonymous, so binding it to a
                     // constant names it. Its display comes from the label
                     // instead, which never changes.
-                    let holder = Rc::new(Class::new_module(""));
+                    let holder = Class::new_module("");
                     holder.set_class_var(REFINEMENT_TARGET_KEY, Object::Class(Rc::clone(&target)));
                     holder.set_class_var(
                         REFINEMENT_LABEL_KEY,
@@ -126,7 +134,7 @@ impl VirtualMachine {
             module_rc.set_class_var(&refinement_key, Object::Module(Rc::clone(&holder)));
             self.push_refinement_scope();
             self.activate_refinement(Rc::clone(module_rc));
-            let body = self.apply_block_as_class_body(&holder, &block, position);
+            let body = self.apply_refine_block(&holder, &block, position);
             self.pop_refinement_scope();
             body?;
             return Ok(Some(Object::Module(holder)));
@@ -310,6 +318,49 @@ impl VirtualMachine {
             );
             for root in roots {
                 gather_reachable(root, &mut seen, &mut found);
+            }
+            return Ok(Some(Object::array(found)));
+        }
+
+        // Every object still alive that is a kind of the module given, oldest
+        // first: the instances the program made, then its classes and
+        // modules. The singleton class of a singleton class is the
+        // interpreter's own and is left out.
+        if module_rc.name() == "ObjectSpace" && method_name == "__each_object__" {
+            let wanted = arguments.first().cloned().unwrap_or(Object::Nil);
+            let mut candidates: Vec<Object> = crate::object::live::live_instances()
+                .into_iter()
+                .map(Object::Instance)
+                .collect();
+            for class in crate::object::live::live_classes() {
+                if class.is_singleton_class()
+                    && matches!(
+                        class.get_class_var("__attached__"),
+                        Some(Object::Class(attached)) if attached.is_singleton_class()
+                    )
+                {
+                    continue;
+                }
+                candidates.push(if class.is_module() {
+                    Object::Module(class)
+                } else {
+                    Object::Class(class)
+                });
+            }
+            if matches!(wanted, Object::Nil) {
+                return Ok(Some(Object::array(candidates)));
+            }
+            let mut found = Vec::new();
+            for candidate in candidates {
+                let kind = self.send_to_object(
+                    candidate.clone(),
+                    "is_a?",
+                    vec![wanted.clone()],
+                    position,
+                )?;
+                if crate::vm::utils::is_truthy(&kind) {
+                    found.push(candidate);
+                }
             }
             return Ok(Some(Object::array(found)));
         }
@@ -608,5 +659,85 @@ impl VirtualMachine {
         // Fall through to receiver-agnostic dispatch
         let _ = receiver;
         Ok(None)
+    }
+
+    /// `Refinement#import_methods`: copy the methods each module defines
+    /// itself into the refinement, as if they had been written in its body.
+    /// Only methods written in Ruby can be copied, and a module that brings
+    /// in others is warned about, since theirs are not copied.
+    pub(crate) fn import_methods_into_refinement(
+        &mut self,
+        refinement: &Rc<Class>,
+        arguments: &[Object],
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let mut modules = Vec::with_capacity(arguments.len());
+        for argument in arguments {
+            let Object::Module(module) = argument else {
+                let message = format!(
+                    "wrong argument type {} (expected Module)",
+                    crate::vm::native_methods::define_method::ruby_class_name(argument)
+                );
+                return Err(MetorexError::UncaughtException {
+                    exception: Object::exception("TypeError", message.clone()),
+                    location: position_to_location(position),
+                    message,
+                });
+            };
+            modules.push(Rc::clone(module));
+        }
+        for module in &modules {
+            if !module.mixin_chain().is_empty() || !module.prepend_chain().is_empty() {
+                let text = format!(
+                    "{}{} has ancestors, but Refinement#import_methods doesn't import their methods\n",
+                    self.warning_prefix(0, position),
+                    module.inspect_name()
+                );
+                self.warn_through_warning_module(text, position)?;
+            }
+        }
+        let refinements = self.snapshot_active_refinements();
+        for module in &modules {
+            for name in module.method_names() {
+                if name.starts_with("__class__") {
+                    continue;
+                }
+                let Some(method) = module.find_own_method(&name) else {
+                    continue;
+                };
+                let written_in_ruby = method
+                    .source_location
+                    .as_ref()
+                    .and_then(|written| written.filename.as_deref())
+                    .is_some_and(|file| !crate::vm::stdlib::written_for_c(file))
+                    && !method
+                        .body
+                        .first()
+                        .is_some_and(|held| held.position().prelude);
+                if !written_in_ruby {
+                    let message = format!(
+                        "Can't import method which is not defined with Ruby code: {}#{}",
+                        module.inspect_name(),
+                        name
+                    );
+                    return Err(MetorexError::UncaughtException {
+                        exception: Object::exception("ArgumentError", message.clone()),
+                        location: position_to_location(position),
+                        message,
+                    });
+                }
+                let mut copied = (*method).clone();
+                copied.owner = Some(refinement.name().to_string());
+                copied.owner_class = Some(Rc::clone(refinement));
+                copied.captured_refinements = refinements.clone();
+                refinement.define_method(name.clone(), Rc::new(copied));
+                if module.is_method_private(&name) {
+                    refinement.set_method_private(name);
+                } else if module.is_method_protected(&name) {
+                    refinement.set_method_protected(name);
+                }
+            }
+        }
+        Ok(Object::Module(Rc::clone(refinement)))
     }
 }

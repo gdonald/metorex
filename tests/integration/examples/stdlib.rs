@@ -1010,3 +1010,226 @@ fn test_runtime_popen_options_parens_execution() {
     let output = run_example("runtime/popen_options_parens.rb");
     assert_eq!(output, POPEN_OPTIONS_OUTPUT);
 }
+
+/// The expected output of both `runtime/process_title` variants.
+const PROCESS_TITLE_OUTPUT: &str = concat!("\"metorex-title-example\"\n", "false\n");
+
+#[test]
+fn test_runtime_process_title_execution() {
+    let output = run_example("runtime/process_title.rb");
+    assert_eq!(output, PROCESS_TITLE_OUTPUT);
+}
+
+#[test]
+fn test_runtime_process_title_no_parens_execution() {
+    let output = run_example("runtime/process_title_no_parens.rb");
+    assert_eq!(output, PROCESS_TITLE_OUTPUT);
+}
+
+/// The expected output of both `runtime/status_wait` variants.
+const STATUS_WAIT_OUTPUT: &str = concat!("-1\n", "true\n", "Process::Status\n", "true\n");
+
+#[test]
+fn test_runtime_status_wait_execution() {
+    let output = run_example("runtime/status_wait.rb");
+    assert_eq!(output, STATUS_WAIT_OUTPUT);
+}
+
+#[test]
+fn test_runtime_status_wait_no_parens_execution() {
+    let output = run_example("runtime/status_wait_no_parens.rb");
+    assert_eq!(output, STATUS_WAIT_OUTPUT);
+}
+
+#[test]
+fn test_runtime_signal_zero_execution() {
+    let output = run_example("runtime/signal_zero.rb");
+    assert_eq!(output, "1\n");
+}
+
+#[test]
+fn test_runtime_signal_zero_no_parens_execution() {
+    let output = run_example("runtime/signal_zero_no_parens.rb");
+    assert_eq!(output, "1\n");
+}
+
+/// The expected output of both `runtime/exec_with_options` variants.
+const EXEC_WITH_OPTIONS_OUTPUT: &str = concat!(
+    "Errno::ENOENT\n",
+    "Errno::EACCES\n",
+    "\"string contains null byte\"\n",
+    "\"wrong first argument\"\n",
+    "named_shell from the environment /\n",
+);
+
+#[test]
+fn test_runtime_exec_with_options_execution() {
+    let output = run_example("runtime/exec_with_options.rb");
+    assert_eq!(output, EXEC_WITH_OPTIONS_OUTPUT);
+}
+
+#[test]
+fn test_runtime_exec_with_options_no_parens_execution() {
+    let output = run_example("runtime/exec_with_options_no_parens.rb");
+    assert_eq!(output, EXEC_WITH_OPTIONS_OUTPUT);
+}
+
+#[test]
+fn test_runtime_writing_to_a_closed_stderr_execution() {
+    let output = run_example("runtime/writing_to_a_closed_stderr.rb");
+    assert_eq!(output, "\"rescued Errno::EBADF\\n\"\n");
+}
+
+#[test]
+fn test_runtime_writing_to_a_closed_stderr_no_parens_execution() {
+    let output = run_example("runtime/writing_to_a_closed_stderr_no_parens.rb");
+    assert_eq!(output, "\"rescued Errno::EBADF\\n\"\n");
+}
+
+/// The expected output of both `runtime/spawn_with_options` variants.
+const SPAWN_WITH_OPTIONS_OUTPUT: &str = concat!(
+    "\"hello\\ngone\\n\"\n",
+    "[ArgumentError, \"negative process group ID : -1\"]\n",
+    "[TypeError, \"no implicit conversion of Symbol into Integer\"]\n",
+    "[ArgumentError, \"wrong exec option symbol: nonesuch\"]\n",
+    "[ArgumentError, \"wrong exec option\"]\n",
+    "[ArgumentError, \"environment name contains a equal : A=B\"]\n",
+    "[TypeError, \"no implicit conversion of Symbol into String\"]\n",
+    "[ArgumentError, \"wrong number of arguments (given 0, expected 1+)\"]\n",
+);
+
+#[test]
+fn test_runtime_spawn_with_options_execution() {
+    let output = run_example("runtime/spawn_with_options.rb");
+    assert_eq!(output, SPAWN_WITH_OPTIONS_OUTPUT);
+}
+
+#[test]
+fn test_runtime_spawn_with_options_no_parens_execution() {
+    let output = run_example("runtime/spawn_with_options_no_parens.rb");
+    assert_eq!(output, SPAWN_WITH_OPTIONS_OUTPUT);
+}
+
+/// The expected output of both `runtime/daemonizing` variants.
+const DAEMONIZING_OUTPUT: &str = concat!("\"before\\n\"\n", "\"[true, true, \\\"/\\\", true]\"\n",);
+
+#[test]
+fn test_runtime_daemonizing_execution() {
+    let output = run_example("runtime/daemonizing.rb");
+    assert_eq!(output, DAEMONIZING_OUTPUT);
+}
+
+#[test]
+fn test_runtime_daemonizing_no_parens_execution() {
+    let output = run_example("runtime/daemonizing_no_parens.rb");
+    assert_eq!(output, DAEMONIZING_OUTPUT);
+}
+
+/// The expected output of both `stdlib/marshal_wrapped_values` variants.
+const MARSHAL_WRAPPED_VALUES_OUTPUT: &str = concat!(
+    "\"\\x04\\x08I\\\"\\ttext\\x06:\\x06ET\"\n",
+    "\"\\x04\\x08\\\"\\ttext\"\n",
+    "\"\\x04\\x08I:\\x08\\xE2\\x86\\x92\\x06:\\x06ET\"\n",
+    "\"\\x04\\x08I/\\x07a.\\x01\\x06:\\x06EF\"\n",
+    "\"\\x04\\x08e:\\x0BTagged[\\x00\"\n",
+    "\"\\x04\\x08C:\\nWords[\\x00\"\n",
+    "\"\\x04\\x08}\\x00i\\x00\"\n",
+    "\"\\x04\\x08C:\\tHash{\\x00\"\n",
+    "\"\\x04\\x08C:\\nTable{\\x00\"\n",
+    "\"\\x04\\x08I\\\"\\tnote\\x07:\\x06ET:\\x08@byI\\\"\\x07me\\x06;\\x00T\"\n",
+    "\"can't dump hash with default proc\"\n",
+);
+
+#[test]
+fn test_stdlib_marshal_wrapped_values_execution() {
+    let output = run_example("stdlib/marshal_wrapped_values.rb");
+    assert_eq!(output, MARSHAL_WRAPPED_VALUES_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_marshal_wrapped_values_no_parens_execution() {
+    let output = run_example("stdlib/marshal_wrapped_values_no_parens.rb");
+    assert_eq!(output, MARSHAL_WRAPPED_VALUES_OUTPUT);
+}
+
+/// The expected output of both `stdlib/marshal_objects` variants.
+const MARSHAL_OBJECTS_OUTPUT: &str = concat!(
+    "\"\\x04\\x08o:\\x0CAccount\\x06:\\x0B@owner\\\"\\x08ann\"\n",
+    "\"\\x04\\x08e:\\x0CLabeledo:\\x0CAccount\\x06:\\x0B@owner\\\"\\x08ann\"\n",
+    "\"\\x04\\x08S:\\nPoint\\x07:\\x06xi\\x06:\\x06yi\\x07\"\n",
+    "\"\\x04\\x08S:\\tSize\\x07:\\nwidthi\\x08:\\x0Bheighti\\t\"\n",
+    "\"\\x04\\x08c\\x0CAccount\"\n",
+    "\"\\x04\\x08m\\x0CLabeled\"\n",
+    "\"\\x04\\x08U:\\rSnapshot[\\x07i\\x06i\\x07\"\n",
+    "\"\\x04\\x08u:\\x0BPacked\\x0Bpacked\"\n",
+    "[TypeError, \"can't dump anonymous class #<Class:0x...>\"]\n",
+    "[TypeError, \"singleton class can't be dumped\"]\n",
+    "[TypeError, \"no _dump_data is defined for class Proc\"]\n",
+    "[ArgumentError, \"exceed depth limit\"]\n",
+    "[TypeError, \"instance of IO needed\"]\n",
+    "[:binmode, \"\\x04\\x08:\\tnote\"]\n",
+);
+
+#[test]
+fn test_stdlib_marshal_objects_execution() {
+    let output = run_example("stdlib/marshal_objects.rb");
+    assert_eq!(output, MARSHAL_OBJECTS_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_marshal_objects_no_parens_execution() {
+    let output = run_example("stdlib/marshal_objects_no_parens.rb");
+    assert_eq!(output, MARSHAL_OBJECTS_OUTPUT);
+}
+
+/// The expected output of both `stdlib/marshal_core_values` variants.
+const MARSHAL_CORE_VALUES_OUTPUT: &str = concat!(
+    "\"\\x04\\x08o:\\x11RuntimeError\\x08:\\tmesgI\\\"\\x0Edisk full\\x06:\\x06ET:\\x07bt[\\x06I\\\"\\x10store.rb:12\\x06;\\x07T:\\r@retriesi\\x08\"\n",
+    "[RuntimeError, \"write failed\", ArgumentError, \"bad size\"]\n",
+    "\"\\x04\\x08o:\\nRange\\x08:\\texclF:\\nbegini\\x06:\\x08endi\\x07\"\n",
+    "\"\\x04\\x08o:\\nRange\\x08:\\texclT:\\nbegini\\x06:\\x08endi\\x07\"\n",
+    "3...9\n",
+    "\"\\x04\\x08Iu:\\tTime\\r \\x00\\x1C\\xC0\\x00\\x00\\x00\\x00\\x06:\\tzoneI\\\"\\x08UTC\\x06:\\x06EF\"\n",
+    "true\n",
+    "\"\\x04\\x08[\\x07l+\\n\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x01\\x00@\\x06\"\n",
+    "\"Exception\"\n",
+);
+
+#[test]
+fn test_stdlib_marshal_core_values_execution() {
+    let output = run_example("stdlib/marshal_core_values.rb");
+    assert_eq!(output, MARSHAL_CORE_VALUES_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_marshal_core_values_no_parens_execution() {
+    let output = run_example("stdlib/marshal_core_values_no_parens.rb");
+    assert_eq!(output, MARSHAL_CORE_VALUES_OUTPUT);
+}
+
+/// The expected output of both `stdlib/marshal_load_handler` variants.
+const MARSHAL_LOAD_HANDLER_OUTPUT: &str = concat!(
+    "[\"foo\"]\n",
+    "FOO\n",
+    "false\n",
+    "true\n",
+    "true\n",
+    "42\n",
+    "false\n",
+    "\"\\x04\\x08Iu:\\tTime\\r \\x80\\x11\\xC0@\\xE2\\x01\\x00\\t:\\rnano_numi\\x02\\x15\\x03:\\rnano_deni\\x06:\\rsubmicro\\\"\\x07x\\x90:\\tzoneI\\\"\\x08UTC\\x06:\\x06EF\"\n",
+    "123456789\n",
+    "true\n",
+    "(1/3000000000)\n",
+);
+
+#[test]
+fn test_stdlib_marshal_load_handler_execution() {
+    let output = run_example("stdlib/marshal_load_handler.rb");
+    assert_eq!(output, MARSHAL_LOAD_HANDLER_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_marshal_load_handler_no_parens_execution() {
+    let output = run_example("stdlib/marshal_load_handler_no_parens.rb");
+    assert_eq!(output, MARSHAL_LOAD_HANDLER_OUTPUT);
+}

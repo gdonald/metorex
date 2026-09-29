@@ -71,7 +71,7 @@ impl VirtualMachine {
                 let backing = match existing {
                     Some(c) => c,
                     None => {
-                        let c = std::rc::Rc::new(crate::class::Class::new("", None));
+                        let c = crate::class::Class::new("", None);
                         inst.borrow_mut().set_var(
                             "__module_body_class__".to_string(),
                             Object::Class(std::rc::Rc::clone(&c)),

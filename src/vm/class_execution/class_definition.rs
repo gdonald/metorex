@@ -37,7 +37,7 @@ impl VirtualMachine {
             None
         } else {
             // Lexical nesting fallback.
-            self.def_scope_stack.last().cloned()
+            self.constant_home()
         };
 
         // Resolve superclass if specified. Check enclosing scope's constants first
@@ -109,6 +109,17 @@ impl VirtualMachine {
             }
         };
 
+        if superclass
+            .as_ref()
+            .is_some_and(|parent| parent.is_singleton_class())
+        {
+            return Err(crate::vm::errors::simple_exception(
+                "TypeError",
+                "can't make subclass of singleton class",
+                position,
+            ));
+        }
+
         // Reopen existing class if it exists (Ruby semantics), otherwise create new.
         // Track `is_new` so we know whether to fire the `inherited` hook. If
         // the name is registered as an autoload on the parent scope, fire it
@@ -131,37 +142,28 @@ impl VirtualMachine {
             };
             match resolved {
                 Some(Object::Class(c)) => Some(c),
-                _ => None,
+                Some(_) => return Err(not_a_class_error(name, position)),
+                None => None,
             }
-        } else if let Some(Object::Class(c)) = self.globals().get(name) {
-            Some(c)
+        } else if let Some(held) = self.globals().get(name) {
+            match held {
+                Object::Class(c) => Some(c),
+                _ => return Err(not_a_class_error(name, position)),
+            }
         } else if let Some(Object::Class(c)) = self.environment().get(name) {
             Some(c)
         } else {
             None
         };
         let is_new = existing_class.is_none();
-        // Reopening an existing class with an explicit superclass that
-        // doesn't lie on the existing ancestor chain is a TypeError. We
-        // use a lenient rule (allow if requested superclass is anywhere
-        // in the existing chain) instead of MRI's exact-match because the
-        // metorex test corpus reopens built-in subclasses with their
-        // grandparent — `class FloatDomainError < StandardError` where
-        // FloatDomainError actually descends from RangeError. Genuinely
-        // unrelated parents (the autoload spec's `Z < ZZ` after a load
-        // defined `Z < YY`) still trip the check.
+        // Reopening an existing class with a superclass written out names
+        // the one it already has, or it is a TypeError.
         if let (Some(existing), Some(expected)) = (&existing_class, &superclass)
-            && superclass_name.is_some()
+            && (superclass_name.is_some() || superclass_expression.is_some())
         {
-            let mut cursor = existing.superclass();
-            let mut compatible = false;
-            while let Some(ancestor) = cursor {
-                if Rc::ptr_eq(&ancestor, expected) {
-                    compatible = true;
-                    break;
-                }
-                cursor = ancestor.superclass();
-            }
+            let compatible = existing
+                .superclass()
+                .is_some_and(|held| Rc::ptr_eq(&held, expected));
             if !compatible {
                 let msg = format!("superclass mismatch for class {}", existing.ruby_name());
                 let exc = Object::exception("TypeError", msg.clone());
@@ -189,7 +191,7 @@ impl VirtualMachine {
                     }
                     None => name.to_string(),
                 };
-                let new_class = Rc::new(Class::new(full_name, superclass));
+                let new_class = Class::new(full_name, superclass);
                 if let Some(sc) = new_class.superclass() {
                     sc.add_subclass(&new_class);
                 }
@@ -375,4 +377,10 @@ impl VirtualMachine {
             )
         })
     }
+}
+
+/// The TypeError for `class Name` where the constant already holds something
+/// other than a class.
+fn not_a_class_error(name: &str, position: Position) -> MetorexError {
+    crate::vm::errors::simple_exception("TypeError", &format!("{} is not a class", name), position)
 }

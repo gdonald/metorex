@@ -440,6 +440,10 @@ class StringScanner
   def must_C_version
     self
   end
+
+  def self.must_C_version
+    self
+  end
 end
 
 # Raised when a scanner is asked to undo a scan it never made.

@@ -24,6 +24,15 @@ impl VirtualMachine {
         {
             return Ok(Answered(found));
         }
+        if method_name == "import_methods"
+            && class_rc
+                .get_class_var(crate::vm::native_methods::module_methods::REFINEMENT_TARGET_KEY)
+                .is_some()
+        {
+            return self
+                .import_methods_into_refinement(class_rc, arguments, position)
+                .map(Answered);
+        }
         // Every symbol the program has spelled, which the parser records as
         // it reads them and the constructor records as they are made.
         if class_rc.name() == "Symbol" && method_name == "all_symbols" {
@@ -61,7 +70,21 @@ impl VirtualMachine {
                 Some(Object::String(held)) => held.as_str().to_string(),
                 other => other.map(|held| held.to_string()).unwrap_or_default(),
             };
-            crate::vm::native_functions::write_to_standard_stream(&named, &text);
+            if let Err(problem) =
+                crate::vm::native_functions::write_to_standard_stream(&named, &text)
+            {
+                let spelled = problem.to_string();
+                let reason = spelled
+                    .split(" (os error")
+                    .next()
+                    .unwrap_or(&spelled)
+                    .to_string();
+                return Err(crate::vm::errors::simple_exception(
+                    "Errno::EBADF",
+                    &reason,
+                    position,
+                ));
+            }
             return Ok(Answered(Object::Nil));
         }
         // A class that defines `new` of its own builds its instances that

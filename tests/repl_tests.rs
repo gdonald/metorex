@@ -399,6 +399,7 @@ fn format_object_block() {
         from_symbol: None,
         written_in: None,
         written_depth: None,
+        written_within: Rc::default(),
         ruby2_keywords: std::rc::Rc::new(std::cell::Cell::new(false)),
     }));
     assert_eq!(ReplCore::format_object(&block), "<Block>");
@@ -710,7 +711,7 @@ fn format_object_binding() {
 #[test]
 fn format_object_class() {
     use metorex::class::Class;
-    let class = Rc::new(Class::new("MyClass", None));
+    let class = Class::new("MyClass", None);
     let obj = Object::Class(class);
     let formatted = ReplCore::format_object(&obj);
     assert!(
@@ -723,7 +724,7 @@ fn format_object_class() {
 #[test]
 fn format_object_module() {
     use metorex::class::Class;
-    let module = Rc::new(Class::new("MyModule", None));
+    let module = Class::new("MyModule", None);
     let obj = Object::Module(module);
     let formatted = ReplCore::format_object(&obj);
     assert!(

@@ -145,3 +145,50 @@ fn test_threads_interrupted_backtraces_parens_execution() {
         interrupted_backtraces_output("interrupted_backtraces_parens.rb")
     );
 }
+
+/// The expected output of both `threads/locking_from_two_fibers` variants.
+const LOCKING_FROM_TWO_FIBERS_OUTPUT: &str = concat!(
+    "\"deadlock; lock already owned by another fiber belonging to the same thread\"\n",
+    "\"deadlock; lock already owned by another fiber belonging to the same thread\"\n",
+    "false\n",
+);
+
+#[test]
+fn test_threads_locking_from_two_fibers_execution() {
+    let output = run_example("threads/locking_from_two_fibers.rb");
+    assert_eq!(output, LOCKING_FROM_TWO_FIBERS_OUTPUT);
+}
+
+#[test]
+fn test_threads_locking_from_two_fibers_no_parens_execution() {
+    let output = run_example("threads/locking_from_two_fibers_no_parens.rb");
+    assert_eq!(output, LOCKING_FROM_TWO_FIBERS_OUTPUT);
+}
+
+/// The expected output of both `threads/interrupting_a_locking_fiber`
+/// variants.
+const INTERRUPTING_A_LOCKING_FIBER_OUTPUT: &str = concat!("true\n", "false\n");
+
+#[test]
+fn test_threads_interrupting_a_locking_fiber_execution() {
+    let output = run_example("threads/interrupting_a_locking_fiber.rb");
+    assert_eq!(output, INTERRUPTING_A_LOCKING_FIBER_OUTPUT);
+}
+
+#[test]
+fn test_threads_interrupting_a_locking_fiber_no_parens_execution() {
+    let output = run_example("threads/interrupting_a_locking_fiber_no_parens.rb");
+    assert_eq!(output, INTERRUPTING_A_LOCKING_FIBER_OUTPUT);
+}
+
+#[test]
+fn test_threads_signaling_a_child_a_thread_waits_on_execution() {
+    let output = run_example("threads/signaling_a_child_a_thread_waits_on.rb");
+    assert_eq!(output, "\"signaled\\n\"\n");
+}
+
+#[test]
+fn test_threads_signaling_a_child_a_thread_waits_on_no_parens_execution() {
+    let output = run_example("threads/signaling_a_child_a_thread_waits_on_no_parens.rb");
+    assert_eq!(output, "\"signaled\\n\"\n");
+}

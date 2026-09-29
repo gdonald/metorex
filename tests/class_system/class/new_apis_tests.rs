@@ -43,8 +43,8 @@ fn new_class_has_no_subclasses() {
 
 #[test]
 fn add_subclass_registers_child() {
-    let base = Rc::new(Class::new("Base", None));
-    let child = Rc::new(Class::new("Child", Some(Rc::clone(&base))));
+    let base = Class::new("Base", None);
+    let child = Class::new("Child", Some(Rc::clone(&base)));
     base.add_subclass(&child);
     let subs = base.subclasses();
     assert_eq!(subs.len(), 1);
@@ -53,12 +53,12 @@ fn add_subclass_registers_child() {
 
 #[test]
 fn add_subclass_multiple_children() {
-    let base = Rc::new(Class::new("Base", None));
+    let base = Class::new("Base", None);
     // Keep the children alive — subclasses are stored as Weak refs.
     let _keepalive: Vec<Rc<Class>> = ["A", "B", "C"]
         .iter()
         .map(|n| {
-            let child = Rc::new(Class::new(*n, Some(Rc::clone(&base))));
+            let child = Class::new(*n, Some(Rc::clone(&base)));
             base.add_subclass(&child);
             child
         })
@@ -68,9 +68,9 @@ fn add_subclass_multiple_children() {
 
 #[test]
 fn subclasses_drops_collected_children() {
-    let base = Rc::new(Class::new("Base", None));
+    let base = Class::new("Base", None);
     {
-        let child = Rc::new(Class::new("Transient", Some(Rc::clone(&base))));
+        let child = Class::new("Transient", Some(Rc::clone(&base)));
         base.add_subclass(&child);
         assert_eq!(base.subclasses().len(), 1);
     }
@@ -104,7 +104,7 @@ fn has_public_override_false_by_default() {
 
 #[test]
 fn alias_preserves_private_visibility() {
-    let c = Rc::new(Class::new("Foo", None));
+    let c = Class::new("Foo", None);
     let m = Rc::new(Method::new("secret".to_string(), vec![], vec![]));
     c.define_method("secret", m);
     c.set_method_private("secret");
@@ -115,24 +115,24 @@ fn alias_preserves_private_visibility() {
 
 #[test]
 fn alias_preserves_private_from_superclass_chain() {
-    let base = Rc::new(Class::new("Base", None));
+    let base = Class::new("Base", None);
     let m = Rc::new(Method::new("secret".to_string(), vec![], vec![]));
     base.define_method("secret", Rc::clone(&m));
     base.set_method_private("secret");
 
-    let child = Rc::new(Class::new("Child", Some(Rc::clone(&base))));
+    let child = Class::new("Child", Some(Rc::clone(&base)));
     assert!(child.alias_method("secret_alias", "secret"));
     assert!(child.is_method_private("secret_alias"));
 }
 
 #[test]
 fn alias_does_not_copy_private_when_public_override_shadows() {
-    let base = Rc::new(Class::new("Base", None));
+    let base = Class::new("Base", None);
     let m = Rc::new(Method::new("secret".to_string(), vec![], vec![]));
     base.define_method("secret", m);
     base.set_method_private("secret");
 
-    let child = Rc::new(Class::new("Child", Some(Rc::clone(&base))));
+    let child = Class::new("Child", Some(Rc::clone(&base)));
     child.set_method_public("secret");
     assert!(child.alias_method("secret_alias", "secret"));
     assert!(!child.is_method_private("secret_alias"));
@@ -140,7 +140,7 @@ fn alias_does_not_copy_private_when_public_override_shadows() {
 
 #[test]
 fn alias_method_returns_false_when_source_missing() {
-    let c = Rc::new(Class::new("Foo", None));
+    let c = Class::new("Foo", None);
     assert!(!c.alias_method("new", "missing"));
 }
 
@@ -203,10 +203,10 @@ fn set_assigned_name_if_anonymous_is_noop_when_already_assigned() {
 
 #[test]
 fn duplicate_clears_frozen_and_subclasses_but_keeps_methods() {
-    let src = Rc::new(Class::new("Src", None));
+    let src = Class::new("Src", None);
     src.define_method("m", Rc::new(Method::new("m".to_string(), vec![], vec![])));
     src.freeze();
-    let sc = Rc::new(Class::new("Sub", Some(Rc::clone(&src))));
+    let sc = Class::new("Sub", Some(Rc::clone(&src)));
     src.add_subclass(&sc);
 
     let dup = Class::duplicate(&src);
@@ -225,7 +225,7 @@ fn duplicate_clears_frozen_and_subclasses_but_keeps_methods() {
 fn clone_preserves_public_overrides() {
     let c = Class::new("Foo", None);
     c.set_method_public("x");
-    let cloned = c.clone();
+    let cloned = (*c).clone();
     assert!(cloned.has_public_override("x"));
 }
 
@@ -234,9 +234,9 @@ fn clone_preserves_public_overrides() {
 
 #[test]
 fn add_subclass_does_not_affect_class_vars() {
-    let base = Rc::new(Class::new("Base", None));
+    let base = Class::new("Base", None);
     base.set_class_var("X", Object::Int(1));
-    let child = Rc::new(Class::new("Child", Some(Rc::clone(&base))));
+    let child = Class::new("Child", Some(Rc::clone(&base)));
     base.add_subclass(&child);
     assert_eq!(base.get_class_var("X"), Some(Object::Int(1)));
 }
@@ -245,8 +245,8 @@ fn add_subclass_does_not_affect_class_vars() {
 
 #[test]
 fn duplicate_copies_singleton_class_methods() {
-    let src = Rc::new(Class::new("SrcS", None));
-    let sc = Rc::new(Class::new("#<Class:SrcS>", None));
+    let src = Class::new("SrcS", None);
+    let sc = Class::new("#<Class:SrcS>", None);
     sc.define_method("sm", Rc::new(Method::new("sm".to_string(), vec![], vec![])));
     src.set_singleton_class(Rc::clone(&sc));
 
@@ -263,8 +263,8 @@ fn duplicate_copies_singleton_class_methods() {
 
 #[test]
 fn duplicate_filters_attached_class_var_from_singleton() {
-    let src = Rc::new(Class::new("SrcA", None));
-    let sc = Rc::new(Class::new("#<Class:SrcA>", None));
+    let src = Class::new("SrcA", None);
+    let sc = Class::new("#<Class:SrcA>", None);
     sc.set_class_var("__attached__", Object::Int(42));
     sc.set_class_var("Regular", Object::Int(7));
     src.set_singleton_class(Rc::clone(&sc));
@@ -286,12 +286,12 @@ fn alias_method_honors_mixin_public_override() {
     // Mixin has a method `m` marked private AND explicitly re-publicized.
     // The public_override on the mixin must short-circuit the chain walk so
     // the alias is NOT marked private on the host.
-    let mixin = Rc::new(Class::new("MixPub", None));
+    let mixin = Class::new("MixPub", None);
     mixin.define_method("m", Rc::new(Method::new("m".to_string(), vec![], vec![])));
     mixin.set_method_private("m");
     mixin.set_method_public("m");
 
-    let host = Rc::new(Class::new("HostPub", None));
+    let host = Class::new("HostPub", None);
     host.add_mixin(Rc::clone(&mixin));
     assert!(host.alias_method("m_alias", "m"));
     assert!(
@@ -305,14 +305,14 @@ fn alias_method_inherits_mixin_private_flag() {
     // Mixin has `hidden` marked private without a public_override.
     // alias_method on the host should pick up the private flag via the mixin
     // branch of is_method_private_in_chain.
-    let mixin = Rc::new(Class::new("MixPriv", None));
+    let mixin = Class::new("MixPriv", None);
     mixin.define_method(
         "hidden",
         Rc::new(Method::new("hidden".to_string(), vec![], vec![])),
     );
     mixin.set_method_private("hidden");
 
-    let host = Rc::new(Class::new("HostPriv", None));
+    let host = Class::new("HostPriv", None);
     host.add_mixin(Rc::clone(&mixin));
     assert!(host.alias_method("hidden_alias", "hidden"));
     assert!(

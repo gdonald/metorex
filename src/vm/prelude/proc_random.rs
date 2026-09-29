@@ -193,9 +193,36 @@ class Random
   end
   private :state
 
+  # Two generators are equal when they are of one class, hold the same words
+  # at the same place, and were seeded the same way.
   def == other
-    other.is_a?(Random) && other.seed == @seed
+    return false unless other.instance_of?(self.class)
+    words, left, seed = other.__send__(:marshal_dump)
+    words == __words__ && left == N - @index + 1 && seed == @seed
   end
+
+  # What Marshal writes for a generator, the way Ruby writes it: every word
+  # it holds as one number with the first word lowest, how many words are
+  # left before it makes new ones, and its seed.
+  def marshal_dump
+    [__words__, N - @index + 1, @seed]
+  end
+  private :marshal_dump
+
+  def marshal_load(dumped)
+    words, left, seed = dumped
+    raise ArgumentError, "wrong value" if left > N
+    @state = Array.new(N) { |at| (words >> (32 * at)) & MASK32 }
+    @index = N - left + 1
+    @seed = seed
+    self
+  end
+  private :marshal_load
+
+  def __words__
+    @state.each_with_index.inject(0) { |held, (word, at)| held | (word << (32 * at)) }
+  end
+  private :__words__
 
   # A run of bytes, four to each word the generator answers.
   def bytes count

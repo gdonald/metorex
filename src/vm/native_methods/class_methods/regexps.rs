@@ -87,10 +87,17 @@ impl VirtualMachine {
                     if arguments.len() > 1 && !matches!(arguments[1], Object::Nil) {
                         self.emit_warning_to_stderr("warning: flags ignored", position);
                     }
-                    return Ok(Answered(Object::Regex(
-                        Rc::clone(pattern),
-                        Rc::clone(flags),
-                    )));
+                    let made = Object::Regex(Rc::clone(pattern), Rc::clone(flags));
+                    if class_rc.name() == "Regexp" {
+                        return Ok(Answered(made));
+                    }
+                    // A subclass keeps the pattern it was built from.
+                    let instance = crate::object::Instance::new(Rc::clone(class_rc));
+                    instance.borrow_mut().set_var(
+                        crate::vm::native_methods::REGEXP_SUBCLASS_VAR.to_string(),
+                        made,
+                    );
+                    return Ok(Answered(Object::Instance(instance)));
                 }
                 // Only a String, or something answering `to_str`, spells a
                 // pattern: a Symbol names no source.
@@ -231,12 +238,12 @@ impl VirtualMachine {
             // A subclass answers Regexp's methods through the pattern it
             // keeps, which is what lets it be a Regexp and its own class at
             // once.
-            let mut instance = crate::object::Instance::new(Rc::clone(class_rc));
-            instance.set_var(
+            let instance = crate::object::Instance::new(Rc::clone(class_rc));
+            instance.borrow_mut().set_var(
                 crate::vm::native_methods::REGEXP_SUBCLASS_VAR.to_string(),
                 made,
             );
-            let built = Object::Instance(Rc::new(std::cell::RefCell::new(instance)));
+            let built = Object::Instance(instance);
             // A subclass writing its own `initialize` sees the arguments the
             // pattern was built from.
             if let Some((owner, method)) = self.lookup_method(&built, "initialize")

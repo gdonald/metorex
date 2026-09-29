@@ -41,6 +41,14 @@ class Set
   end
 end
 
+class Fiber
+  # Raise an exception in this fiber, built from the arguments the way
+  # `Kernel#raise` builds one, where the fiber stands.
+  def raise(*arguments, **options)
+    __raise__(*arguments, **options)
+  end
+end
+
 class Thread
   # Raise an exception in this thread, built from the arguments the way
   # `Kernel#raise` builds one. On the thread running now it is raised at once.

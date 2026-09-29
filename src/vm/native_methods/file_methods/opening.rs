@@ -261,14 +261,13 @@ impl VirtualMachine {
                             Some(Object::Class(file_class)) => Some(file_class),
                             _ => None,
                         };
-                        let cls = Rc::new(crate::class::Class::new("File", global_file));
+                        let cls = crate::class::Class::new("File", global_file);
                         self.globals_mut()
                             .set("__File_handle_class", Object::Class(Rc::clone(&cls)));
                         cls
                     }
                 };
-                let inst = Instance::new(file_class);
-                let inst_rc = Rc::new(std::cell::RefCell::new(inst));
+                let inst_rc = Instance::new(file_class);
                 // The name is kept as the program spelled it, tag and all, so
                 // `path` hands back a String in the same encoding.
                 let named = match &held {

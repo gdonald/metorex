@@ -85,7 +85,7 @@ fn instance_var_on_class_stores_as_class_var() {
     // Ruby allows @var on classes/modules — stored as class-level instance vars
     let result = run(r#"
 class Foo
-  def set_ivar
+  def self.set_ivar
     @x = 10
   end
 end
@@ -95,16 +95,16 @@ Foo.set_ivar
 }
 
 // ── @@var set when self is a Class object (lines 221-223) ─────────────────────
-// When an instance method is called on the class (Foo.method), self = Class.
+// A class method runs with the class as self.
 
 #[test]
 fn class_var_set_in_method_called_on_class() {
     let result = run(r#"
 class Foo
-  def set_class_var
+  def self.set_class_var
     @@x = 42
   end
-  def get_class_var
+  def self.get_class_var
     @@x
   end
 end

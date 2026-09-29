@@ -380,3 +380,64 @@ fn test_procs_keyword_and_group_parameters_no_parens_execution() {
     let output = run_example("procs/keyword_and_group_parameters_no_parens.rb");
     assert_eq!(output, KEYWORD_AND_GROUP_PARAMETERS_OUTPUT);
 }
+
+/// The expected output of both `procs/binding_receiver` variants.
+const BINDING_RECEIVER_OUTPUT: &str = concat!("main\n", "true\n", "true\n");
+
+#[test]
+fn test_procs_binding_receiver_execution() {
+    let output = run_example("procs/binding_receiver.rb");
+    assert_eq!(output, BINDING_RECEIVER_OUTPUT);
+}
+
+#[test]
+fn test_procs_binding_receiver_no_parens_execution() {
+    let output = run_example("procs/binding_receiver_no_parens.rb");
+    assert_eq!(output, BINDING_RECEIVER_OUTPUT);
+}
+
+/// The expected output of both `functions/keywords_in_a_binary_file` variants.
+const KEYWORDS_IN_A_BINARY_FILE_OUTPUT: &str =
+    concat!("{width: 3, height: 4}\n", "[:width, :height]\n");
+
+#[test]
+fn test_functions_keywords_in_a_binary_file_execution() {
+    let output = run_example("functions/keywords_in_a_binary_file.rb");
+    assert_eq!(output, KEYWORDS_IN_A_BINARY_FILE_OUTPUT);
+}
+
+#[test]
+fn test_functions_keywords_in_a_binary_file_no_parens_execution() {
+    let output = run_example("functions/keywords_in_a_binary_file_no_parens.rb");
+    assert_eq!(output, KEYWORDS_IN_A_BINARY_FILE_OUTPUT);
+}
+
+/// The expected output of both `functions/keywords_or_a_hash` variants.
+const KEYWORDS_OR_A_HASH_OUTPUT: &str = concat!(
+    "[[{}], {}]\n",
+    "[[], {}]\n",
+    "[[{limit: 3}], {}]\n",
+    "[[], {limit: 3}]\n",
+    "[]\n",
+    "[{}]\n",
+    "[[:users], 5]\n",
+    "unknown keyword: :offset\n",
+    "unknown keyword: true\n",
+    "unknown keywords: :offset, :order\n",
+    "true\n",
+    "true\n",
+    "18\n",
+    "[[:users, :posts], 2]\n",
+);
+
+#[test]
+fn test_functions_keywords_or_a_hash_execution() {
+    let output = run_example("functions/keywords_or_a_hash.rb");
+    assert_eq!(output, KEYWORDS_OR_A_HASH_OUTPUT);
+}
+
+#[test]
+fn test_functions_keywords_or_a_hash_no_parens_execution() {
+    let output = run_example("functions/keywords_or_a_hash_no_parens.rb");
+    assert_eq!(output, KEYWORDS_OR_A_HASH_OUTPUT);
+}

@@ -5,8 +5,9 @@ use std::rc::Rc;
 
 #[test]
 fn test_instance_new() {
-    let class = Rc::new(Class::new("TestClass", None));
-    let instance = Instance::new(Rc::clone(&class));
+    let class = Class::new("TestClass", None);
+    let shared = Instance::new(Rc::clone(&class));
+    let instance = shared.borrow();
 
     assert_eq!(instance.class_name(), "TestClass");
     assert!(instance.instance_vars.is_empty());
@@ -14,8 +15,9 @@ fn test_instance_new() {
 
 #[test]
 fn test_instance_set_and_get_var() {
-    let class = Rc::new(Class::new("TestClass", None));
-    let mut instance = Instance::new(Rc::clone(&class));
+    let class = Class::new("TestClass", None);
+    let shared = Instance::new(Rc::clone(&class));
+    let mut instance = shared.borrow_mut();
 
     instance.set_var("name".to_string(), Object::string("Bob"));
     instance.set_var("age".to_string(), Object::Int(25));
@@ -27,11 +29,13 @@ fn test_instance_set_and_get_var() {
 
 #[test]
 fn test_instance_var_declared() {
-    let class = Rc::new(Class::new("Person", None));
+    let class = Class::new("Person", None);
     class.declare_instance_var("name");
     class.declare_instance_var("age");
 
-    let instance = Instance::new(Rc::clone(&class));
+    let shared = Instance::new(Rc::clone(&class));
+
+    let instance = shared.borrow();
 
     assert!(instance.is_var_declared("name"));
     assert!(instance.is_var_declared("age"));
@@ -40,13 +44,15 @@ fn test_instance_var_declared() {
 
 #[test]
 fn test_instance_var_declared_with_inheritance() {
-    let parent = Rc::new(Class::new("Parent", None));
+    let parent = Class::new("Parent", None);
     parent.declare_instance_var("parent_var");
 
-    let child = Rc::new(Class::new("Child", Some(Rc::clone(&parent))));
+    let child = Class::new("Child", Some(Rc::clone(&parent)));
     child.declare_instance_var("child_var");
 
-    let instance = Instance::new(Rc::clone(&child));
+    let shared = Instance::new(Rc::clone(&child));
+
+    let instance = shared.borrow();
 
     assert!(instance.is_var_declared("child_var"));
     assert!(instance.is_var_declared("parent_var"));
@@ -55,7 +61,7 @@ fn test_instance_var_declared_with_inheritance() {
 
 #[test]
 fn test_instance_find_method() {
-    let class = Rc::new(Class::new("Calculator", None));
+    let class = Class::new("Calculator", None);
     let method = Rc::new(Method::new(
         "add".to_string(),
         vec!["x".to_string(), "y".to_string()],
@@ -63,7 +69,9 @@ fn test_instance_find_method() {
     ));
     class.define_method("add", Rc::clone(&method));
 
-    let instance = Instance::new(Rc::clone(&class));
+    let shared = Instance::new(Rc::clone(&class));
+
+    let instance = shared.borrow();
 
     let found = instance.find_method("add");
     assert!(found.is_some());
@@ -74,15 +82,17 @@ fn test_instance_find_method() {
 
 #[test]
 fn test_instance_find_method_with_inheritance() {
-    let parent = Rc::new(Class::new("Parent", None));
+    let parent = Class::new("Parent", None);
     let parent_method = Rc::new(Method::new("parent_method".to_string(), vec![], vec![]));
     parent.define_method("parent_method", Rc::clone(&parent_method));
 
-    let child = Rc::new(Class::new("Child", Some(Rc::clone(&parent))));
+    let child = Class::new("Child", Some(Rc::clone(&parent)));
     let child_method = Rc::new(Method::new("child_method".to_string(), vec![], vec![]));
     child.define_method("child_method", Rc::clone(&child_method));
 
-    let instance = Instance::new(Rc::clone(&child));
+    let shared = Instance::new(Rc::clone(&child));
+
+    let instance = shared.borrow();
 
     assert!(instance.find_method("child_method").is_some());
     assert!(instance.find_method("parent_method").is_some());
@@ -91,16 +101,18 @@ fn test_instance_find_method_with_inheritance() {
 
 #[test]
 fn test_instance_class_name() {
-    let class = Rc::new(Class::new("MyTestClass", None));
-    let instance = Instance::new(Rc::clone(&class));
+    let class = Class::new("MyTestClass", None);
+    let shared = Instance::new(Rc::clone(&class));
+    let instance = shared.borrow();
 
     assert_eq!(instance.class_name(), "MyTestClass");
 }
 
 #[test]
 fn test_instance_multiple_vars() {
-    let class = Rc::new(Class::new("DataHolder", None));
-    let mut instance = Instance::new(Rc::clone(&class));
+    let class = Class::new("DataHolder", None);
+    let shared = Instance::new(Rc::clone(&class));
+    let mut instance = shared.borrow_mut();
 
     instance.set_var("string_var".to_string(), Object::string("hello"));
     instance.set_var("int_var".to_string(), Object::Int(42));
@@ -126,8 +138,9 @@ fn test_instance_multiple_vars() {
 
 #[test]
 fn test_instance_var_update() {
-    let class = Rc::new(Class::new("Counter", None));
-    let mut instance = Instance::new(Rc::clone(&class));
+    let class = Class::new("Counter", None);
+    let shared = Instance::new(Rc::clone(&class));
+    let mut instance = shared.borrow_mut();
 
     instance.set_var("count".to_string(), Object::Int(0));
     assert_eq!(instance.get_var("count"), Some(&Object::Int(0)));
@@ -141,7 +154,7 @@ fn test_instance_var_update() {
 
 #[test]
 fn test_instance_with_object_wrapper() {
-    let class = Rc::new(Class::new("TestClass", None));
+    let class = Class::new("TestClass", None);
     let obj = Object::instance(Rc::clone(&class));
 
     if let Object::Instance(inst) = obj {

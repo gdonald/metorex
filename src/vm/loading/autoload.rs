@@ -122,9 +122,7 @@ impl VirtualMachine {
             return None;
         };
         let object_class = Rc::clone(&main.borrow().class);
-        let stand_in = Object::Instance(Rc::new(std::cell::RefCell::new(
-            crate::object::Instance::new(object_class),
-        )));
+        let stand_in = Object::Instance(crate::object::Instance::new(object_class));
         // The copy is a main of the program's own, which is what decides
         // whether `using` written on it is allowed.
         if let Object::Instance(held) = &stand_in {

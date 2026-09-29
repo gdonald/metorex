@@ -498,10 +498,10 @@ pub(crate) fn hash_of_class(
     if class_rc.name() == "Hash" {
         return held;
     }
-    let mut instance = crate::object::Instance::new(Rc::clone(class_rc));
-    instance.set_var(
+    let instance = crate::object::Instance::new(Rc::clone(class_rc));
+    instance.borrow_mut().set_var(
         crate::vm::native_methods::HASH_SUBCLASS_VAR.to_string(),
         held,
     );
-    Object::Instance(Rc::new(std::cell::RefCell::new(instance)))
+    Object::Instance(instance)
 }

@@ -258,6 +258,9 @@ pub(super) const SOURCE: &str = r##"
     raise ArgumentError, "negative length #{wanted} given" if wanted < 0
     target = buffer.nil? ? nil : __as_buffer__(buffer)
     return __fill_buffer__(target, "") if wanted == 0
+    unless @peeked.nil? || @peeked.empty?
+      return __fill_buffer__ target, __take_ready__(wanted)
+    end
     held = read wanted
     if held.nil? || held.empty?
       __fill_buffer__ target, ""
@@ -423,7 +426,7 @@ pub(super) const SOURCE: &str = r##"
       if @__newline_conversion
         raise IOError, "byte oriented read for character buffered IO"
       end
-      return __fill_buffer__(target, read(wanted))
+      return __fill_buffer__(target, __take_ready__(wanted))
     end
     unless IO.__stream__("ready?", __stream_handle__, "", 0)
       return :wait_readable unless exception
@@ -437,6 +440,18 @@ pub(super) const SOURCE: &str = r##"
     end
     __fill_buffer__ target, held
   end
+
+  # The bytes already in hand, up to `wanted`, and as many more as the
+  # descriptor holds right now, without waiting on it for the rest.
+  def __take_ready__(wanted)
+    taken = read([wanted, @peeked.bytesize].min)
+    short = wanted - taken.bytesize
+    if short > 0 && IO.__stream__("ready?", __stream_handle__, "", 0)
+      taken += IO.__stream__("read", __stream_handle__, "", short).to_s.b
+    end
+    taken
+  end
+  private :__take_ready__
 
   # Written straight to the descriptor. A stream that has written through its
   # own buffer says so, since the two writes may land out of order.

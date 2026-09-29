@@ -173,15 +173,17 @@ fn compiled_function_equality() {
 
 #[test]
 fn instance_new_and_class_name() {
-    let class = Rc::new(Class::new("Dog", None));
-    let inst = Instance::new(Rc::clone(&class));
+    let class = Class::new("Dog", None);
+    let shared = Instance::new(Rc::clone(&class));
+    let inst = shared.borrow();
     assert_eq!(inst.class_name(), "Dog");
 }
 
 #[test]
 fn instance_get_set_var() {
-    let class = Rc::new(Class::new("Dog", None));
-    let mut inst = Instance::new(Rc::clone(&class));
+    let class = Class::new("Dog", None);
+    let shared = Instance::new(Rc::clone(&class));
+    let mut inst = shared.borrow_mut();
     assert!(inst.get_var("name").is_none());
     inst.set_var("name".to_string(), Object::string("Rex"));
     assert_eq!(inst.get_var("name"), Some(&Object::string("Rex")));
@@ -189,19 +191,21 @@ fn instance_get_set_var() {
 
 #[test]
 fn instance_is_var_declared() {
-    let class = Rc::new(Class::new("Dog", None));
+    let class = Class::new("Dog", None);
     class.declare_instance_var("name");
-    let inst = Instance::new(Rc::clone(&class));
+    let shared = Instance::new(Rc::clone(&class));
+    let inst = shared.borrow();
     assert!(inst.is_var_declared("name"));
     assert!(!inst.is_var_declared("age"));
 }
 
 #[test]
 fn instance_find_method() {
-    let class = Rc::new(Class::new("Dog", None));
+    let class = Class::new("Dog", None);
     let method = Rc::new(Method::new("bark".to_string(), vec![], vec![]));
     class.define_method("bark", method);
-    let inst = Instance::new(Rc::clone(&class));
+    let shared = Instance::new(Rc::clone(&class));
+    let inst = shared.borrow();
     assert!(inst.find_method("bark").is_some());
     assert!(inst.find_method("meow").is_none());
 }

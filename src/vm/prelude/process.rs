@@ -1,5 +1,13 @@
 pub(super) const SOURCE: &str = r##"
 module Process
+  class Status
+    # Wait for a child the way `Process.wait` does, answering its status
+    # rather than its pid and leaving `$?` as it was.
+    def self.wait(pid = -1, flags = 0)
+      Process.__wait_status__(pid, flags)
+    end
+  end
+
   # The same ids Process itself answers, gathered under the words Ruby
   # gathers them under.
   module GID

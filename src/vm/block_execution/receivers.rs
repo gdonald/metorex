@@ -251,6 +251,10 @@ impl VirtualMachine {
                 message,
             });
         }
+        self.enter_running_code(
+            std::rc::Rc::clone(&block.written_within),
+            block.opened_at.unwrap_or(position.line),
+        );
         let execution_result = self.with_call_frame(frame, move |vm| {
             vm.environment_mut().push_isolated_scope();
             let result = (|| -> Result<Object, MetorexError> {
@@ -368,6 +372,7 @@ impl VirtualMachine {
             vm.environment_mut().pop_scope();
             result
         });
+        self.leave_running_code();
         self.method_nesting_stack.pop();
         self.class_var_cref_stack.pop();
         if carried {

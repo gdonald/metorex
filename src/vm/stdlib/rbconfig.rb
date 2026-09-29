@@ -55,7 +55,8 @@ module RbConfig
     value
   end
 
+  # The binary running this program, which starts another one.
   def self.ruby
-    File.expand_path $PROGRAM_NAME
+    __interpreter_path__()
   end
 end

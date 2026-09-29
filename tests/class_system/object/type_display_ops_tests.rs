@@ -59,19 +59,19 @@ fn type_name_dict() {
 
 #[test]
 fn type_name_instance() {
-    let class = Rc::new(Class::new("Foo", None));
+    let class = Class::new("Foo", None);
     assert_eq!(Object::instance(class).type_name(), "Instance");
 }
 
 #[test]
 fn type_name_class() {
-    let class = Rc::new(Class::new("Foo", None));
+    let class = Class::new("Foo", None);
     assert_eq!(Object::Class(class).type_name(), "Class");
 }
 
 #[test]
 fn type_name_module() {
-    let module = Rc::new(Class::new("Mod", None));
+    let module = Class::new("Mod", None);
     assert_eq!(Object::Module(module).type_name(), "Module");
 }
 
@@ -202,7 +202,7 @@ fn display_dict_elements() {
 
 #[test]
 fn display_instance() {
-    let class = Rc::new(Class::new("Dog", None));
+    let class = Class::new("Dog", None);
     let inst = Object::instance(class);
     let display = format!("{}", inst);
     assert!(
@@ -213,13 +213,13 @@ fn display_instance() {
 
 #[test]
 fn display_class() {
-    let c = Rc::new(Class::new("Cat", None));
+    let c = Class::new("Cat", None);
     assert_eq!(format!("{}", Object::Class(c)), "Cat");
 }
 
 #[test]
 fn display_module() {
-    let m = Rc::new(Class::new("MyMod", None));
+    let m = Class::new("MyMod", None);
     assert_eq!(format!("{}", Object::Module(m)), "MyMod");
 }
 
@@ -426,7 +426,7 @@ fn equals_different_types() {
 
 #[test]
 fn equals_instance_same_rc() {
-    let class = Rc::new(Class::new("X", None));
+    let class = Class::new("X", None);
     let inst = Object::instance(class);
     // Same Rc → equal
     if let Object::Instance(rc) = &inst {
@@ -437,7 +437,7 @@ fn equals_instance_same_rc() {
 
 #[test]
 fn equals_class_same_rc() {
-    let class = Rc::new(Class::new("X", None));
+    let class = Class::new("X", None);
     let a = Object::Class(Rc::clone(&class));
     let b = Object::Class(class);
     assert!(a.equals(&b));
@@ -445,8 +445,8 @@ fn equals_class_same_rc() {
 
 #[test]
 fn equals_class_different_rc() {
-    let a = Object::Class(Rc::new(Class::new("X", None)));
-    let b = Object::Class(Rc::new(Class::new("X", None)));
+    let a = Object::Class(Class::new("X", None));
+    let b = Object::Class(Class::new("X", None));
     assert!(!a.equals(&b));
 }
 
@@ -542,7 +542,7 @@ fn constructor_empty_set() {
 
 #[test]
 fn constructor_instance() {
-    let class = Rc::new(Class::new("Foo", None));
+    let class = Class::new("Foo", None);
     let inst = Object::instance(class);
     assert_eq!(inst.type_name(), "Instance");
 }

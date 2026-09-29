@@ -11,6 +11,7 @@ pub(crate) const PROCESS_NATIVE_METHODS: &[&str] = &[
     "argv0",
     "clock_getres",
     "clock_gettime",
+    "daemon",
     "egid",
     "egid=",
     "euid",
@@ -259,6 +260,15 @@ impl VirtualMachine {
             }
             // `_fork` is the hook `fork` runs through.
             "_fork" => return self.split_process(position).map(Some),
+            // Carry on as a process of its own, detached from the terminal
+            // and from the one that started it, which leaves at once.
+            "daemon" => {
+                let stays_put = arguments.first().is_some_and(Object::is_truthy);
+                let keeps_streams = arguments.get(1).is_some_and(Object::is_truthy);
+                return self
+                    .detach_process(stays_put, keeps_streams, position)
+                    .map(Some);
+            }
             // A user or a group may be named rather than numbered, and
             // setting either needs the right to do so.
             "uid=" | "gid=" | "euid=" | "egid=" => {
@@ -348,6 +358,24 @@ impl VirtualMachine {
                     .map(Some);
             }
 
+            // `Process::Status.wait` answers the status itself and leaves
+            // `$?` alone. With no child to wait for, the status names a pid
+            // of -1 rather than raising.
+            "__wait_status__" => {
+                let requested = match arguments.first() {
+                    None | Some(Object::Nil) => -1,
+                    Some(held) => self.process_id_argument(Some(held), position)?,
+                };
+                let flags = match arguments.get(1) {
+                    Some(Object::Int(held)) => *held as libc::c_int,
+                    _ => 0,
+                };
+                return Ok(Some(match self.reap_child(requested, flags) {
+                    Some((0, _)) => Object::Nil,
+                    Some((_, status)) => status,
+                    None => self.build_process_status(Object::Nil, Object::Nil, -1),
+                }));
+            }
             // `wait` and `waitpid` answer the child's process id, and
             // `wait2` pairs it with the status. All three record `$?`.
             "wait" | "waitpid" | "wait2" | "waitpid2" => {
@@ -478,17 +506,11 @@ impl VirtualMachine {
 
     /// Rename this process so a listing shows the new name.
     fn set_process_title(&mut self, title: &str) {
-        // SAFETY: `setprogname` keeps the pointer, so the name is leaked to
-        // live as long as the process does.
-        #[cfg(target_os = "macos")]
-        unsafe {
-            if let Ok(held) = std::ffi::CString::new(title) {
-                libc::setprogname(held.into_raw());
-            }
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            let _ = title;
+        if let Some((start, length)) = original_argument_area() {
+            // SAFETY: the area is the one the kernel copied the program's
+            // arguments into, which belongs to this process for as long as it
+            // runs and is written here in place, within its length.
+            unsafe { write_process_title(start, length, title.as_bytes()) };
         }
     }
 
@@ -618,4 +640,106 @@ unsafe fn errno_location() -> *mut libc::c_int {
 #[cfg(target_os = "linux")]
 unsafe fn errno_location() -> *mut libc::c_int {
     unsafe { libc::__errno_location() }
+}
+
+/// Write a title over the arguments a process was started with, which is
+/// where a process listing reads its command from. What the title does not
+/// fill is cleared, and one longer than the area is cut to fit.
+///
+/// # Safety
+/// `start` must point at `length` writable bytes.
+unsafe fn write_process_title(start: *mut u8, length: usize, title: &[u8]) {
+    if length == 0 {
+        return;
+    }
+    let kept = title.len().min(length - 1);
+    // SAFETY: the caller vouches for `length` bytes from `start`.
+    unsafe {
+        std::ptr::copy_nonoverlapping(title.as_ptr(), start, kept);
+        std::ptr::write_bytes(start.add(kept), 0, length - kept);
+    }
+}
+
+/// Where the arguments this process was started with sit, and how many bytes
+/// they span: the first argument through the end of the last one that
+/// follows on from it.
+#[cfg(any(target_os = "macos", all(target_os = "linux", target_env = "gnu")))]
+fn original_argument_area() -> Option<(*mut u8, usize)> {
+    let (count, arguments) = original_arguments()?;
+    // SAFETY: the array holds `count` pointers to the strings the process was
+    // started with, which live as long as the process does.
+    unsafe {
+        if count == 0 || arguments.is_null() || (*arguments).is_null() {
+            return None;
+        }
+        let start = *arguments as *mut u8;
+        let mut end = start.add(libc::strlen(*arguments) + 1);
+        for index in 1..count {
+            let next = *arguments.add(index) as *mut u8;
+            if next != end {
+                break;
+            }
+            end = next.add(libc::strlen(next as *const libc::c_char) + 1);
+        }
+        Some((start, end.offset_from(start) as usize))
+    }
+}
+
+#[cfg(not(any(target_os = "macos", all(target_os = "linux", target_env = "gnu"))))]
+fn original_argument_area() -> Option<(*mut u8, usize)> {
+    None
+}
+
+/// How many arguments the process was started with, and the array of them.
+#[cfg(target_os = "macos")]
+fn original_arguments() -> Option<(usize, *const *const libc::c_char)> {
+    // SAFETY: both calls answer pointers into the process's own start-up
+    // state, which lives as long as the process does.
+    unsafe {
+        Some((
+            *libc::_NSGetArgc() as usize,
+            *libc::_NSGetArgv() as *const *const libc::c_char,
+        ))
+    }
+}
+
+/// How many arguments the process was started with, and the array of them,
+/// as glibc handed them to the functions it runs before `main`.
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+fn original_arguments() -> Option<(usize, *const *const libc::c_char)> {
+    let count = STARTED_WITH_COUNT.load(std::sync::atomic::Ordering::Relaxed);
+    let arguments = STARTED_WITH.load(std::sync::atomic::Ordering::Relaxed);
+    Some((count, arguments as *const *const libc::c_char))
+}
+
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+static STARTED_WITH_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+static STARTED_WITH: std::sync::atomic::AtomicPtr<*const libc::c_char> =
+    std::sync::atomic::AtomicPtr::new(std::ptr::null_mut());
+
+/// glibc calls each function in `.init_array` with the arguments the process
+/// was started with, which is the only place a Linux process is handed the
+/// array itself rather than a copy.
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+#[used]
+#[unsafe(link_section = ".init_array")]
+static KEEP_STARTED_WITH: extern "C" fn(
+    libc::c_int,
+    *const *const libc::c_char,
+    *const *const libc::c_char,
+) = keep_started_with;
+
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+extern "C" fn keep_started_with(
+    count: libc::c_int,
+    arguments: *const *const libc::c_char,
+    _environment: *const *const libc::c_char,
+) {
+    STARTED_WITH_COUNT.store(count as usize, std::sync::atomic::Ordering::Relaxed);
+    STARTED_WITH.store(
+        arguments as *mut *const libc::c_char,
+        std::sync::atomic::Ordering::Relaxed,
+    );
 }

@@ -29,9 +29,12 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        // Check for trailing ? or ! (Ruby-style method names)
+        // Check for trailing ? or ! (Ruby-style method names). An `=`
+        // right after it starts `!=` instead, as in `a!=b` and `:a!=> 1`,
+        // unless it opens `==` or `=~`.
         if let Some(ch) = self.peek()
             && (ch == '?' || ch == '!')
+            && !(self.peek_second() == Some('=') && self.third_char_is_not_eq_or_match())
         {
             ident.push(ch);
             self.advance();
@@ -39,6 +42,22 @@ impl<'a> Lexer<'a> {
 
         // Check if it's a keyword
         self.keyword_or_identifier(ident)
+    }
+
+    /// Whether the character two past the cursor leaves an `=` standing
+    /// alone, rather than opening `==` or `=~`.
+    fn third_char_is_not_eq_or_match(&self) -> bool {
+        let mut ahead = self.chars.clone();
+        let skip = 2usize.saturating_sub(self.prepend.len());
+        for _ in 0..skip {
+            ahead.next();
+        }
+        let third = if self.prepend.len() >= 3 {
+            Some(self.prepend[self.prepend.len() - 3])
+        } else {
+            ahead.next()
+        };
+        !matches!(third, Some('=') | Some('~'))
     }
 
     /// Read an instance or class variable (@var or @@var)

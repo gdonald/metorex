@@ -132,7 +132,7 @@ impl VirtualMachine {
 
         // A struct class built from a subclass of Struct stands under that
         // subclass, so a method it wrote is on the chain.
-        let generated = Rc::new(Class::new("", Some(Rc::clone(parent))));
+        let generated = Class::new("", Some(Rc::clone(parent)));
         parent.add_subclass(&generated);
         generated.set_class_var(MEMBERS_VAR, symbols(&members));
         generated.set_class_var(
@@ -269,7 +269,7 @@ impl VirtualMachine {
         }
         let by_keyword = named_only || alone;
 
-        let mut instance = Instance::new(Rc::clone(class_rc));
+        let instance = Instance::new(Rc::clone(class_rc));
 
         if by_keyword {
             let unknown: Vec<String> = keywords
@@ -285,6 +285,7 @@ impl VirtualMachine {
             }
             for (name, value) in &keywords {
                 instance
+                    .borrow_mut()
                     .instance_vars
                     .insert(member_slot(name), value.clone());
             }
@@ -294,6 +295,7 @@ impl VirtualMachine {
             }
             for (member, value) in members.iter().zip(positional.iter()) {
                 instance
+                    .borrow_mut()
                     .instance_vars
                     .insert(member_slot(member), value.clone());
             }
@@ -301,11 +303,12 @@ impl VirtualMachine {
 
         for member in members {
             instance
+                .borrow_mut()
                 .instance_vars
                 .entry(member_slot(member))
                 .or_insert(Object::Nil);
         }
 
-        Ok(Object::Instance(Rc::new(RefCell::new(instance))))
+        Ok(Object::Instance(instance))
     }
 }

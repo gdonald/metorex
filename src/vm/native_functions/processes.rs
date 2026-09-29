@@ -87,26 +87,6 @@ pub(crate) fn run_to_completion(
     (std::process::ExitStatus::from_raw(held), child as i64)
 }
 
-/// Where a program named on the command line sits, which is the name itself
-/// when it holds a slash and otherwise the first place on the path that holds
-/// a file of that name the program may run.
-pub(crate) fn findable_program(program: &str) -> Option<std::path::PathBuf> {
-    use std::os::unix::fs::PermissionsExt as _;
-    let runnable = |path: &std::path::Path| {
-        std::fs::metadata(path)
-            .map(|held| held.is_file() && held.permissions().mode() & 0o111 != 0)
-            .unwrap_or(false)
-    };
-    if program.contains('/') {
-        let named = std::path::PathBuf::from(program);
-        return runnable(&named).then_some(named);
-    }
-    let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path)
-        .map(|held| held.join(program))
-        .find(|held| runnable(held))
-}
-
 /// The files a `require` of `named` may mean, in the order Ruby tries them.
 /// A path already ending in `.rb` is taken as written rather than having
 /// another `.rb` added to it.

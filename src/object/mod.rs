@@ -14,6 +14,7 @@ pub(crate) use display::{
 mod exception;
 mod hash;
 mod instance;
+pub mod live;
 mod method;
 mod operations;
 mod types;
@@ -21,7 +22,7 @@ mod types;
 // Re-export core types and traits
 pub use binding::Binding;
 pub use block::{
-    BLOCK_LOCAL_PREFIX, BlockStatement, DESTRUCTURED_GROUP_PREFIX, IMPLICIT_IT_PARAM,
+    BLOCK_LOCAL_PREFIX, BlockStatement, CodePlaces, DESTRUCTURED_GROUP_PREFIX, IMPLICIT_IT_PARAM,
     KEYWORD_PARAM_PREFIX, NO_KEYWORDS_PARAM, TRAILING_COMMA_PARAM, UNNAMED_PARAMETER,
 };
 pub use compiled_function::CompiledFunction;

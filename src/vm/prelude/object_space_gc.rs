@@ -12,19 +12,55 @@ module ObjectSpace
     finalizer = callable.nil? ? block : callable
     raise ArgumentError, "no finalizer given" if finalizer.nil?
     unless finalizer.respond_to? :call
-      raise ArgumentError, "no finalizer given"
+      raise ArgumentError, "wrong type argument #{finalizer.class} (should be callable)"
+    end
+    case held
+    when nil, true, false, Symbol, Integer, Float
+      raise ArgumentError, "cannot define finalizer for #{held.class}"
+    end
+    if __finalizer_receiver__(finalizer).equal? held
+      warn "finalizer references object to be finalized", uplevel: 1
     end
     named = held.object_id
-    ObjectSpace.__finalizers__[named] = ObjectSpace.__finalizers__.fetch(named, []) + [finalizer]
+    listed = ObjectSpace.__finalizers__.fetch(named, [])
+    same = listed.find { |one| one == finalizer }
+    return [0, same] unless same.nil?
+    ObjectSpace.__finalizers__[named] = listed + [finalizer]
     unless @armed
       @armed = true
-      at_exit do
-        ObjectSpace.__finalizers__.each do |id, listed|
-          listed.each { |one| one.call id }
+      at_exit { ObjectSpace.__run_finalizers__ }
+    end
+    [0, finalizer]
+  end
+
+  # The object a finalizer runs as: a block's `self`, or the object a method
+  # was taken from.
+  def self.__finalizer_receiver__(finalizer)
+    return finalizer.binding.receiver if finalizer.is_a? Proc
+    return finalizer.receiver if finalizer.is_a? Method
+    nil
+  end
+
+  # Run every finalizer as the program ends, including the ones a finalizer
+  # defines while it runs. One that raises is reported unless warnings are
+  # switched off, and the rest still run.
+  def self.__run_finalizers__
+    until __finalizers__.empty?
+      pending = __finalizers__.to_a
+      __finalizers__.clear
+      pending.each do |id, listed|
+        listed.each do |one|
+          begin
+            one.call id
+          rescue Exception => error
+            unless $VERBOSE.nil?
+              warn "warning: Exception in finalizer #{one.inspect}"
+              $stderr.write error.full_message(highlight: false)
+            end
+          end
         end
       end
     end
-    [0, finalizer]
   end
 
   # A clone carries the finalizers its original was given, which is what
@@ -42,6 +78,18 @@ module ObjectSpace
     end
     ObjectSpace.__finalizers__.delete held.object_id
     held
+  end
+
+  # Hand every object still alive that is a kind of `wanted` to the block,
+  # answering how many there were.
+  def self.each_object(wanted = nil)
+    unless wanted.nil? || wanted.is_a?(Module)
+      raise TypeError, "class or module required"
+    end
+    return to_enum(:each_object, wanted) unless block_given?
+    found = __each_object__(wanted)
+    found.each { |one| yield one }
+    found.size
   end
 
   # Ruby 4.0 deprecated reading an object back from its id. Metorex keeps no

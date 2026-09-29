@@ -76,7 +76,7 @@ impl Object {
 
     /// Create an instance of a class
     pub fn instance(class: Rc<Class>) -> Self {
-        Object::Instance(Rc::new(RefCell::new(Instance::new(class))))
+        Object::Instance(Instance::new(class))
     }
 
     /// Create an exception

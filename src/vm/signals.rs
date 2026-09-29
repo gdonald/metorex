@@ -99,7 +99,121 @@ pub(crate) fn handler_name(command: &Object) -> Option<String> {
     })
 }
 
+/// One past the highest signal number any platform metorex runs on uses.
+const SIGNAL_SLOTS: usize = 65;
+
+/// Which signals have arrived and not been handled yet, set by the operating
+/// system's handler and cleared as the interpreter runs the Ruby one.
+static PENDING: [std::sync::atomic::AtomicBool; SIGNAL_SLOTS] =
+    [const { std::sync::atomic::AtomicBool::new(false) }; SIGNAL_SLOTS];
+
+/// Whether any signal is pending, so the check made before every statement
+/// reads one flag.
+static ANY_PENDING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Which signals a Ruby handler has asked to catch.
+static CAUGHT: [std::sync::atomic::AtomicBool; SIGNAL_SLOTS] =
+    [const { std::sync::atomic::AtomicBool::new(false) }; SIGNAL_SLOTS];
+
+/// Which interpreter's thread caught each signal. Only that thread runs the
+/// handler, since the handler is that interpreter's own and a process may
+/// run several interpreters on threads of their own.
+static CAUGHT_BY: [std::sync::atomic::AtomicUsize; SIGNAL_SLOTS] =
+    [const { std::sync::atomic::AtomicUsize::new(0) }; SIGNAL_SLOTS];
+
+/// The number the next thread to catch a signal is known by. Zero stands for
+/// no thread at all.
+static NEXT_CATCHER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
+
+thread_local! {
+    static CATCHER: usize = NEXT_CATCHER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// What the operating system runs when a caught signal arrives. It only notes
+/// the signal, since nothing else is safe to do inside a signal handler.
+extern "C" fn note_signal(number: libc::c_int) {
+    if let Some(slot) = PENDING.get(number as usize) {
+        slot.store(true, std::sync::atomic::Ordering::SeqCst);
+        ANY_PENDING.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// Hand a signal to the operating system's handler for it: noting it for the
+/// interpreter when a Ruby handler is written for it, and otherwise ignoring
+/// it or leaving it to the system as the handler says. A signal no Ruby
+/// handler ever caught keeps whatever the process already does with it.
+fn set_disposition(number: i32, command: &Object) {
+    let Some(caught) = CAUGHT.get(number as usize) else {
+        return;
+    };
+    let catching = !matches!(command, Object::String(_) | Object::Nil);
+    if !catching && !caught.load(std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    let handler = if catching {
+        note_signal as extern "C" fn(libc::c_int) as libc::sighandler_t
+    } else if matches!(command, Object::Nil)
+        || matches!(command, Object::String(held) if *held.as_str() == *"IGNORE")
+    {
+        libc::SIG_IGN
+    } else {
+        libc::SIG_DFL
+    };
+    caught.store(catching, std::sync::atomic::Ordering::SeqCst);
+    CAUGHT_BY[number as usize].store(
+        if catching {
+            CATCHER.with(|own| *own)
+        } else {
+            0
+        },
+        std::sync::atomic::Ordering::SeqCst,
+    );
+    // SAFETY: the action is zeroed and then given a handler that only stores
+    // to atomics, which is safe to run whenever the signal arrives.
+    unsafe {
+        let mut action: libc::sigaction = std::mem::zeroed();
+        action.sa_sigaction = handler;
+        action.sa_flags = libc::SA_RESTART;
+        libc::sigemptyset(&mut action.sa_mask);
+        libc::sigaction(number, &action, std::ptr::null_mut());
+    }
+}
+
 impl crate::vm::VirtualMachine {
+    /// Run the Ruby handler of every signal that has arrived since the last
+    /// time this was asked, lowest number first.
+    pub(crate) fn deliver_pending_signals(
+        &mut self,
+        position: crate::lexer::Position,
+    ) -> Result<(), crate::error::MetorexError> {
+        if !ANY_PENDING.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            return Ok(());
+        }
+        let own = CATCHER.with(|own| *own);
+        let mut mine = Vec::new();
+        let mut left_for_others = false;
+        for (number, slot) in PENDING.iter().enumerate() {
+            if !slot.load(std::sync::atomic::Ordering::SeqCst) {
+                continue;
+            }
+            if CAUGHT_BY[number].load(std::sync::atomic::Ordering::SeqCst) != own {
+                left_for_others = true;
+                continue;
+            }
+            slot.store(false, std::sync::atomic::Ordering::SeqCst);
+            mine.push(number as i32);
+        }
+        if left_for_others {
+            ANY_PENDING.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+        for number in mine {
+            if let Some(name) = name_for_number(number) {
+                self.run_signal_handler(name, number, position)?;
+            }
+        }
+        Ok(())
+    }
+
     /// `Signal.list` — every known signal name mapped to its number.
     pub(crate) fn signal_list(&self) -> Object {
         let mut entries = indexmap::IndexMap::new();
@@ -178,14 +292,14 @@ impl crate::vm::VirtualMachine {
         // `EXIT` is not a signal the operating system sends: it names what to
         // run as the program ends.
         let exiting = matches!(&given, Object::Symbol(held) | Object::String(held) if *held.as_str() == *"EXIT");
-        let name = if exiting {
-            "EXIT".to_string()
+        let (name, number) = if exiting {
+            ("EXIT".to_string(), 0)
         } else {
-            let (name, _) = self.signal_named_by(&given, position)?;
+            let (name, number) = self.signal_named_by(&given, position)?;
             if let Some(refused) = self.refuse_to_trap(&name, position) {
                 return Err(refused);
             }
-            name
+            (name, number)
         };
         let command = match (block, arguments.get(1)) {
             (Some(block), _) => block,
@@ -195,6 +309,9 @@ impl crate::vm::VirtualMachine {
             },
             (None, None) => Object::string("DEFAULT"),
         };
+        if !exiting {
+            set_disposition(number, &command);
+        }
         // A signal nothing was ever written for is answered for by the
         // operating system, which is what Ruby says of it.
         let previous = self
@@ -220,25 +337,30 @@ impl crate::vm::VirtualMachine {
             ));
         }
         let given = arguments.first().cloned().unwrap_or(Object::Nil);
+        // A signal named with a leading minus, or a negative number, goes to
+        // the process group each pid leads rather than to the process.
+        let (given, to_the_group) = match &given {
+            Object::Int(number) => (given.clone(), *number < 0),
+            Object::Symbol(text) | Object::String(text) if text.as_str().starts_with('-') => {
+                (Object::string(&text.as_str()[1..]), true)
+            }
+            _ => (given.clone(), false),
+        };
         let (name, number) = self.signal_named_by(&given, position)?;
         let own_pid = std::process::id() as i64;
         let mut delivered = 0;
         for target in &arguments[1..] {
-            let Object::Int(pid) = target else {
-                return Err(crate::vm::errors::simple_exception(
-                    "TypeError",
-                    &format!(
-                        "no implicit conversion of {} into Integer",
-                        self.builtins().class_of(target).name()
-                    ),
-                    position,
-                ));
-            };
+            let pid = self.process_id_argument(Some(target), position)? as i64;
             delivered += 1;
             // A signal the program can answer for itself runs whatever
             // `Signal.trap` left in force. Everything else, and every signal
-            // sent to another process, goes to the operating system.
-            if *pid == own_pid && !matches!(name.as_str(), "KILL" | "STOP") {
+            // sent to another process, goes to the operating system. Signal 0
+            // only asks whether the process could be signaled.
+            if pid == own_pid
+                && !to_the_group
+                && number != 0
+                && !matches!(name.as_str(), "KILL" | "STOP")
+            {
                 // A signal a program sends itself arrives inside the call
                 // that sent it, which is what a report of it names.
                 let frame = crate::vm::CallFrame::method(
@@ -253,7 +375,7 @@ impl crate::vm::VirtualMachine {
             }
             // A signal this process sends to itself is delivered before the
             // call returns, so the program never runs on past it.
-            if *pid == own_pid {
+            if pid == own_pid && !to_the_group && number != 0 {
                 // SAFETY: `raise` delivers the signal to this process, which
                 // an uncatchable one ends before returning.
                 unsafe { libc::raise(number) };
@@ -264,7 +386,8 @@ impl crate::vm::VirtualMachine {
             }
             // SAFETY: `kill` sends one signal to one process and touches
             // nothing else.
-            if unsafe { libc::kill(*pid as libc::pid_t, number) } < 0 {
+            let aimed_at = if to_the_group { -pid } else { pid };
+            if unsafe { libc::kill(aimed_at as libc::pid_t, number) } < 0 {
                 let code = std::io::Error::last_os_error();
                 let named = match code.raw_os_error() {
                     Some(number) if number == libc::ESRCH => "Errno::ESRCH",
@@ -284,7 +407,7 @@ impl crate::vm::VirtualMachine {
 
     /// Run whatever `Signal.trap` left in force for `name`. The default
     /// disposition raises, which is how a Ruby program sees a signal at all.
-    fn run_signal_handler(
+    pub(crate) fn run_signal_handler(
         &mut self,
         name: &str,
         number: i32,

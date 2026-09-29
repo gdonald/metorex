@@ -164,22 +164,17 @@ fn stream_error(problem: &std::io::Error, what: &str, position: Position) -> Met
 
 /// Wait for a descriptor to have something to read, or to reach its end,
 /// until the deadline. Answers whether it did.
-fn wait_until_readable(number: RawFd, deadline: std::time::Instant) -> bool {
-    let left = deadline.saturating_duration_since(std::time::Instant::now());
+fn wait_until_readable(number: RawFd) -> bool {
     let mut watched = libc::pollfd {
         fd: number,
         events: libc::POLLIN,
         revents: 0,
     };
-    // SAFETY: `watched` is one pollfd, which is the count passed.
-    let ready = unsafe { libc::poll(&mut watched, 1, left.as_millis() as libc::c_int) };
-    ready > 0
+    // SAFETY: `watched` is one pollfd, which is the count passed, and a
+    // negative timeout waits for as long as it takes.
+    let ready = unsafe { libc::poll(&mut watched, 1, -1) };
+    ready > 0 || std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted
 }
-
-/// How long a read waits for something to arrive before giving up. Metorex
-/// runs one thread, so a stream nothing is left to write to has nobody to
-/// wait for.
-const READ_LIMIT: std::time::Duration = std::time::Duration::from_millis(250);
 
 fn closed_error(position: Position) -> MetorexError {
     crate::vm::errors::simple_exception("IOError", "closed stream", position)
@@ -442,10 +437,22 @@ impl VirtualMachine {
                 let wanted = if count > 0 { count as usize } else { 65536 };
                 let mut buffer = vec![0u8; wanted];
                 // A stream with nothing to hand over yet is waited on, and
-                // waiting is where every other thread gets its turn. A read
-                // that nothing can ever satisfy gives up after a while.
-                let deadline = std::time::Instant::now() + READ_LIMIT;
+                // waiting is where every other thread gets its turn.
                 let read = loop {
+                    // A descriptor that blocks would hold every thread up
+                    // until it had something, so it is asked first whether it
+                    // has, and the other threads run while it has not.
+                    if self.other_threads_are_waiting() && !descriptor_is_ready(number) {
+                        self.wait_for_other_threads(position);
+                        if self.open_streams.number_of(handle).is_none() {
+                            return Err(crate::vm::errors::simple_exception(
+                                "IOError",
+                                "stream closed in another thread",
+                                position,
+                            ));
+                        }
+                        continue;
+                    }
                     let held = self
                         .open_streams
                         .take(handle, number, &mut buffer[..wanted]);
@@ -479,10 +486,13 @@ impl VirtualMachine {
                         }
                         continue;
                     }
-                    if std::time::Instant::now() >= deadline {
+                    // Another process may still write, such as a child, so
+                    // the descriptor is waited on until it has something. A
+                    // signal that ends the wait early is handled first.
+                    if !wait_until_readable(number) {
                         return Err(stream_error(&problem, "read", position));
                     }
-                    std::thread::sleep(std::time::Duration::from_millis(2));
+                    self.deliver_pending_signals(position)?;
                 };
                 buffer.truncate(read as usize);
                 Ok(super::pack_format::bytes_to_string(&buffer))
@@ -674,7 +684,6 @@ impl VirtualMachine {
                 };
                 let mut collected: Vec<u8> = Vec::new();
                 let mut buffer = [0u8; 4096];
-                let line_deadline = std::time::Instant::now() + READ_LIMIT;
                 // The newlines standing before a paragraph belong to the
                 // one already read, so they are stepped over here.
                 if skipping {
@@ -715,8 +724,9 @@ impl VirtualMachine {
                             }
                             // Another process may still write, such as a
                             // forked child, so the descriptor is waited on
-                            // for as long as a read waits.
-                            if wait_until_readable(number, line_deadline) {
+                            // until it has something.
+                            if wait_until_readable(number) {
+                                self.deliver_pending_signals(position)?;
                                 continue;
                             }
                             break;
@@ -1018,4 +1028,17 @@ impl VirtualMachine {
             }
         }
     }
+}
+
+/// Whether a read from a descriptor would answer straight away: it has bytes,
+/// has reached its end, or has something wrong with it to report.
+fn descriptor_is_ready(number: i32) -> bool {
+    let mut asked = libc::pollfd {
+        fd: number,
+        events: libc::POLLIN,
+        revents: 0,
+    };
+    // SAFETY: `poll` reads and writes the one entry given, and a zero timeout
+    // answers without waiting.
+    unsafe { libc::poll(&mut asked, 1, 0) != 0 }
 }

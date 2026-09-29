@@ -30,14 +30,12 @@ impl VirtualMachine {
             && (class_rc.name() == "Mutex" || class_rc.name() == "ConditionVariable")
         {
             use crate::object::Instance;
-            let instance = Instance::new(Rc::clone(class_rc));
-            let inst_rc = Rc::new(std::cell::RefCell::new(instance));
+            let inst_rc = Instance::new(Rc::clone(class_rc));
             return Ok(Answered(Object::Instance(inst_rc)));
         }
         if method_name == "new" && (class_rc.name() == "Queue" || class_rc.name() == "SizedQueue") {
             use crate::object::Instance;
-            let instance = Instance::new(Rc::clone(class_rc));
-            let inst_rc = Rc::new(std::cell::RefCell::new(instance));
+            let inst_rc = Instance::new(Rc::clone(class_rc));
             inst_rc.borrow_mut().set_var(
                 "__queue_items".to_string(),
                 Object::Array(Rc::new(std::cell::RefCell::new(Vec::new()))),
@@ -78,8 +76,7 @@ impl VirtualMachine {
         {
             use crate::object::Instance;
             let block = self.pending_block.take().unwrap_or(Object::Nil);
-            let instance = Instance::new(Rc::clone(class_rc));
-            let inst_rc = Rc::new(std::cell::RefCell::new(instance));
+            let inst_rc = Instance::new(Rc::clone(class_rc));
             let obj = Object::Instance(Rc::clone(&inst_rc));
             // A subclass may write its own `initialize`, and what it hands to
             // `super` is what the thread runs. `start` and `fork` never go
@@ -179,8 +176,7 @@ impl VirtualMachine {
                 }
             };
             let handle = self.fiber_create(block, blocking, storage);
-            let instance = Instance::new(Rc::clone(class_rc));
-            let inst_rc = Rc::new(std::cell::RefCell::new(instance));
+            let inst_rc = Instance::new(Rc::clone(class_rc));
             inst_rc
                 .borrow_mut()
                 .set_var("__fiber__".to_string(), Object::Int(handle as i64));
@@ -191,17 +187,13 @@ impl VirtualMachine {
                 // `Fiber.yield` suspends the fiber holding the interpreter,
                 // handing its arguments to whoever resumed it.
                 "yield" => {
-                    let handed = match arguments.len() {
-                        0 => Object::Nil,
-                        1 => arguments[0].clone(),
-                        _ => Object::array(arguments.to_vec()),
-                    };
+                    let handed = crate::vm::fibers::passing_value(arguments.to_vec());
+                    let current = self.fiber_current_handle();
+                    if let Some(state) = self.fibers.get_mut(current) {
+                        state.yielding = true;
+                    }
                     let given = self.fiber_suspend(handed, position)?;
-                    return Ok(Answered(match given.len() {
-                        0 => Object::Nil,
-                        1 => given[0].clone(),
-                        _ => Object::array(given),
-                    }));
+                    return Ok(Answered(crate::vm::fibers::passing_value(given)));
                 }
                 "current" => {
                     return Ok(Answered(self.fiber_current()));
@@ -370,7 +362,7 @@ impl VirtualMachine {
                         return Ok(Answered(main));
                     }
                     let instance = crate::object::Instance::new(Rc::clone(class_rc));
-                    let main = Object::Instance(Rc::new(std::cell::RefCell::new(instance)));
+                    let main = Object::Instance(instance);
                     self.globals_mut().set("__Thread_main", main.clone());
                     return Ok(Answered(main));
                 }

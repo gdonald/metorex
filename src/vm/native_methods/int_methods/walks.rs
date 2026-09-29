@@ -123,15 +123,15 @@ impl VirtualMachine {
                 let Some(Object::Class(rational_class)) = self.globals().get("Rational") else {
                     return Ok(None);
                 };
-                let mut instance = crate::object::Instance::new(rational_class);
-                instance.set_var("numerator".to_string(), Object::Int(numerator / divisor));
-                instance.set_var(
+                let instance = crate::object::Instance::new(rational_class);
+                instance
+                    .borrow_mut()
+                    .set_var("numerator".to_string(), Object::Int(numerator / divisor));
+                instance.borrow_mut().set_var(
                     "denominator".to_string(),
                     Object::Int(denominator / divisor),
                 );
-                Ok(Some(Object::Instance(Rc::new(std::cell::RefCell::new(
-                    instance,
-                )))))
+                Ok(Some(Object::Instance(instance)))
             }
             "upto" | "downto" => {
                 if arguments.len() != 1 {

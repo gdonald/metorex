@@ -2,6 +2,9 @@
 
 use super::*;
 
+/// How many locks a thread takes in one turn before it hands the turn over.
+const LOCKS_PER_TURN: usize = 100;
+
 impl VirtualMachine {
     /// Mutex instance methods. Metorex runs a thread's block on the thread
     /// that made it, so a lock never has to wait: it records who holds it and
@@ -43,6 +46,23 @@ impl VirtualMachine {
                         "deadlock; recursive locking",
                         position,
                     ));
+                }
+                // Another fiber of this thread holding the lock cannot let it
+                // go while this one waits, since nothing else of the thread
+                // runs until this one does.
+                if held && self.fiber_scheduler.is_none() && self.mutex_held_by_this_thread(&inst) {
+                    return Err(crate::vm::errors::simple_exception(
+                        "ThreadError",
+                        "deadlock; lock already owned by another fiber belonging to the same thread",
+                        position,
+                    ));
+                }
+                if !self.thread_current_stack.is_empty() {
+                    self.locks_this_turn += 1;
+                    if self.locks_this_turn >= LOCKS_PER_TURN {
+                        self.locks_this_turn = 0;
+                        self.hand_over_turn(position)?;
+                    }
                 }
                 // A lock something else holds is waited for, so whatever else
                 // the program has to run gets a turn until it is let go.

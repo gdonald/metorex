@@ -223,12 +223,20 @@ impl VirtualMachine {
         // the only way to place a method from an anonymous module or from one
         // of two modules that share a name. Matching the frame's class name
         // covers the cases where no owner was recorded.
-        let recorded_owner = self
-            .method_owner_stack
-            .last()
-            .cloned()
-            .flatten()
-            .filter(|owner| chain.iter().any(|c| Rc::ptr_eq(c, owner)));
+        let running_owner = self.method_owner_stack.last().cloned().flatten();
+        // A method a refinement holds stands in front of the class it
+        // refines, so `super` from it starts at that class's own method.
+        let refined_at = running_owner
+            .as_ref()
+            .and_then(|owner| owner.get_class_var(crate::vm::native_methods::REFINEMENT_TARGET_KEY))
+            .and_then(|target| match target {
+                Object::Class(refined) | Object::Module(refined) => {
+                    chain.iter().position(|c| Rc::ptr_eq(c, &refined))
+                }
+                _ => None,
+            });
+        let recorded_owner =
+            running_owner.filter(|owner| chain.iter().any(|c| Rc::ptr_eq(c, owner)));
         // A method bound into a hierarchy its own module is not part of has
         // no place in the chain. `super` from it reaches whatever the
         // receiver's own ancestors define, so the search starts at the top.
@@ -248,6 +256,7 @@ impl VirtualMachine {
             // How much of the chain the defining class stands above, which
             // is the whole of it when the method belongs nowhere in it.
             let start_at = match &placed {
+                _ if refined_at.is_some() => refined_at,
                 Some(found) => chain
                     .iter()
                     .position(|c| Rc::ptr_eq(c, found))
@@ -627,6 +636,10 @@ impl VirtualMachine {
                 let mut held = details.borrow_mut();
                 held.message = spelled;
                 held.message_given = true;
+                if matches!(given, Object::String(_)) {
+                    held.instance_vars
+                        .insert(crate::vm::MESSAGE_STRING_KEY.to_string(), given.clone());
+                }
             }
         }
         Ok(Object::Nil)

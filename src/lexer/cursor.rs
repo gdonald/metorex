@@ -49,6 +49,19 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// Peek at the character after the next one.
+    pub(super) fn peek_second(&mut self) -> Option<char> {
+        match self.prepend.len() {
+            0 => {
+                let mut ahead = self.chars.clone();
+                ahead.next();
+                ahead.next()
+            }
+            1 => self.chars.peek().copied(),
+            held => Some(self.prepend[held - 2]),
+        }
+    }
+
     /// Skip whitespace characters (spaces and tabs, but not newlines).
     /// Also handles line continuations: a `\` immediately followed by a
     /// newline is consumed silently so the two source lines join. Returns

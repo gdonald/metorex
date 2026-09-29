@@ -798,3 +798,36 @@ fn test_introspection_location_absolute_paths_no_parens() {
     let output = run_example("introspection/location_absolute_paths_no_parens.rb");
     assert_eq!(output, LOCATION_ABSOLUTE_PATHS_OUTPUT);
 }
+
+/// The expected output of both `introspection/tracepoint_targets` variants.
+const TRACEPOINT_TARGETS_OUTPUT: &str = concat!(
+    "[3, 3]\n",
+    "[[:call, :build], [:c_call, :times], [:b_call, :build], [:c_call, :max], [:c_return, :max], [:c_return, :times], [:return, :build]]\n",
+    "[2]\n",
+    "[:inner, :outer]\n",
+    "ArgumentError: can not enable any hooks\n",
+    "ArgumentError: specified target is not supported\n",
+    "ArgumentError: only target_line is specified\n",
+    "ArgumentError: target_line is specified, but line event is not specified\n",
+    "TypeError: no implicit conversion of Object into Integer\n",
+    "ArgumentError: can not enable any hooks\n",
+    "can't disable a targeting TracePoint in a block\n",
+    "#<TracePoint:line FILE:88>\n",
+    "#<TracePoint:call 'summarize' FILE:20>\n",
+    "#<TracePoint:line FILE:21>\n",
+    "#<TracePoint:disabled>\n",
+    "[:thread_begin, :thread_end]\n",
+    "true\n",
+);
+
+#[test]
+fn test_introspection_tracepoint_targets() {
+    let output = run_example("introspection/tracepoint_targets.rb");
+    assert_eq!(output, TRACEPOINT_TARGETS_OUTPUT);
+}
+
+#[test]
+fn test_introspection_tracepoint_targets_no_parens() {
+    let output = run_example("introspection/tracepoint_targets_no_parens.rb");
+    assert_eq!(output, TRACEPOINT_TARGETS_OUTPUT);
+}

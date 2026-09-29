@@ -42,6 +42,9 @@ pub const KEYWORD_PARAM_PREFIX: &str = ":";
 /// block declared, and it gives way to an `it` already in scope.
 pub const IMPLICIT_IT_PARAM: &str = "~it";
 
+/// Places in the source, each the file and the line some code opened on.
+pub type CodePlaces = Rc<Vec<(String, usize)>>;
+
 /// Block/lambda/closure with captured variables
 #[derive(Debug, Clone)]
 pub struct BlockStatement {
@@ -90,6 +93,11 @@ pub struct BlockStatement {
     /// How many blocks deep the block was written, counting itself, which
     /// is the depth a backtrace names it by however it is called.
     pub written_depth: Option<u32>,
+    /// The places the block was written within, outermost first and ending
+    /// with its own, each as the file and the line the code opened on. A
+    /// trace aimed at a method or a block fires for the blocks written
+    /// inside it by finding the target among these.
+    pub written_within: CodePlaces,
     /// Whether `ruby2_keywords` was called on the Proc this block stands for,
     /// so a trailing keyword hash gathered into its splat is marked. The flag
     /// is shared with every copy, which is what makes it reach a `dup`.
@@ -131,6 +139,7 @@ impl BlockStatement {
             from_symbol: None,
             written_in: None,
             written_depth: None,
+            written_within: Rc::default(),
             ruby2_keywords: Rc::new(std::cell::Cell::new(false)),
         }
     }
@@ -162,6 +171,7 @@ impl BlockStatement {
             from_symbol: None,
             written_in: None,
             written_depth: None,
+            written_within: Rc::default(),
             ruby2_keywords: Rc::new(std::cell::Cell::new(false)),
         }
     }

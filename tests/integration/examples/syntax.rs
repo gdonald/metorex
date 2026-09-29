@@ -167,3 +167,19 @@ fn test_syntax_operator_binding_parens_execution() {
     let output = run_example("syntax/operator_binding_parens.rb");
     assert_eq!(output, OPERATOR_BINDING_OUTPUT);
 }
+
+/// The expected output of both `syntax/keyword_symbols_in_when` variants.
+const KEYWORD_SYMBOLS_IN_WHEN_OUTPUT: &str =
+    concat!("method\n", "keyword\n", "other\n", "pattern\n");
+
+#[test]
+fn test_syntax_keyword_symbols_in_when_execution() {
+    let output = run_example("syntax/keyword_symbols_in_when.rb");
+    assert_eq!(output, KEYWORD_SYMBOLS_IN_WHEN_OUTPUT);
+}
+
+#[test]
+fn test_syntax_keyword_symbols_in_when_no_parens_execution() {
+    let output = run_example("syntax/keyword_symbols_in_when_no_parens.rb");
+    assert_eq!(output, KEYWORD_SYMBOLS_IN_WHEN_OUTPUT);
+}
