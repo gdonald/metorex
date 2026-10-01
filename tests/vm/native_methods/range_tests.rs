@@ -381,7 +381,11 @@ fn range_first_of_an_endless_range_answers_nothing_for_zero() {
 }
 
 #[test]
-fn range_last_of_an_infinite_float_end_still_walks_the_values() {
+fn range_last_of_an_infinite_float_end_is_refused_rather_than_walked_forever() {
     let err = run_err("(0..Float::INFINITY).last(3)");
-    assert!(err.contains("can't iterate from"), "Error was: {}", err);
+    assert!(
+        err.contains("cannot convert endless range to an array"),
+        "Error was: {}",
+        err
+    );
 }

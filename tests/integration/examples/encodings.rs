@@ -398,3 +398,33 @@ fn test_encodings_primitive_conversions_parens_execution() {
     let output = run_example("encodings/primitive_conversions_parens.rb");
     assert_eq!(output, PRIMITIVE_CONVERSIONS_OUTPUT);
 }
+
+/// The expected output of both `encodings/big5_source` variants.
+const BIG5_SOURCE_OUTPUT: &str = "[167, 65, 166, 110]\n#<Encoding:Big5>\n#<Encoding:Big5>\n";
+
+#[test]
+fn test_encodings_big5_source_execution() {
+    let output = run_example("encodings/big5_source.rb");
+    assert_eq!(output, BIG5_SOURCE_OUTPUT);
+}
+
+#[test]
+fn test_encodings_big5_source_no_parens_execution() {
+    let output = run_example("encodings/big5_source_no_parens.rb");
+    assert_eq!(output, BIG5_SOURCE_OUTPUT);
+}
+
+/// The expected output of both `encodings/regexp_encodings` variants.
+const REGEXP_ENCODINGS_OUTPUT: &str = "3\n[195, 169]\n[195, 169, 98]\n[[195, 169]]\n1\n\"a\\x{82A0}\\xB1\"\n[177]\n[#<Encoding:EUC-JP>, #<Encoding:EUC-JP>, #<Encoding:Windows-31J>, #<Encoding:UTF-8>]\ntrue\n#<Encoding:BINARY (ASCII-8BIT)>\n\"incompatible encoding regexp match (US-ASCII regexp with UTF-16LE string)\"\n\"incompatible encoding regexp match (US-ASCII regexp with UTF-8 string)\"\n\"invalid byte sequence in UTF-8\"\n[\"historical binary regexp match /.../n against UTF-8 string\\n\"]\n[\"AB é \\xFF\\n\", false]\n[195, 169, 32, 255]\n[49, 32, 255]\n";
+
+#[test]
+fn test_encodings_regexp_encodings_execution() {
+    let output = run_example("encodings/regexp_encodings.rb");
+    assert_eq!(output, REGEXP_ENCODINGS_OUTPUT);
+}
+
+#[test]
+fn test_encodings_regexp_encodings_no_parens_execution() {
+    let output = run_example("encodings/regexp_encodings_no_parens.rb");
+    assert_eq!(output, REGEXP_ENCODINGS_OUTPUT);
+}

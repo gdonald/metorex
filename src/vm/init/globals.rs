@@ -38,7 +38,8 @@ pub(crate) fn register_special_globals(globals: &mut GlobalRegistry) {
     // $. — how many lines have been read, and $FILENAME — the file they came
     // from. Both follow ARGF as it walks the files it was handed.
     globals.set_variable(".", Object::Int(0));
-    globals.set_variable("FILENAME", Object::Nil);
+    // With no file named, ARGF reads standard input, which Ruby names `-`.
+    globals.set_variable("FILENAME", Object::string("-"));
 
     // $$ — this process's own id, which a script prints to say which one it
     // is running as.
@@ -237,6 +238,13 @@ pub(crate) fn register_native_functions(globals: &mut GlobalRegistry) {
     globals.set(
         "__interpreter_path__",
         Object::NativeFunction("__interpreter_path__".to_string()),
+    );
+    for primitive in ["__weak_reference__", "__weak_target__"] {
+        globals.set(primitive, Object::NativeFunction(primitive.to_string()));
+    }
+    globals.set(
+        "__resolve_feature_path__",
+        Object::NativeFunction("__resolve_feature_path__".to_string()),
     );
     // Top-level `to_s` — Ruby's top-level self is "main", so bare to_s returns "main"
     globals.set("to_s", Object::NativeFunction("top_level_to_s".to_string()));

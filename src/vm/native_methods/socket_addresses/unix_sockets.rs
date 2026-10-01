@@ -169,6 +169,23 @@ impl VirtualMachine {
         Ok(Object::Int(named as i64))
     }
 
+    /// Two connected sockets made by `socketpair`, neither of which has a
+    /// name, answered as the handles of the two ends.
+    pub(crate) fn socket_unix_pair(&mut self, position: Position) -> Result<Object, MetorexError> {
+        let (first, second) = std::os::unix::net::UnixStream::pair()
+            .map_err(|problem| refused(position, format!("socketpair: {problem}")))?;
+        let mut handles = Vec::new();
+        for held in [first, second] {
+            let _ = held.set_read_timeout(Some(POLL_LIMIT));
+            let _ = held.set_nonblocking(true);
+            let named = self.open_sockets.next;
+            self.open_sockets.next += 1;
+            self.open_sockets.unix_streams.insert(named, held);
+            handles.push(Object::Int(named as i64));
+        }
+        Ok(Object::array(handles))
+    }
+
     /// One try at taking a waiting connection, answering nil when
     /// there is none rather than waiting for one.
     pub(crate) fn socket_unix_accept_now(
@@ -194,7 +211,14 @@ impl VirtualMachine {
                 Ok(Object::Int(named as i64))
             }
             Err(problem) if problem.kind() == std::io::ErrorKind::WouldBlock => Ok(Object::Nil),
-            Err(problem) => Err(refused(position, format!("accept: {problem}"))),
+            Err(problem) => Err(crate::vm::errors::simple_exception(
+                errno_class(&problem),
+                &format!(
+                    "{} - accept(2)",
+                    crate::vm::init::errno_description(problem.raw_os_error().unwrap_or(0))
+                ),
+                position,
+            )),
         }
     }
 
@@ -232,8 +256,11 @@ impl VirtualMachine {
                 }
                 Err(problem) => {
                     return Err(crate::vm::errors::simple_exception(
-                        "Errno::ECONNREFUSED",
-                        &format!("accept: {problem}"),
+                        errno_class(&problem),
+                        &format!(
+                            "{} - accept(2)",
+                            crate::vm::init::errno_description(problem.raw_os_error().unwrap_or(0))
+                        ),
                         position,
                     ));
                 }
@@ -259,10 +286,9 @@ impl VirtualMachine {
             .get_mut(&handle)
             .ok_or_else(|| refused(position, "write to a closed connection".to_string()))?;
         let bytes = crate::vm::native_methods::pack_format::string_to_bytes(&text);
-        stream
-            .write_all(&bytes)
+        let written = super::transfer::write_what_fits(stream, &bytes)
             .map_err(|problem| refused(position, format!("write: {problem}")))?;
-        Ok(Object::Int(bytes.len() as i64))
+        Ok(Object::Int(written as i64))
     }
 
     pub(crate) fn socket_unix_read(
@@ -304,21 +330,15 @@ impl VirtualMachine {
                 &buffer,
             ));
         }
-        let stream = self
-            .open_sockets
-            .unix_streams
-            .get_mut(&handle)
-            .ok_or_else(|| refused(position, "read from a closed connection".to_string()))?;
         let wanted = if port > 0 { port as usize } else { 65536 };
         let mut buffer = vec![0u8; wanted];
-        let read = stream.read(&mut buffer).map_err(|problem| {
-            if problem.kind() == std::io::ErrorKind::WouldBlock
-                || problem.kind() == std::io::ErrorKind::TimedOut
-            {
-                timed_out(position)
-            } else {
-                refused(position, format!("read: {problem}"))
-            }
+        let read = self.read_waiting(position, |vm| {
+            let stream = vm
+                .open_sockets
+                .unix_streams
+                .get_mut(&handle)
+                .ok_or_else(|| refused(position, "read from a closed connection".to_string()))?;
+            Ok(stream.read(&mut buffer))
         })?;
         buffer.truncate(read);
         Ok(crate::vm::native_methods::pack_format::bytes_to_string(

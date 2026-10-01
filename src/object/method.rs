@@ -69,6 +69,10 @@ pub struct Method {
     /// Refinement modules active (lexically) when this method was defined,
     /// each paired with the snapshot of refined-class names at that moment.
     pub captured_refinements: Vec<(Rc<crate::class::Class>, Vec<String>)>,
+    /// For a copy `alias_method` made, the class or module the body was
+    /// written in. `super` from the copy starts past that one, whatever
+    /// class the copy was installed on.
+    pub alias_origin: Option<Rc<crate::class::Class>>,
     /// The lexically enclosing modules at the point of definition, innermost
     /// first. `Module.nesting` inside the method reports these rather than
     /// the scopes open at the call site.
@@ -81,6 +85,9 @@ pub struct Method {
     /// The flag is shared with every copy, which is what makes it reach an
     /// alias made either before or after the name was given.
     pub ruby2_keywords: Rc<std::cell::Cell<bool>>,
+    /// The class or module a `def` installed the method in. A `def` run
+    /// while the method runs installs there too.
+    pub definee: Option<Rc<crate::class::Class>>,
 }
 
 impl Method {
@@ -108,9 +115,11 @@ impl Method {
             lambda_body: false,
             captured_def_scope: Vec::new(),
             captured_refinements: Vec::new(),
+            alias_origin: None,
             captured_nesting: Vec::new(),
             reads_as_proc: false,
             ruby2_keywords: Rc::new(std::cell::Cell::new(false)),
+            definee: None,
         }
     }
 
@@ -143,9 +152,11 @@ impl Method {
             lambda_body: false,
             captured_def_scope: Vec::new(),
             captured_refinements: Vec::new(),
+            alias_origin: None,
             captured_nesting: Vec::new(),
             reads_as_proc: false,
             ruby2_keywords: Rc::new(std::cell::Cell::new(false)),
+            definee: None,
         }
     }
 
@@ -178,9 +189,11 @@ impl Method {
             lambda_body: false,
             captured_def_scope: Vec::new(),
             captured_refinements: Vec::new(),
+            alias_origin: None,
             captured_nesting: Vec::new(),
             reads_as_proc: false,
             ruby2_keywords: Rc::new(std::cell::Cell::new(false)),
+            definee: None,
         }
     }
 
@@ -214,9 +227,11 @@ impl Method {
             lambda_body: false,
             captured_def_scope: Vec::new(),
             captured_refinements: Vec::new(),
+            alias_origin: None,
             captured_nesting: Vec::new(),
             reads_as_proc: false,
             ruby2_keywords: Rc::new(std::cell::Cell::new(false)),
+            definee: None,
         }
     }
 
@@ -244,9 +259,11 @@ impl Method {
             lambda_body: false,
             captured_def_scope: Vec::new(),
             captured_refinements: Vec::new(),
+            alias_origin: None,
             captured_nesting: Vec::new(),
             reads_as_proc: false,
             ruby2_keywords: Rc::new(std::cell::Cell::new(false)),
+            definee: None,
         }
     }
 
@@ -274,9 +291,11 @@ impl Method {
             lambda_body: self.lambda_body,
             captured_def_scope: self.captured_def_scope.clone(),
             captured_refinements: self.captured_refinements.clone(),
+            alias_origin: self.alias_origin.clone(),
             captured_nesting: self.captured_nesting.clone(),
             reads_as_proc: self.reads_as_proc,
             ruby2_keywords: Rc::clone(&self.ruby2_keywords),
+            definee: self.definee.clone(),
         }
     }
 

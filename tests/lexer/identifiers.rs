@@ -463,3 +463,24 @@ fn lexer_instance_variable() {
     let tokens = Lexer::new("@name").tokenize();
     assert!(matches!(&tokens[0].kind, TokenKind::InstanceVar(n) if n == "name"));
 }
+
+#[test]
+fn a_keyword_written_as_a_label_is_an_identifier() {
+    let tokens = Lexer::new("{next: 1, if: 2}").tokenize();
+    let kinds: Vec<&TokenKind> = tokens.iter().map(|token| &token.kind).collect();
+    assert_eq!(kinds[1], &TokenKind::Ident("next".to_string()));
+    assert_eq!(kinds[2], &TokenKind::Colon);
+    assert_eq!(kinds[5], &TokenKind::Ident("if".to_string()));
+}
+
+#[test]
+fn a_keyword_before_the_colon_of_a_ternary_stays_a_keyword() {
+    let tokens = Lexer::new("a ? nil:1").tokenize();
+    assert!(tokens.iter().any(|token| token.kind == TokenKind::Nil));
+}
+
+#[test]
+fn a_keyword_before_a_scope_operator_stays_a_keyword() {
+    let tokens = Lexer::new("nil::Foo").tokenize();
+    assert_eq!(tokens[0].kind, TokenKind::Nil);
+}

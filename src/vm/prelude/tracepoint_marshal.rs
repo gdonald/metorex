@@ -1163,7 +1163,8 @@ module Marshal
       when :mesg then made.__restore_message__ value
       when :bt then made.set_backtrace value unless value.nil?
       when :cause then made.__restore_cause__ value
-      when :bt_locations then nil
+      when :bt_locations, :private_call? then nil
+      when :name, :args then made.__restore_attribute__ name, value
       else Marshal.__set_variable__ made, name, value
       end
     end
@@ -1239,7 +1240,9 @@ module Marshal
 
     def read_user_defined(variables, extensions, partial)
       named = read_name.to_s
-      held_class = Marshal.__path_to_class__(named)
+      # Ruby writes a NameError's message as an object that formats it when
+      # asked, and reads it back as the text.
+      held_class = named == "NameError::message" ? nil : Marshal.__path_to_class__(named)
       data = read_bytes read_long
       if variables
         read_long.times do
@@ -1255,6 +1258,10 @@ module Marshal
             data.instance_variable_set name, value
           end
         end
+      end
+      if held_class.nil?
+        at = remember data
+        return finish(data, at, extensions, partial, true)
       end
       unless held_class.respond_to? :_load, true
         raise TypeError, "class #{named} needs to have method '_load'"

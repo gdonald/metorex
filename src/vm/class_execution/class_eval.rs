@@ -103,7 +103,10 @@ impl VirtualMachine {
         let saved_nesting = self.user_def_nesting;
         self.user_def_nesting = 0;
         self.push_refinement_scope();
+        // The method running this block did not write it.
+        self.borrowed_frames.push(self.current_method_frame);
         let result = self.apply_class_body(class, &block.body, position);
+        self.borrowed_frames.pop();
         self.pop_refinement_scope();
         self.user_def_nesting = saved_nesting;
         if constants_stay_lexical {
@@ -159,7 +162,10 @@ impl VirtualMachine {
         ));
         let saved_nesting = self.user_def_nesting;
         self.user_def_nesting = 0;
+        // The method running this block did not write it.
+        self.borrowed_frames.push(self.current_method_frame);
         let result = self.apply_class_body(class, &block.body, position);
+        self.borrowed_frames.pop();
         self.user_def_nesting = saved_nesting;
         self.constant_homes.pop();
         self.def_scope_stack.pop();
@@ -253,6 +259,7 @@ impl VirtualMachine {
 
         let tokens = crate::lexer::Lexer::with_start_line(&code, lineno).tokenize();
         let statements = crate::parser::Parser::new(tokens)
+            .inside_eval()
             .parse()
             .map_err(|errors| {
                 MetorexError::runtime_error(

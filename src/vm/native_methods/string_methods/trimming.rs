@@ -151,8 +151,17 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let reversed: String = string_value.as_str().chars().rev().collect();
-                Ok(Some(Object::string(reversed)))
+                let mut units = character_units(string_value);
+                units.reverse();
+                // The reversed string is written in the same encoding.
+                let reversed = crate::object::StringValue::with_encoding(
+                    units.concat(),
+                    string_value.encoding_name(),
+                );
+                if string_value.holds_bytes() {
+                    reversed.mark_bytes();
+                }
+                Ok(Some(Object::String(Rc::new(reversed))))
             }
             "last" => {
                 let chars: Vec<char> = string_value.as_str().chars().collect();

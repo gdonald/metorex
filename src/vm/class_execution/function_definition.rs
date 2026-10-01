@@ -75,6 +75,15 @@ impl VirtualMachine {
         function.variadic_param = variadic_param;
         function.captured_refinements = self.snapshot_active_refinements();
         function.captured_nesting = self.snapshot_lexical_nesting();
+        // A method defined outside every class is Object's, and a `def` run
+        // while it runs installs on Object too.
+        function.definee = self
+            .running_method_def_scope()
+            .or_else(|| self.def_scope_stack.last().cloned())
+            .or_else(|| match self.globals().get("Object") {
+                Some(Object::Class(object_class)) => Some(object_class),
+                _ => None,
+            });
         // A `def` written outside every class belongs to Object, which is the
         // name a backtrace gives it however it is reached.
         if singleton_class.is_none()
@@ -103,8 +112,11 @@ impl VirtualMachine {
                 // in the environment and has to be asked for.
                 self.eval_self(position).ok()
             } else {
+                // A constant receiver is found the way the constant is read
+                // anywhere, from the class body the `def` sits in outwards.
                 self.environment()
                     .get(receiver_name)
+                    .or_else(|| self.resolve_constant_in_scope(receiver_name))
                     .or_else(|| self.globals().get(receiver_name))
             };
             if sole_instance_receiver.is_some() {
@@ -133,6 +145,21 @@ impl VirtualMachine {
                 // method, stored under the same `__class__` convention as
                 // `def self.name` inside the body.
                 Some(Object::Class(target_class)) | Some(Object::Module(target_class)) => {
+                    // A singleton method is written on the singleton class,
+                    // so either one being frozen refuses it.
+                    let singleton_frozen = target_class
+                        .singleton_class_slot()
+                        .as_ref()
+                        .is_some_and(|singleton| singleton.is_frozen());
+                    if singleton_frozen {
+                        let receiver = if target_class.is_module() {
+                            Object::Module(Rc::clone(&target_class))
+                        } else {
+                            Object::Class(Rc::clone(&target_class))
+                        };
+                        return Err(self.frozen_modification_error(&receiver, position));
+                    }
+                    self.refuse_frozen_definee(&target_class, position)?;
                     target_class.define_method(format!("__class__{}", name), Rc::clone(&function));
                     self.invoke_class_hook(
                         &target_class,
@@ -195,9 +222,20 @@ impl VirtualMachine {
         // Ruby installs the method on the current default definee: the
         // innermost lexical class/module if there is one, otherwise Object
         // (top-level `def`, globally accessible).
-        if let Some(definee) = self.def_scope_stack.last().cloned() {
+        // A `def` run from a method body installs where that method was
+        // defined, and is public whatever visibility the class body left.
+        let from_method_body = self.running_method_def_scope();
+        if let Some(definee) = from_method_body
+            .clone()
+            .or_else(|| self.def_scope_stack.last().cloned())
+        {
+            self.refuse_frozen_definee(&definee, position)?;
             definee.define_method(name, Rc::clone(&function));
-            apply_current_visibility(&definee, name);
+            if from_method_body.is_some() {
+                definee.clear_method_visibility(name);
+            } else {
+                apply_current_visibility(&definee, name);
+            }
             // A method written at the top level of a wrapped load belongs to
             // the module the load was wrapped in, and a top-level method is
             // private, so it is reached through that module rather than by
@@ -212,6 +250,15 @@ impl VirtualMachine {
             }
         } else if let Some(Object::Class(object_class)) = self.globals().get("Object") {
             object_class.define_method(name, Rc::clone(&function));
+            // A method defined in top-level code is private unless `public`
+            // was called there. One defined when a method runs is public.
+            let home = self.lexical_home_frame.unwrap_or(self.current_method_frame);
+            let in_top_level_code = home == self.toplevel_frame;
+            if in_top_level_code && !self.toplevel_public {
+                object_class.set_method_private(name);
+            } else {
+                object_class.clear_method_visibility(name);
+            }
         }
 
         Ok(ControlFlow::Value(Object::symbol(name)))

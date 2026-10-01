@@ -630,22 +630,14 @@ end
 // obj.foo(arg) = value is an error since only 0-arg method calls can be setters.
 
 #[test]
-fn method_call_with_args_as_assignment_target_error() {
-    let err = run_err(
-        r#"
-class Foo
-  def initialize
-    @x = 0
-  end
-  def set(key)
-    @x = key
-  end
-end
-f = Foo.new
-f.set(1) = 42
-"#,
-    );
-    assert!(err.contains("assign") || err.contains("Cannot") || err.contains("method"));
+fn method_call_with_args_as_assignment_target_is_a_syntax_error() {
+    let tokens = Lexer::new("f = Object.new\nf.set(1) = 42\n").tokenize();
+    let err = Parser::new(tokens).parse().unwrap_err();
+    assert!(err.iter().any(|error| {
+        error
+            .to_string()
+            .contains("Cannot assign to this expression")
+    }));
 }
 
 // ── invalid symbol token (parser/expressions/primary.rs line 93) ──────────────
@@ -661,16 +653,24 @@ fn symbol_with_non_ident_token_error() {
 // ── break/continue in function body (method_invocation.rs lines 508-512) ──────
 
 #[test]
-fn break_inside_function_body_error() {
-    let err = run_err(
+fn break_inside_function_body_is_refused_when_parsed() {
+    let tokens = Lexer::new(
         r#"
 def foo
   break
 end
 foo
 "#,
+    )
+    .tokenize();
+    let refused = Parser::new(tokens).parse().unwrap_err();
+    assert!(
+        refused
+            .iter()
+            .any(|problem| problem.to_string().contains("Invalid break")),
+        "Error was: {:?}",
+        refused
     );
-    assert!(err.contains("break") || err.contains("loop") || err.contains("outside"));
 }
 
 #[test]

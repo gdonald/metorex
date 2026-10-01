@@ -57,7 +57,7 @@ fn test_oop_writer_methods_execution() {
         "24\n",
         "36\n",
         "[:total, :total=]\n",
-        "[:doubled, :initialize, :reading, :reading=, :scaled=]\n",
+        "[:doubled, :reading, :reading=, :scaled=]\n",
     );
     let output = run_example("oop/writer_methods.rb");
     assert_eq!(output, expected);
@@ -70,7 +70,7 @@ fn test_oop_writer_methods_parens_execution() {
         "24\n",
         "36\n",
         "[:total, :total=]\n",
-        "[:doubled, :initialize, :reading, :reading=, :scaled=]\n",
+        "[:doubled, :reading, :reading=, :scaled=]\n",
     );
     let output = run_example("oop/writer_methods_parens.rb");
     assert_eq!(output, expected);

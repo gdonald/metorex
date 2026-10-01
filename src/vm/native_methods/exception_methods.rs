@@ -89,6 +89,22 @@ impl VirtualMachine {
                 }
                 Ok(Some(Object::Nil))
             }
+            // A NameError's name and a NoMethodError's arguments, which
+            // Marshal reads back under names that are not instance variables.
+            "__restore_attribute__" => {
+                let key = match arguments.first() {
+                    Some(Object::Symbol(named)) if &*named.as_str() == "args" => {
+                        crate::vm::NO_METHOD_ARGS_KEY
+                    }
+                    _ => crate::vm::NAME_ERROR_NAME_KEY,
+                };
+                let value = arguments.get(1).cloned().unwrap_or(Object::Nil);
+                exception
+                    .borrow_mut()
+                    .instance_vars
+                    .insert(key.to_string(), value);
+                Ok(Some(Object::Nil))
+            }
             "__restore_cause__" => {
                 let mut details = exception.borrow_mut();
                 details.cause = match arguments.first() {

@@ -19,6 +19,7 @@ const C_EXTENSIONS: &[&str] = &[
     "date",
     "etc",
     "fcntl",
+    "fiddle",
     "io/console",
     "io/nonblock",
     "monitor",
@@ -48,7 +49,7 @@ pub(crate) fn embedded_library(name: &str) -> Option<&'static str> {
     let trimmed = name.strip_suffix(".rb").unwrap_or(name);
     match trimmed {
         "base64" => Some(include_str!("base64.rb")),
-        "bigdecimal" => Some(include_str!("bigdecimal.rb")),
+        "bigdecimal" | "bigdecimal/util" => Some(include_str!("bigdecimal.rb")),
         "zlib" => Some(include_str!("zlib.rb")),
         "open3" => Some(include_str!("open3.rb")),
         "syslog" => Some(include_str!("syslog.rb")),
@@ -63,11 +64,14 @@ pub(crate) fn embedded_library(name: &str) -> Option<&'static str> {
         "yaml" | "psych" => Some(include_str!("yaml.rb")),
         "resolv" => Some(include_str!("resolv.rb")),
         "rubygems" => Some(include_str!("rubygems.rb")),
+        "rubygems/text" => Some(include_str!("rubygems/text.rb")),
+        "rubygems/user_interaction" => Some(include_str!("rubygems/user_interaction.rb")),
+        "rubygems/gemcutter_utilities" => Some(include_str!("rubygems/gemcutter_utilities.rb")),
+        "rubygems/command_manager" => Some(include_str!("rubygems/command_manager.rb")),
         "optparse" | "optionparser" => Some(include_str!("optparse.rb")),
         "random/formatter" => Some(include_str!("random_formatter.rb")),
         "socket" => Some(include_str!("socket.rb")),
         "erb" => Some(include_str!("erb.rb")),
-        "bigdecimal/util" => Some(include_str!("bigdecimal.rb")),
         "abbrev" => Some(include_str!("abbrev.rb")),
         "etc" => Some(include_str!("etc.rb")),
         "pp" => Some(include_str!("pp.rb")),
@@ -95,6 +99,9 @@ pub(crate) fn embedded_library(name: &str) -> Option<&'static str> {
             Some(include_str!("digest.rb"))
         }
         "matrix" => Some(include_str!("matrix.rb")),
+        "drb" | "drb/drb" => Some(include_str!("drb.rb")),
+        "fiddle" => Some(include_str!("fiddle.rb")),
+        "irb" => Some(include_str!("irb.rb")),
         "json" => Some(include_str!("json.rb")),
         "objspace" => Some(include_str!("objspace.rb")),
         "objspace/trace" => Some(include_str!("objspace_trace.rb")),
@@ -102,6 +109,17 @@ pub(crate) fn embedded_library(name: &str) -> Option<&'static str> {
         "ostruct" => Some(include_str!("ostruct.rb")),
         "pathname" => Some(include_str!("pathname.rb")),
         "prime" => Some(include_str!("prime.rb")),
+        "ripper" => Some(include_str!("ripper.rb")),
+        // The scanner and the grammar, which Ruby writes in C, load with
+        // the core class that dispatches their events.
+        "ripper/core" => Some(concat!(
+            include_str!("ripper_core.rb"),
+            include_str!("ripper_scanner.rb"),
+            include_str!("ripper_grammar.rb")
+        )),
+        "ripper/filter" => Some(include_str!("ripper_filter.rb")),
+        "ripper/lexer" => Some(include_str!("ripper_lexer.rb")),
+        "ripper/sexp" => Some(include_str!("ripper_sexp.rb")),
         "securerandom" => Some(include_str!("securerandom.rb")),
         "shellwords" => Some(include_str!("shellwords.rb")),
         "singleton" => Some(include_str!("singleton.rb")),

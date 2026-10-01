@@ -81,6 +81,7 @@ impl VirtualMachine {
                     m.captured_nesting = self.snapshot_lexical_nesting();
                     m.owner = Some(module.name().to_string());
                     m.owner_class = Some(Rc::clone(module));
+                    m.definee = Some(Rc::clone(module));
                     let method = Rc::new(m);
                     if *is_class_method {
                         module.define_method(format!("__class__{}", method_name), method);
@@ -91,6 +92,7 @@ impl VirtualMachine {
                             statement.position(),
                         )?;
                     } else {
+                        self.refuse_frozen_definee(module, statement.position())?;
                         module.define_method(method_name, method);
                         apply_current_visibility(module, method_name);
                         let hook = Self::method_added_hook_for(module);
@@ -269,11 +271,12 @@ impl VirtualMachine {
                         self.apply_module_extend(&target, &ext_module, *ext_pos)?;
                     }
                 }
+                // `alias $new $old` names a global, wherever it is written.
                 Statement::Alias {
                     new_name,
                     old_name,
                     position: alias_pos,
-                } => {
+                } if !new_name.starts_with('$') => {
                     self.install_alias(module, new_name, old_name, *alias_pos)?;
                     self.invoke_class_hook(module, "method_added", new_name, *alias_pos)?;
                 }

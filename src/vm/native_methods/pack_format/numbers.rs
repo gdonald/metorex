@@ -63,7 +63,12 @@ pub(crate) fn bytes_to_string(bytes: &[u8]) -> Object {
 
 /// The bytes a String stands for, one per character.
 pub(crate) fn string_to_bytes(text: &str) -> Vec<u8> {
-    let mut bytes = Vec::new();
+    // ASCII text is its own bytes, which spares walking it a character at a
+    // time.
+    if text.is_ascii() {
+        return text.as_bytes().to_vec();
+    }
+    let mut bytes = Vec::with_capacity(text.len());
     for character in text.chars() {
         if (character as u32) < 256 {
             bytes.push(character as u8);

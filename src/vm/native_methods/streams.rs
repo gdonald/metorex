@@ -574,19 +574,7 @@ impl VirtualMachine {
                 let Some(number) = self.open_streams.number_of(handle) else {
                     return Err(closed_error(position));
                 };
-                let mut watched = libc::pollfd {
-                    fd: number,
-                    events: if count != 0 {
-                        libc::POLLOUT
-                    } else {
-                        libc::POLLIN
-                    },
-                    revents: 0,
-                };
-                // SAFETY: `watched` is one entry, which is what the count
-                // handed alongside it says.
-                let answered = unsafe { libc::poll(&mut watched, 1, 0) };
-                Ok(Object::Bool(answered > 0 && watched.revents != 0))
+                Ok(Object::Bool(descriptor_ready(number, count != 0, 0)))
             }
             // Wait until the descriptor is ready, or until the wait runs out.
             // The count carries the milliseconds to wait, where a negative
@@ -595,18 +583,11 @@ impl VirtualMachine {
                 let Some(number) = self.open_streams.number_of(handle) else {
                     return Err(closed_error(position));
                 };
-                let mut watched = libc::pollfd {
-                    fd: number,
-                    events: match &*text {
-                        "write" => libc::POLLOUT,
-                        _ => libc::POLLIN,
-                    },
-                    revents: 0,
-                };
-                // SAFETY: `watched` is one entry, which is what the count
-                // handed alongside it says.
-                let answered = unsafe { libc::poll(&mut watched, 1, count as libc::c_int) };
-                Ok(Object::Bool(answered > 0 && watched.revents != 0))
+                Ok(Object::Bool(descriptor_ready(
+                    number,
+                    &*text == "write",
+                    count,
+                )))
             }
             // The descriptor a path names, opened for reading or for writing.
             "open" => {
@@ -1041,4 +1022,51 @@ fn descriptor_is_ready(number: i32) -> bool {
     // SAFETY: `poll` reads and writes the one entry given, and a zero timeout
     // answers without waiting.
     unsafe { libc::poll(&mut asked, 1, 0) != 0 }
+}
+
+/// Whether a descriptor is ready to read, or to write, within `waited`
+/// milliseconds. Ruby waits through `poll` on Linux and through `select`
+/// elsewhere, and the two disagree about some descriptors: `select` on macOS
+/// reports the read end of a pipe as writable.
+fn descriptor_ready(number: libc::c_int, writing: bool, waited: i64) -> bool {
+    #[cfg(not(target_os = "linux"))]
+    if (number as usize) < libc::FD_SETSIZE {
+        // SAFETY: the set is zeroed and holds one descriptor below
+        // FD_SETSIZE, and the timeout lives for the call.
+        unsafe {
+            let mut watched: libc::fd_set = std::mem::zeroed();
+            libc::FD_ZERO(&mut watched);
+            libc::FD_SET(number, &mut watched);
+            let mut limit = libc::timeval {
+                tv_sec: (waited / 1000) as libc::time_t,
+                tv_usec: ((waited % 1000) * 1000) as libc::suseconds_t,
+            };
+            let limit_pointer = if waited < 0 {
+                std::ptr::null_mut()
+            } else {
+                &mut limit
+            };
+            let (reading_set, writing_set) = if writing {
+                (std::ptr::null_mut(), &mut watched as *mut libc::fd_set)
+            } else {
+                (&mut watched as *mut libc::fd_set, std::ptr::null_mut())
+            };
+            return libc::select(
+                number + 1,
+                reading_set,
+                writing_set,
+                std::ptr::null_mut(),
+                limit_pointer,
+            ) > 0;
+        }
+    }
+    let mut watched = libc::pollfd {
+        fd: number,
+        events: if writing { libc::POLLOUT } else { libc::POLLIN },
+        revents: 0,
+    };
+    // SAFETY: `watched` is one entry, which is what the count handed
+    // alongside it says.
+    let answered = unsafe { libc::poll(&mut watched, 1, waited as libc::c_int) };
+    answered > 0 && watched.revents != 0
 }

@@ -292,8 +292,59 @@ pub(crate) fn character_count(string_value: &crate::object::StringValue) -> i64 
         "EUC-JP" if string_value.holds_bytes() => {
             euc_jp_characters(&binary_bytes(string_value)).len() as i64
         }
+        "UTF-8" if string_value.holds_bytes() => {
+            utf8_characters(&binary_bytes(string_value)).len() as i64
+        }
         _ => string_value.as_str().chars().count() as i64,
     }
+}
+
+/// The characters of a string, each as the text that spells it. A Shift_JIS
+/// or EUC-JP string held as bytes pairs some of them, so one character there
+/// is the run of byte characters it takes.
+pub(crate) fn character_units(string_value: &crate::object::StringValue) -> Vec<String> {
+    let named = string_value.encoding_name();
+    let grouped = |groups: Vec<Vec<u8>>| -> Vec<String> {
+        groups
+            .iter()
+            .map(|group| group.iter().map(|byte| *byte as char).collect())
+            .collect()
+    };
+    match named.as_str() {
+        held if spells_shift_jis(held) && string_value.holds_bytes() => {
+            grouped(shift_jis_characters(&binary_bytes(string_value)))
+        }
+        "EUC-JP" if string_value.holds_bytes() => {
+            grouped(euc_jp_characters(&binary_bytes(string_value)))
+        }
+        "UTF-8" if string_value.holds_bytes() => {
+            grouped(utf8_characters(&binary_bytes(string_value)))
+        }
+        _ => string_value.as_str().chars().map(String::from).collect(),
+    }
+}
+
+/// The characters a run of UTF-8 bytes spells, each as the bytes it takes. A
+/// byte that starts no character, or one cut short, stands alone.
+pub(crate) fn utf8_characters(bytes: &[u8]) -> Vec<Vec<u8>> {
+    let mut characters = Vec::new();
+    let mut rest = bytes;
+    while !rest.is_empty() {
+        let taken = match std::str::from_utf8(rest) {
+            Ok(_) => rest.len(),
+            Err(trouble) => trouble.valid_up_to(),
+        };
+        let (valid, after) = rest.split_at(taken);
+        let text = std::str::from_utf8(valid).unwrap_or_default();
+        characters.extend(text.chars().map(|letter| letter.to_string().into_bytes()));
+        if let Some((first, remaining)) = after.split_first() {
+            characters.push(vec![*first]);
+            rest = remaining;
+        } else {
+            rest = after;
+        }
+    }
+    characters
 }
 
 /// How many characters a run of UTF-16 bytes spells. A high surrogate paired

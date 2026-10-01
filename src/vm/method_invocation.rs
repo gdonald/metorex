@@ -276,6 +276,17 @@ impl VirtualMachine {
         arguments: Vec<Object>,
         position: Position,
     ) -> Result<Object, MetorexError> {
+        let made = self.build_from_class(class, arguments, position)?;
+        self.record_allocation(&made, position);
+        Ok(made)
+    }
+
+    fn build_from_class(
+        &mut self,
+        class: Rc<Class>,
+        arguments: Vec<Object>,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
         // What the object space reports about a class is counted from what
         // the program has built, since there is no heap to walk.
         *self

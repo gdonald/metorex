@@ -454,8 +454,9 @@ Baz.new.test
 }
 
 #[test]
-fn identifier_bare_method_name_returns_bound() {
-    let result = run(r#"
+fn identifier_bare_method_name_missing_its_argument_raises() {
+    let tokens = Lexer::new(
+        r#"
 class Foo
   def compute(x)
     x * 2
@@ -464,11 +465,16 @@ class Foo
     compute
   end
 end
-f = Foo.new
-m = f.get_method
-m.class.to_s
-"#);
-    assert!(result.is_some());
+Foo.new.get_method
+"#,
+    )
+    .tokenize();
+    let statements = Parser::new(tokens).parse().expect("parse failed");
+    let error = VirtualMachine::new()
+        .execute_program(&statements)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("wrong number of arguments (given 0, expected 1)"));
 }
 
 #[test]
@@ -498,4 +504,14 @@ fn splat_non_array_wraps() {
 fn splat_array_passes_through() {
     let result = run("a = *[1, 2]\na.length");
     assert_eq!(result, Some(Object::Int(2)));
+}
+
+#[test]
+fn a_method_calls_itself_by_its_bare_name() {
+    assert_eq!(
+        run(
+            "class Steps\n  def initialize = @left = 3\n  def walk\n    return 0 if @left.zero?\n    @left -= 1\n    1 + walk\n  end\nend\nSteps.new.walk"
+        ),
+        Some(Object::Int(3))
+    );
 }

@@ -95,6 +95,12 @@ impl VirtualMachine {
         }
     }
 
+    /// The `Warning[:category]` value a program set, or None when it set
+    /// none.
+    pub(crate) fn warning_category_setting(&self, category: &str) -> Option<Object> {
+        self.warning_category_slot(category)
+    }
+
     /// The stored `Warning[:category]` value, if the `Warning` module and the
     /// category are both present.
     fn warning_category_slot(&self, category: &str) -> Option<Object> {

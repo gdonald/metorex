@@ -42,6 +42,7 @@ impl VirtualMachine {
             }
             .nested_in_a_block(block.written_depth.unwrap_or(1))
             .written_in_scope(block.written_in.clone())
+            .owned_by(block.defining_owner.clone())
             .with_source_file(block.source_file.clone());
             vm.call_stack_push(frame);
             // A thread's body is where a trace hears the thread start and end.
@@ -101,9 +102,10 @@ impl VirtualMachine {
         self.fiber_run(handle, fiber, given, Handoff::Resume, position)
     }
 
-    /// Run a fiber, keeping the last match to itself. `$~` and the numbered
-    /// globals reading it belong to the fiber that set them, so a thread
-    /// starts with none and a match it makes is not seen outside.
+    /// Run a fiber, keeping the last match and the last line read to itself.
+    /// `$~`, the numbered globals reading it, and `$_` belong to the fiber
+    /// that set them, so a thread starts with none and what it sets is not
+    /// seen outside.
     pub(crate) fn fiber_run(
         &mut self,
         handle: usize,
@@ -116,14 +118,16 @@ impl VirtualMachine {
             .globals()
             .get(crate::vm::native_methods::regexp_methods::LAST_MATCH)
             .unwrap_or(Object::Nil);
-        let carried = self
-            .fiber_last_matches
+        let held_line = self.globals().get("_").unwrap_or(Object::Nil);
+        let (carried, carried_line) = self
+            .fiber_last_match_and_line
             .remove(&handle)
-            .unwrap_or(Object::Nil);
+            .unwrap_or((Object::Nil, Object::Nil));
         self.globals_mut().set(
             crate::vm::native_methods::regexp_methods::LAST_MATCH,
             carried,
         );
+        self.globals_mut().set_variable("_", carried_line);
         // `$!` and `$@` belong to the fiber handling the exception, so a
         // fiber sees its own and leaves the one it was resumed from alone.
         let outer_error = (
@@ -156,9 +160,12 @@ impl VirtualMachine {
             .globals()
             .get(crate::vm::native_methods::regexp_methods::LAST_MATCH)
             .unwrap_or(Object::Nil);
-        self.fiber_last_matches.insert(handle, left);
+        let left_line = self.globals().get("_").unwrap_or(Object::Nil);
+        self.fiber_last_match_and_line
+            .insert(handle, (left, left_line));
         self.globals_mut()
             .set(crate::vm::native_methods::regexp_methods::LAST_MATCH, held);
+        self.globals_mut().set_variable("_", held_line);
         stepped
     }
 
@@ -590,6 +597,8 @@ impl VirtualMachine {
                 method_nesting_stack: Vec::new(),
                 current_method_frame: Some(crate::vm::core::TOP_LEVEL_FRAME),
                 lexical_home_frame: None,
+                attached_block_flags: Vec::new(),
+                running_block_breaks: Vec::new(),
             }
         });
         FiberContext {
@@ -607,6 +616,14 @@ impl VirtualMachine {
             lexical_home_frame: std::mem::replace(
                 &mut self.lexical_home_frame,
                 taken.lexical_home_frame,
+            ),
+            attached_block_flags: std::mem::replace(
+                &mut self.attached_block_flags,
+                taken.attached_block_flags,
+            ),
+            running_block_breaks: std::mem::replace(
+                &mut self.running_block_breaks,
+                taken.running_block_breaks,
             ),
         }
     }

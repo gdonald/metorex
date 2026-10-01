@@ -430,7 +430,7 @@ pub(super) const SOURCE: &str = r##"
     end
     unless IO.__stream__("ready?", __stream_handle__, "", 0)
       return :wait_readable unless exception
-      raise IO::EAGAINWaitReadable, "Resource temporarily unavailable - read would block"
+      raise IO::EAGAINWaitReadable, "read would block"
     end
     held = read wanted
     if held.nil? || held.empty?
@@ -469,7 +469,7 @@ pub(super) const SOURCE: &str = r##"
   def write_nonblock(text, exception: true)
     __write_texts__ [text.to_s], false
   rescue Errno::EAGAIN
-    raise IO::EAGAINWaitWritable, "Resource temporarily unavailable - write would block" if exception
+    raise IO::EAGAINWaitWritable, "write would block" if exception
     :wait_writable
   end
 

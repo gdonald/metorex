@@ -7,12 +7,13 @@ pub(crate) use crate::error::MetorexError;
 pub(crate) use crate::lexer::Position;
 pub(crate) use crate::object::Object;
 pub(crate) use crate::vm::core::VirtualMachine;
-pub(crate) use std::io::{Read as _, Write as _};
+pub(crate) use std::io::Read as _;
 
 mod addresses;
 mod datagrams;
 mod descriptors;
 mod dispatch;
+mod fresh_sockets;
 mod listening;
 mod open_sockets;
 mod options;

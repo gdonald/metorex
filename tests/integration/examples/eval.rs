@@ -13,3 +13,18 @@ fn test_eval_scope_and_returns_no_parens_execution() {
     let output = run_example("eval/eval_scope_and_returns_no_parens.rb");
     assert_eq!(output, SCOPE_AND_RETURNS);
 }
+
+/// The expected output of both `eval/binding_paths` variants.
+const BINDING_PATHS_OUTPUT: &str = "true\ntrue\ntrue\ntrue\n";
+
+#[test]
+fn test_eval_binding_paths_execution() {
+    let output = run_example("eval/binding_paths.rb");
+    assert_eq!(output, BINDING_PATHS_OUTPUT);
+}
+
+#[test]
+fn test_eval_binding_paths_no_parens_execution() {
+    let output = run_example("eval/binding_paths_no_parens.rb");
+    assert_eq!(output, BINDING_PATHS_OUTPUT);
+}

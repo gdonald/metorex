@@ -38,6 +38,9 @@ impl VirtualMachine {
             Some(stripped) => (stripped, true),
             None => (name, false),
         };
+        if let Some(scope) = &explicit_ns {
+            self.refuse_private_reopening(scope, name, position)?;
+        }
         // If we're lexically nested inside a module/class, resolve the name
         // against the parent's constants first — `module Foo; module Bar; end; end`
         // defines `Foo::Bar`, distinct from any top-level `::Bar` of the same name.

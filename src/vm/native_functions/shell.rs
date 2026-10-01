@@ -170,7 +170,7 @@ impl VirtualMachine {
         let program = self.command_word(&command, position)?;
         let mut rest = Vec::new();
         for argument in &given[1..] {
-            rest.push(self.command_word(argument, position)?);
+            rest.push(self.command_argument(argument, position)?);
         }
         // An empty command names no program to start. One of only spaces is
         // left for the shell, which refuses it itself.
@@ -356,6 +356,23 @@ impl VirtualMachine {
 
     /// One word of a command, which the operating system reads as a C
     /// string, so it may not hold a null byte.
+    /// An argument handed to a program, as the bytes its String holds, so
+    /// text in an encoding of its own reaches the program unchanged.
+    fn command_argument(
+        &mut self,
+        word: &Object,
+        position: Position,
+    ) -> Result<std::ffi::OsString, MetorexError> {
+        let text = self.command_word(word, position)?;
+        if let Object::String(held) = word {
+            use std::os::unix::ffi::OsStringExt;
+            return Ok(std::ffi::OsString::from_vec(
+                crate::vm::native_methods::string_methods::binary_bytes(held),
+            ));
+        }
+        Ok(std::ffi::OsString::from(text))
+    }
+
     fn command_word(&mut self, word: &Object, position: Position) -> Result<String, MetorexError> {
         let text = self.implicit_string(word, position)?;
         if text.contains('\0') {

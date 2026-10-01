@@ -206,9 +206,13 @@ impl<'a> Lexer<'a> {
         // into Text/Expression parts. Otherwise return the raw String.
         if interpolate {
             if body.contains("#{") {
-                return Some(split_interpolated(&body, saved_line + 1));
+                return Some(split_interpolated(
+                    &body,
+                    saved_line + 1,
+                    self.binary_source,
+                ));
             }
-            return Some(TokenKind::String(unescaped(&body)));
+            return Some(plain_body(&body, self.binary_source));
         }
         Some(TokenKind::String(body))
     }
@@ -216,13 +220,15 @@ impl<'a> Lexer<'a> {
 
 /// A heredoc body with its escapes read, the way a double-quoted string reads
 /// them. A terminator written in quotes keeps its body as it stands, so only
-/// the interpolating forms reach here.
-pub(crate) fn unescaped(text: &str) -> String {
+/// the interpolating forms reach here. Alongside the text, whether escapes
+/// named bytes the text stands for rather than characters.
+pub(crate) fn unescaped(text: &str, binary_source: bool) -> (String, bool) {
     if !text.contains('\\') {
-        return text.to_string();
+        return (text.to_string(), false);
     }
     let letters: Vec<char> = text.chars().collect();
     let mut held = String::new();
+    let mut holds_bytes = false;
     let mut at = 0;
     while at < letters.len() {
         if letters[at] != '\\' || at + 1 >= letters.len() {
@@ -231,6 +237,20 @@ pub(crate) fn unescaped(text: &str) -> String {
             continue;
         }
         let escape = letters[at + 1];
+        // A run of `\NNN` or of `\xNN` escapes names bytes, which together
+        // may spell one character.
+        if opens_byte_escape(&letters, at) {
+            let (bytes, after) = escaped_byte_run(&letters, at, escape == 'x');
+            at = after;
+            match super::strings::binary_run(binary_source, &bytes) {
+                Ok(spelled) => held.push_str(&spelled),
+                Err(()) => {
+                    holds_bytes = true;
+                    super::strings::push_escaped_bytes(&mut held, &bytes);
+                }
+            }
+            continue;
+        }
         at += 2;
         match escape {
             'n' => held.push('\n'),
@@ -242,48 +262,95 @@ pub(crate) fn unescaped(text: &str) -> String {
             'e' => held.push('\u{1b}'),
             'f' => held.push('\u{c}'),
             'v' => held.push('\u{b}'),
-            '0' => held.push('\0'),
             // A backslash at the end of a line joins it to the next, so
             // neither the backslash nor the newline stands in the text.
             '\n' => {}
-            'x' => {
-                let mut digits = String::new();
-                while digits.len() < 2 && at < letters.len() && letters[at].is_ascii_hexdigit() {
-                    digits.push(letters[at]);
-                    at += 1;
-                }
-                match u32::from_str_radix(&digits, 16)
-                    .ok()
-                    .and_then(char::from_u32)
-                {
-                    Some(letter) => held.push(letter),
-                    None => held.push('x'),
-                }
-            }
             'u' => {
-                let mut digits = String::new();
-                while digits.len() < 4 && at < letters.len() && letters[at].is_ascii_hexdigit() {
-                    digits.push(letters[at]);
+                let braced = letters.get(at) == Some(&'{');
+                let mut points = vec![String::new()];
+                if braced {
                     at += 1;
+                    while at < letters.len() && letters[at] != '}' {
+                        match letters[at] {
+                            ' ' => points.push(String::new()),
+                            digit => points.last_mut().expect("one point").push(digit),
+                        }
+                        at += 1;
+                    }
+                    at += 1;
+                } else {
+                    while points[0].len() < 4
+                        && at < letters.len()
+                        && letters[at].is_ascii_hexdigit()
+                    {
+                        points[0].push(letters[at]);
+                        at += 1;
+                    }
                 }
-                match u32::from_str_radix(&digits, 16)
-                    .ok()
-                    .and_then(char::from_u32)
-                {
-                    Some(letter) => held.push(letter),
-                    None => held.push('u'),
+                for point in points.iter().filter(|point| !point.is_empty()) {
+                    match u32::from_str_radix(point, 16).ok().and_then(char::from_u32) {
+                        Some(letter) => held.push(letter),
+                        None => held.push('u'),
+                    }
                 }
             }
             other => held.push(other),
         }
     }
-    held
+    (held, holds_bytes)
+}
+
+/// Whether the backslash at `at` opens an escape naming a byte: an octal
+/// digit, or `x` with a hexadecimal digit after it.
+fn opens_byte_escape(letters: &[char], at: usize) -> bool {
+    match letters.get(at + 1) {
+        Some('x') => letters.get(at + 2).is_some_and(char::is_ascii_hexdigit),
+        Some(digit) => ('0'..='7').contains(digit),
+        None => false,
+    }
+}
+
+/// The bytes a run of escapes starting at `at` names, all octal or all
+/// hexadecimal, and where the run ends. An octal escape past 255 keeps its
+/// low byte.
+fn escaped_byte_run(letters: &[char], mut at: usize, hexadecimal: bool) -> (Vec<u8>, usize) {
+    let mut bytes = Vec::new();
+    while letters.get(at) == Some(&'\\')
+        && opens_byte_escape(letters, at)
+        && (letters[at + 1] == 'x') == hexadecimal
+    {
+        at += if hexadecimal { 2 } else { 1 };
+        let (width, radix) = if hexadecimal { (2, 16) } else { (3, 8) };
+        let mut value = 0_u32;
+        let mut read = 0;
+        while read < width && at < letters.len() {
+            let Some(digit) = letters[at].to_digit(radix) else {
+                break;
+            };
+            value = value * radix + digit;
+            read += 1;
+            at += 1;
+        }
+        bytes.push(value as u8);
+    }
+    (bytes, at)
+}
+
+/// The token a heredoc body with no interpolation reads as: one whose escapes
+/// named bytes is tagged as bytes, in the source's encoding when the source
+/// is written in bytes.
+fn plain_body(body: &str, binary_source: bool) -> TokenKind {
+    match unescaped(body, binary_source) {
+        (text, true) if binary_source => TokenKind::BinaryString(super::strings::byte_text(&text)),
+        (text, true) => TokenKind::ByteString(super::strings::byte_text(&text)),
+        (text, false) => TokenKind::String(text),
+    }
 }
 
 /// Split a heredoc body into interpolation parts. Mirrors the `#{expr}`
 /// scanner used for double-quoted strings: balances braces inside the
 /// expression text, and respects `\#{` as an escape for a literal `#{`.
-fn split_interpolated(body: &str, first_line: usize) -> TokenKind {
+fn split_interpolated(body: &str, first_line: usize, binary_source: bool) -> TokenKind {
     let parts = split_interpolation_parts_from(body, first_line);
     if parts.is_empty() {
         TokenKind::String(String::new())
@@ -298,12 +365,14 @@ fn split_interpolated(body: &str, first_line: usize) -> TokenKind {
                 joined.push_str(&t);
             }
         }
-        TokenKind::String(unescaped(&joined))
+        plain_body(&joined, binary_source)
     } else {
         let read = parts
             .into_iter()
             .map(|part| match part {
-                InterpolationPart::Text(text) => InterpolationPart::Text(unescaped(&text)),
+                InterpolationPart::Text(text) => {
+                    InterpolationPart::Text(unescaped(&text, binary_source).0)
+                }
                 held => held,
             })
             .collect();

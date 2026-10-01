@@ -79,6 +79,33 @@ pub(crate) fn socket_constant(name: &str) -> Option<i64> {
         "IPPROTO_UDP" => libc::IPPROTO_UDP,
         "IPPROTO_IPV6" => libc::IPPROTO_IPV6,
         "IPPROTO_RAW" => libc::IPPROTO_RAW,
+        "IPPROTO_AH" => libc::IPPROTO_AH,
+        "IPPROTO_DSTOPTS" => libc::IPPROTO_DSTOPTS,
+        "IPPROTO_EGP" => libc::IPPROTO_EGP,
+        "IPPROTO_ESP" => libc::IPPROTO_ESP,
+        "IPPROTO_FRAGMENT" => libc::IPPROTO_FRAGMENT,
+        "IPPROTO_HOPOPTS" => libc::IPPROTO_HOPOPTS,
+        "IPPROTO_ICMPV6" => libc::IPPROTO_ICMPV6,
+        "IPPROTO_IDP" => libc::IPPROTO_IDP,
+        "IPPROTO_IGMP" => libc::IPPROTO_IGMP,
+        "IPPROTO_NONE" => libc::IPPROTO_NONE,
+        "IPPROTO_PUP" => libc::IPPROTO_PUP,
+        "IPPROTO_ROUTING" => libc::IPPROTO_ROUTING,
+        "IPPROTO_TP" => libc::IPPROTO_TP,
+        // Linux has raised this between kernel versions, so the number the
+        // C library crate carries may not be the one the headers name.
+        #[cfg(target_os = "macos")]
+        "IPPROTO_MAX" => libc::IPPROTO_MAX,
+        #[cfg(target_os = "macos")]
+        "IPPROTO_EON" => libc::IPPROTO_EON,
+        #[cfg(target_os = "macos")]
+        "IPPROTO_GGP" => libc::IPPROTO_GGP,
+        #[cfg(target_os = "macos")]
+        "IPPROTO_HELLO" => libc::IPPROTO_HELLO,
+        #[cfg(target_os = "macos")]
+        "IPPROTO_ND" => libc::IPPROTO_ND,
+        #[cfg(target_os = "macos")]
+        "IPPROTO_XTP" => libc::IPPROTO_XTP,
         "SOL_SOCKET" => libc::SOL_SOCKET,
         "SO_DEBUG" => libc::SO_DEBUG,
         "SO_ACCEPTCONN" => libc::SO_ACCEPTCONN,

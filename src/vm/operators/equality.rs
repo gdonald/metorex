@@ -316,7 +316,9 @@ impl VirtualMachine {
                 return Ok(Object::Bool(false));
             };
             let (pattern, flags) = (pattern.as_str().to_string(), flags.as_str().to_string());
-            let found = self.regexp_match_data(&pattern, &flags, &subject, 0, position)?;
+            let encoding = crate::vm::native_methods::regexp_methods::subject_encoding(&right);
+            let found =
+                self.regexp_match_data_in(&pattern, &flags, &subject, 0, encoding, position)?;
             return Ok(Object::Bool(found.is_some()));
         }
         // A callable answers for itself: `===` hands the value to

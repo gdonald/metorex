@@ -879,3 +879,52 @@ end
         _ => panic!("Expected Expression::Case"),
     }
 }
+
+#[test]
+fn a_clause_holding_several_statements_runs_them_as_a_begin_body() {
+    let expression = parse_case_expr("case x\nwhen 1\n  y = 2\n  y + 1\nend");
+    let Expression::Case { cases, .. } = expression else {
+        panic!("expected a case expression, got {expression:?}");
+    };
+    match &cases[0].body {
+        Expression::BeginRescue { body, .. } => assert_eq!(body.len(), 2),
+        other => panic!("expected the statements as a begin body, got {other:?}"),
+    }
+}
+
+#[test]
+fn an_else_clause_holding_several_statements_runs_them_as_a_begin_body() {
+    let expression = parse_case_expr("case x\nwhen 1 then 2\nelse\n  y = 3\n  y\nend");
+    let Expression::Case { else_case, .. } = expression else {
+        panic!("expected a case expression, got {expression:?}");
+    };
+    assert!(matches!(
+        else_case.as_deref(),
+        Some(Expression::BeginRescue { body, .. }) if body.len() == 2
+    ));
+}
+
+#[test]
+fn an_if_on_the_line_after_a_list_of_values_opens_the_clause_body() {
+    let expression = parse_case_expr("case x\nwhen 1, 2\n  if y then 3 else 4 end\nelse 5\nend");
+    let Expression::Case { cases, .. } = expression else {
+        panic!("expected a case expression, got {expression:?}");
+    };
+    assert!(cases[0].guard.is_none());
+    assert!(matches!(cases[0].pattern, MatchPattern::Multiple(_)));
+}
+
+#[test]
+fn a_quoted_or_operator_symbol_is_a_value_to_compare() {
+    let expression =
+        parse_case_expr("case x\nwhen :\"!\", :+, :[] then 1\nwhen :\"a#{1}\" then 2\nend");
+    let Expression::Case { cases, .. } = expression else {
+        panic!("expected a case expression, got {expression:?}");
+    };
+    let MatchPattern::Multiple(symbols) = &cases[0].pattern else {
+        panic!("expected three values, got {:?}", cases[0].pattern);
+    };
+    assert_eq!(symbols[0], MatchPattern::SymbolLiteral("!".to_string()));
+    assert_eq!(symbols[2], MatchPattern::SymbolLiteral("[]".to_string()));
+    assert!(matches!(cases[1].pattern, MatchPattern::Expression(_)));
+}

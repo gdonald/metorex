@@ -42,5 +42,4 @@ pub(crate) use coercion::*;
 pub(crate) use equality::identical;
 pub(crate) use flattening::*;
 pub(crate) use inspecting::*;
-pub(crate) use sorting::*;
 pub(crate) use walking::*;

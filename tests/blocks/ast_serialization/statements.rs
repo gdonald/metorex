@@ -271,10 +271,12 @@ fn serialize_break_statement_type() {
         r#"
 class C
   def stopper
-    break
+    while true
+      break
+    end
   end
 end
-C.new.get_source(:stopper).body[0]["type"]
+C.new.get_source(:stopper).body[0]["body"][0]["type"]
 "#,
     );
     assert_eq!(result, Some(Object::string("Break")));

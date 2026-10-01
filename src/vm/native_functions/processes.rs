@@ -103,11 +103,13 @@ pub(crate) fn require_candidates(named: &str) -> Vec<std::path::PathBuf> {
 /// Whether a path names a file built for the machine rather than one written
 /// in Ruby.
 pub(crate) fn names_a_native_extension(path: &std::path::Path) -> bool {
-    matches!(
-        path.extension().and_then(|held| held.to_str()),
-        Some("so" | "bundle" | "dylib" | "dll")
-    )
+    path.extension()
+        .and_then(|held| held.to_str())
+        .is_some_and(|held| NATIVE_EXTENSIONS.contains(&held))
 }
+
+/// The endings of a file built for the machine rather than written in Ruby.
+pub(crate) const NATIVE_EXTENSIONS: [&str; 4] = ["so", "bundle", "dylib", "dll"];
 
 /// The path a feature entry names, with a relative one read from the working
 /// directory and any `.` or `..` in it taken out.

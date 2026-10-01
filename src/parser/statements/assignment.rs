@@ -80,6 +80,52 @@ impl Parser {
             .map(|(_, operation)| operation)
     }
 
+    /// Refuse a constant assigned inside a method body, which Ruby calls a
+    /// dynamic constant assignment, since the method may run many times.
+    pub(crate) fn refuse_dynamic_constant_assignment(
+        &self,
+        target: &Expression,
+    ) -> Result<(), MetorexError> {
+        let names_a_constant = match target {
+            Expression::Identifier { name, .. } => name.starts_with(char::is_uppercase),
+            Expression::ScopeResolution { .. } | Expression::TopLevelConstant { .. } => true,
+            _ => false,
+        };
+        if names_a_constant && self.def_body_depth > 0 {
+            return Err(self.error_at_current("dynamic constant assignment"));
+        }
+        Ok(())
+    }
+
+    /// Refuse a target Ruby holds fixed: `nil`, `true`, `false`, `self`, and
+    /// the globals a regexp match sets.
+    pub(crate) fn refuse_fixed_target(&self, target: &Expression) -> Result<(), MetorexError> {
+        let refusal = match target {
+            Expression::NilLiteral { .. } => "Can't assign to nil".to_string(),
+            Expression::BoolLiteral { value, .. } => format!("Can't assign to {value}"),
+            Expression::Identifier { name, .. } if name == "self" => {
+                "Can't change the value of self".to_string()
+            }
+            Expression::GlobalVariable { name, .. }
+                if matches!(name.as_str(), "&" | "`" | "'" | "+")
+                    || (name.starts_with(|first: char| ('1'..='9').contains(&first))
+                        && name.chars().all(|held| held.is_ascii_digit())) =>
+            {
+                format!("Can't set variable ${name}")
+            }
+            _ => return Ok(()),
+        };
+        Err(self.error_at_current(&refusal))
+    }
+
+    /// Whether `=` or a compound assignment operator stands next in the
+    /// stream.
+    pub(crate) fn assignment_ahead(&self) -> bool {
+        self.check(&[TokenKind::Equal])
+            || self.compound_assignment_ahead().is_some()
+            || self.shift_assignment_ahead().is_some()
+    }
+
     /// The shift a `<<=` or `>>=` standing next in the stream applies. The
     /// shifts are methods rather than operators, so they are named rather
     /// than folded into a binary operation.

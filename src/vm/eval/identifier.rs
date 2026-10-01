@@ -15,7 +15,12 @@ impl VirtualMachine {
         if name.starts_with(char::is_uppercase) {
             return self.globals().get("Object");
         }
-        self.environment().get("self")
+        // The object the program runs against is named `main` however the
+        // code reached it, a binding included.
+        match self.environment().get("self") {
+            Some(held) if self.is_the_main_object(&held) => None,
+            other => other,
+        }
     }
 
     /// A NameError for a constant nothing defines, raised on `Object`.
@@ -43,7 +48,9 @@ impl VirtualMachine {
                 .find_own_method(name)
                 .is_some_and(|installed| Rc::ptr_eq(&installed, method))
         };
-        if self.def_scope_stack.iter().any(same) {
+        // The class the `def` installed it in, such as the singleton class
+        // of an object `instance_exec` ran a block against, holds it too.
+        if self.def_scope_stack.iter().any(same) || method.definee.as_ref().is_some_and(same) {
             return true;
         }
         matches!(self.globals().get("Object"), Some(Object::Class(object_class)) if same(&object_class))
@@ -95,6 +102,17 @@ impl VirtualMachine {
         if name == "TOPLEVEL_BINDING" {
             self.refresh_toplevel_binding();
         }
+        // A constant of a scope open where the code was written, or of an
+        // ancestor of the innermost one, comes ahead of the top level's,
+        // which is how a class's own NameError hides Ruby's.
+        // A scope with an autoload registered for the name holds it there,
+        // and loading it is left to the lookup further on.
+        if name.chars().next().is_some_and(|c| c.is_ascii_uppercase())
+            && !self.autoload_pending_in_lexical_scope(name)
+            && let Some(val) = self.constant_before_object(name)
+        {
+            return Ok(val);
+        }
         if let Some(val) = self.environment().get(name) {
             // A method on `self` wins over a same-named Kernel function, so a
             // bare `to_s` inside a class reaches that class's `to_s` rather
@@ -130,19 +148,20 @@ impl VirtualMachine {
                     || (matches!(
                         fn_name.as_str(),
                         "module_function" | "private" | "public" | "protected"
-                    ) && self.self_is_class_or_module()))
+                    ) && (self.self_is_class_or_module()
+                        || (self.def_scope_stack.is_empty()
+                            && self.current_method_frame == self.toplevel_frame))))
             {
                 return self.call_native_function(fn_name, vec![], position);
             }
             // A `def` registers its name in the environment as a Method so the
             // function is reachable, but Ruby's bare `foo` is a call, not a
-            // reference to the method. Invoke it when the environment entry is
-            // the very method the definee holds under that name and every
-            // positional parameter it takes has a default. A Method held in a local (from `method(:x)` or
-            // `instance_method(:x)`) is a different object, so it stays a value.
+            // reference to the method, and one missing its arguments raises.
+            // Invoke it when the environment entry is the very method the
+            // definee holds under that name. A Method held in a local (from
+            // `method(:x)` or `instance_method(:x)`) is a different object, so
+            // it stays a value.
             if let Object::Method(method) = &val
-                && method.parameters.len() == method.default_parameters.len()
-                && method.variadic_param.is_none()
                 && self.name_is_a_definition(name, &val)
             {
                 let receiver = self.environment().get("self").unwrap_or(Object::Nil);
@@ -153,11 +172,13 @@ impl VirtualMachine {
             return Ok(val);
         }
 
-        // Constants (uppercase) resolve from globals regardless of scope.
+        // Constants (uppercase) resolve from globals, unless a scope open
+        // where the code was written, or an ancestor of the innermost one,
+        // holds one of the same name ahead of Object.
         if name.chars().next().is_some_and(|c| c.is_ascii_uppercase())
             && let Some(val) = self.globals().constant(name)
         {
-            return Ok(val);
+            return Ok(self.constant_before_object(name).unwrap_or(val));
         }
         // Constant + def-scope chain has no class_var hit yet — try the
         // lexical chain for an autoload registration before falling through
@@ -193,6 +214,13 @@ impl VirtualMachine {
         let receiver = if let Some(r) = self.environment().get("self") {
             r
         } else {
+            // A constant written in a `class Object` body, or in a module
+            // included at the top level, is one the top level reads.
+            if name.starts_with(char::is_uppercase)
+                && let Some(value) = self.object_constant(name)
+            {
+                return Ok(value);
+            }
             // At the top level `self` is `main`, the object TOPLEVEL_BINDING
             // was built around. Nothing binds it there, so it is answered
             // here rather than reported as an undefined name.
@@ -207,20 +235,8 @@ impl VirtualMachine {
                 && let Some(method) = object_class.find_method(name)
                 && !method.is_undefined
             {
-                let required = method.parameters.len()
-                    - method.default_parameters.len()
-                    - if method.variadic_param.is_some() {
-                        1
-                    } else {
-                        0
-                    };
-                if required == 0 {
-                    return self.invoke_method(object_class, method, Object::Nil, vec![], position);
-                } else {
-                    let mut bound = (*method).clone();
-                    bound.receiver = Some(Box::new(Object::Nil));
-                    return Ok(Object::Method(Rc::new(bound)));
-                }
+                // A bare name is a call, and one missing arguments raises.
+                return self.invoke_method(object_class, method, Object::Nil, vec![], position);
             }
             // At the top level a bare name may name a method written on
             // `main` alone, which nothing else answers to.
@@ -251,7 +267,9 @@ impl VirtualMachine {
                     return Ok(val);
                 }
                 if enclosing.name() == name {
-                    return Ok(Object::Module(Rc::clone(enclosing)));
+                    return Ok(crate::vm::class_execution::constants::scope_object(
+                        enclosing,
+                    ));
                 }
             }
             // Inside a method body the lexical scope is the one open where the
@@ -335,37 +353,19 @@ impl VirtualMachine {
                     current = cls.superclass();
                 }
             }
-            // Constants defined in `class Object` are globally accessible (Ruby semantics).
-            if let Some(Object::Class(object_class)) = self.globals().get("Object")
-                && let Some(val) = object_class.get_class_var(name)
-            {
+            // Constants defined in `class Object`, or in a module included
+            // there, are reachable from anywhere.
+            if let Some(val) = self.object_constant(name) {
                 return Ok(val);
             }
         }
 
         // In class/module body, bare identifiers resolve methods on self.
-        // Guard: don't re-invoke the current method (prevents infinite recursion)
-        let in_same_method = self
-            .get_current_method_name()
-            .is_some_and(|frame| frame.ends_with(&format!("#{}", name)));
-        if !in_same_method
-            && let Some((class, method)) = self.lookup_method(&receiver, name)
+        if let Some((class, method)) = self.lookup_method(&receiver, name)
             && !method.is_undefined
         {
-            let required = method.parameters.len()
-                - method.default_parameters.len()
-                - if method.variadic_param.is_some() {
-                    1
-                } else {
-                    0
-                };
-            if required == 0 {
-                return self.invoke_method(class, method, receiver, vec![], position);
-            } else {
-                let mut bound = (*method).clone();
-                bound.receiver = Some(Box::new(receiver));
-                return Ok(Object::Method(Rc::new(bound)));
-            }
+            // A bare name is a call, and one missing arguments raises.
+            return self.invoke_method(class, method, receiver, vec![], position);
         }
 
         // Bare `new` inside a class method should instantiate the class.
@@ -378,18 +378,16 @@ impl VirtualMachine {
         // Fall back to native-method dispatch on `self` so identifiers that
         // map to native-only methods (e.g. `constants`, `const_get`) work
         // bare, the same way `self.constants` does.
-        if !in_same_method {
-            let class_for_native = self.builtins().class_of(&receiver);
-            if let Ok(Some(result)) =
-                self.call_native_method(&class_for_native, &receiver, name, &[], position)
-            {
-                return Ok(result);
-            }
-            // The Object/Kernel natives (`object_id`, `frozen?`, `inspect`)
-            // are reachable bare too, the same way `self.object_id` is.
-            if let Ok(Some(result)) = self.call_object_method(&receiver, name, &[], position) {
-                return Ok(result);
-            }
+        let class_for_native = self.builtins().class_of(&receiver);
+        if let Ok(Some(result)) =
+            self.call_native_method(&class_for_native, &receiver, name, &[], position)
+        {
+            return Ok(result);
+        }
+        // The Object/Kernel natives (`object_id`, `frozen?`, `inspect`) are
+        // reachable bare too, the same way `self.object_id` is.
+        if let Ok(Some(result)) = self.call_object_method(&receiver, name, &[], position) {
+            return Ok(result);
         }
 
         // Fallback: check global Object class (mspec injects describe/it/before/after)
@@ -397,20 +395,8 @@ impl VirtualMachine {
             && let Some(method) = object_class.find_method(name)
             && !method.is_undefined
         {
-            let required = method.parameters.len()
-                - method.default_parameters.len()
-                - if method.variadic_param.is_some() {
-                    1
-                } else {
-                    0
-                };
-            if required == 0 {
-                return self.invoke_method(object_class, method, receiver, vec![], position);
-            } else {
-                let mut bound = (*method).clone();
-                bound.receiver = Some(Box::new(receiver));
-                return Ok(Object::Method(Rc::new(bound)));
-            }
+            // A bare name is a call, and one missing arguments raises.
+            return self.invoke_method(object_class, method, receiver, vec![], position);
         }
 
         // Bare `include` / `prepend` in a class or module body is a call with
@@ -438,6 +424,17 @@ impl VirtualMachine {
             return self.call_native_function(&fn_name, vec![], position);
         }
 
+        // A constant no scope holds is asked of `const_missing` on the class
+        // or module the code was written in.
+        if name.starts_with(char::is_uppercase)
+            && let Some(written_in) = self
+                .method_nesting_stack
+                .last()
+                .and_then(|nesting| nesting.first().cloned())
+                .or_else(|| self.def_scope_stack.last().cloned())
+        {
+            return self.dispatch_const_missing(&written_in, name, position);
+        }
         Err(undefined_variable_error(
             name,
             self.name_error_receiver(name),
@@ -485,4 +482,67 @@ pub(crate) fn runs_when_named_bare(name: &str) -> bool {
             | "throw"
             | "binding_kernel"
     )
+}
+
+impl VirtualMachine {
+    /// The constant `name` names in the scopes open where the running code
+    /// was written, or in the ancestors of the innermost of them short of
+    /// Object. Top-level code has no such scope. Fires no autoload.
+    pub(crate) fn constant_before_object(&self, name: &str) -> Option<Object> {
+        let nesting: Vec<Rc<crate::class::Class>> = match self.method_nesting_stack.last() {
+            Some(nesting) if !nesting.is_empty() => nesting.clone(),
+            _ => self.def_scope_stack.iter().rev().cloned().collect(),
+        };
+        let innermost = nesting.first()?;
+        if let Some(value) = nesting.iter().find_map(|scope| scope.get_class_var(name)) {
+            return Some(value);
+        }
+        let mut cursor = Some(Rc::clone(innermost));
+        while let Some(class) = cursor {
+            if class.name() == "Object" {
+                break;
+            }
+            let found = class
+                .transitive_prepends()
+                .iter()
+                .find_map(|prepended| prepended.get_class_var(name))
+                .or_else(|| class.get_class_var(name))
+                .or_else(|| {
+                    class
+                        .transitive_mixins()
+                        .iter()
+                        .find_map(|mixin| mixin.get_class_var(name))
+                });
+            if found.is_some() {
+                return found;
+            }
+            cursor = class.superclass();
+        }
+        None
+    }
+
+    /// Whether a scope open where the code was written has an autoload
+    /// registered for `name` and no constant of that name yet.
+    fn autoload_pending_in_lexical_scope(&self, name: &str) -> bool {
+        let nesting: Vec<Rc<crate::class::Class>> = match self.method_nesting_stack.last() {
+            Some(nesting) if !nesting.is_empty() => nesting.clone(),
+            _ => self.def_scope_stack.iter().rev().cloned().collect(),
+        };
+        nesting.iter().any(|scope| {
+            scope.get_class_var(name).is_none() && scope.lookup_autoload(name).is_some()
+        })
+    }
+
+    /// The constant `name` names on Object, or in a module included there.
+    pub(crate) fn object_constant(&self, name: &str) -> Option<Object> {
+        let Some(Object::Class(object_class)) = self.globals().get("Object") else {
+            return None;
+        };
+        object_class.get_class_var(name).or_else(|| {
+            object_class
+                .transitive_mixins()
+                .iter()
+                .find_map(|mixin| mixin.get_class_var(name))
+        })
+    }
 }

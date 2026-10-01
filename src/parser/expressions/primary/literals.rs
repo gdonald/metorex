@@ -15,7 +15,7 @@ impl Parser {
     ) -> Expression {
         let elements: Vec<Expression> = split_percent_words(&value, filled)
             .into_iter()
-            .map(|word| percent_word(&word, filled, position))
+            .map(|word| self.percent_word(&word, filled, position))
             .collect();
         Expression::Array { elements, position }
     }
@@ -29,7 +29,7 @@ impl Parser {
     ) -> Expression {
         let elements: Vec<Expression> = split_percent_words(&value, filled)
             .into_iter()
-            .map(|word| match percent_word(&word, filled, position) {
+            .map(|word| match self.percent_word(&word, filled, position) {
                 Expression::StringLiteral {
                     value, position, ..
                 } => Expression::Symbol { value, position },
@@ -75,8 +75,8 @@ impl Parser {
                         },
                     );
                     let expr_tokens = expr_lexer.tokenize();
-                    let mut expr_parser = Parser::new(expr_tokens);
-                    let expr = expr_parser.parse_expression()?;
+                    let mut expr_parser = self.nested_parser(expr_tokens);
+                    let expr = expr_parser.parse_interpolated_code(position)?;
                     ast_parts.push(crate::ast::node::InterpolationPart::Expression(Box::new(
                         expr,
                     )));
@@ -85,6 +85,37 @@ impl Parser {
         }
         Ok(Expression::InterpolatedString {
             parts: ast_parts,
+            position,
+        })
+    }
+}
+
+impl Parser {
+    /// The code inside `#{...}`, which is a run of statements whose value is
+    /// the last one's, so a modifier or a semicolon there means what it
+    /// does anywhere else.
+    fn parse_interpolated_code(&mut self, position: Position) -> Result<Expression, MetorexError> {
+        let mut body = Vec::new();
+        loop {
+            self.skip_whitespace();
+            while self.match_token(&[TokenKind::Semicolon]) {
+                self.skip_whitespace();
+            }
+            if self.is_at_end() {
+                break;
+            }
+            body.push(self.parse_statement()?);
+        }
+        if body.len() == 1
+            && let crate::ast::Statement::Expression { expression, .. } = &body[0]
+        {
+            return Ok(expression.clone());
+        }
+        Ok(Expression::BeginRescue {
+            body,
+            rescue_clauses: Vec::new(),
+            else_clause: None,
+            ensure_block: None,
             position,
         })
     }
@@ -168,6 +199,8 @@ impl Parser {
                 crate::error::SourceLocation::new(position.line, position.column, position.offset),
             ));
         }
+        // Of the letters naming an encoding, the last one written decides.
+        let flags = with_last_encoding_option(&flags);
         if !pattern.contains("#{") {
             // A pattern written out is read where it is written, so one the
             // engine cannot make sense of is not a program.
@@ -222,6 +255,19 @@ impl Parser {
     }
 }
 
+/// Option letters with only the last of `n`, `e`, `s` and `u` kept, since a
+/// pattern matches in one encoding.
+fn with_last_encoding_option(flags: &str) -> String {
+    let naming_encoding = |held: &char| "nesu".contains(*held);
+    let last = flags.chars().rev().find(naming_encoding);
+    let mut kept: String = flags
+        .chars()
+        .filter(|held| !naming_encoding(held))
+        .collect();
+    kept.extend(last);
+    kept
+}
+
 /// Identifier / variable token to its corresponding expression.
 pub(super) fn identifier(name: String, position: Position) -> Expression {
     Expression::Identifier { name, position }
@@ -257,58 +303,6 @@ pub(super) fn nil_literal(position: Position) -> Expression {
 
 #[allow(dead_code)]
 fn _silence_unused_token_kind(_: TokenKind) {}
-
-/// One word of a percent list. A `%W` or `%I` word reads its `#{}` parts the
-/// way a double-quoted string does.
-fn percent_word(word: &str, filled: bool, position: Position) -> Expression {
-    let plain = Expression::StringLiteral {
-        value: word.to_string(),
-        position,
-    };
-    // `%W` fills in `#{}` and reads escape sequences, which a double-quoted
-    // string already does, so the word is read back as one.
-    if !filled || !(word.contains("#{") || word.contains('\\')) {
-        return plain;
-    }
-    let source = format!("\"{}\"", quoted_percent_word(word));
-    let tokens = crate::lexer::Lexer::new(&source).tokenize();
-    let read = tokens.first().map(|token| token.kind.clone());
-    // A word with escapes but no interpolation reads back as a plain string.
-    if let Some(TokenKind::String(text)) = read {
-        return Expression::StringLiteral {
-            value: text,
-            position,
-        };
-    }
-    let Some(TokenKind::InterpolatedString(parts)) = read else {
-        return plain;
-    };
-    let mut built = Vec::new();
-    for part in parts {
-        match part {
-            crate::lexer::InterpolationPart::Text(text) => {
-                built.push(crate::ast::InterpolationPart::Text(text));
-            }
-            crate::lexer::InterpolationPart::Expression(source, _) => {
-                let inner = crate::lexer::Lexer::new(&source).tokenize();
-                let Ok(mut statements) = crate::parser::Parser::new(inner).parse() else {
-                    return plain;
-                };
-                let Some(crate::ast::Statement::Expression { expression, .. }) = statements.pop()
-                else {
-                    return plain;
-                };
-                built.push(crate::ast::InterpolationPart::Expression(Box::new(
-                    expression,
-                )));
-            }
-        }
-    }
-    Expression::InterpolatedString {
-        parts: built,
-        position,
-    }
-}
 
 /// The words a percent list holds. Whitespace separates them unless a
 /// backslash escapes it, and the backslash before any character is dropped
@@ -384,4 +378,59 @@ fn quoted_percent_word(word: &str) -> String {
         }
     }
     out
+}
+
+impl Parser {
+    /// One word of a percent list. A `%W` or `%I` word reads its `#{}` parts the
+    /// way a double-quoted string does.
+    fn percent_word(&self, word: &str, filled: bool, position: Position) -> Expression {
+        let plain = Expression::StringLiteral {
+            value: word.to_string(),
+            position,
+        };
+        // `%W` fills in `#{}` and reads escape sequences, which a double-quoted
+        // string already does, so the word is read back as one.
+        if !filled || !(word.contains("#{") || word.contains('\\')) {
+            return plain;
+        }
+        let source = format!("\"{}\"", quoted_percent_word(word));
+        let tokens = crate::lexer::Lexer::new(&source).tokenize();
+        let read = tokens.first().map(|token| token.kind.clone());
+        // A word with escapes but no interpolation reads back as a plain string.
+        if let Some(TokenKind::String(text)) = read {
+            return Expression::StringLiteral {
+                value: text,
+                position,
+            };
+        }
+        let Some(TokenKind::InterpolatedString(parts)) = read else {
+            return plain;
+        };
+        let mut built = Vec::new();
+        for part in parts {
+            match part {
+                crate::lexer::InterpolationPart::Text(text) => {
+                    built.push(crate::ast::InterpolationPart::Text(text));
+                }
+                crate::lexer::InterpolationPart::Expression(source, _) => {
+                    let inner = crate::lexer::Lexer::new(&source).tokenize();
+                    let Ok(mut statements) = self.nested_parser(inner).parse() else {
+                        return plain;
+                    };
+                    let Some(crate::ast::Statement::Expression { expression, .. }) =
+                        statements.pop()
+                    else {
+                        return plain;
+                    };
+                    built.push(crate::ast::InterpolationPart::Expression(Box::new(
+                        expression,
+                    )));
+                }
+            }
+        }
+        Expression::InterpolatedString {
+            parts: built,
+            position,
+        }
+    }
 }

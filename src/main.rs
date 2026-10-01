@@ -69,7 +69,8 @@ fn run_with_program_stack(program: fn()) {
 fn real_main() {
     // Ruby lets `-r`, `-I`, and `-W` carry their value attached (`-rfoo`),
     // which the argument parser only understands as two words.
-    let mut arguments: Vec<String> = std::env::args()
+    let mut arguments: Vec<String> = std::env::args_os()
+        .map(argument_text)
         .flat_map(spelled_out_flag)
         .flat_map(metorex::split_short_flags)
         .collect();
@@ -117,14 +118,48 @@ fn real_main() {
         }
     }
 
+    // With no script named and no terminal to talk to, the program is what
+    // arrives on standard input, the way `ruby < script.rb` runs it.
+    if cli.file.is_empty()
+        && cli.execute.is_empty()
+        && cli.test.is_none()
+        && !cli.repl
+        && !std::io::IsTerminal::is_terminal(&std::io::stdin())
+    {
+        let mut bytes = Vec::new();
+        if let Err(err) = std::io::Read::read_to_end(&mut std::io::stdin(), &mut bytes) {
+            eprintln!("Error reading standard input: {}", err);
+            process::exit(1);
+        }
+        let Some(code) = metorex::file_loader::source_text(&bytes) else {
+            eprintln!("-:1: invalid multibyte char (UTF-8)");
+            process::exit(1);
+        };
+        run_inline(&cli, &code, "-");
+    }
+
     // Evaluate inline code. Ruby joins the `-e` strings with newlines.
     if !cli.execute.is_empty() {
         let code = cli.execute.join("\n");
+        run_inline(&cli, &code, "-e");
+    }
+
+    real_main_after_inline(cli);
+}
+
+/// Run code given on the command line or on standard input, under the name
+/// a report and `__FILE__` give it, and exit with its status.
+fn run_inline(cli: &Cli, code: &str, named: &str) -> ! {
+    {
         if cli.check_syntax {
-            check_syntax(&code, "-e");
+            check_syntax(code, named);
         }
-        let code = &code;
-        let lexer = Lexer::new(code);
+        // A magic comment names the encoding the code's literals are
+        // written in. Without one, code typed at the terminal is taken to be
+        // in the locale's encoding.
+        let source_encoding =
+            metorex::lexer::named_source_encoding(code).or_else(metorex::vm::locale_encoding_name);
+        let lexer = Lexer::new(code).with_source_encoding(source_encoding.clone());
         let tokens = lexer.tokenize();
         let mut parser = Parser::new(tokens);
         let program = match parser.parse() {
@@ -133,20 +168,20 @@ fn real_main() {
                 // Ruby names the class of the failure it reports, which is
                 // what a caller reading the output looks for.
                 for err in errors {
-                    eprintln!("-e: {} (SyntaxError)", err);
+                    eprintln!("{}: {} (SyntaxError)", named, err);
                 }
                 process::exit(1);
             }
         };
         let mut vm = VirtualMachine::new();
-        apply_cli_flags(&mut vm, &cli);
-        // Code given on the command line is named `-e`, which is what a
-        // report and `__FILE__` say of it.
-        vm.set_current_file(std::path::PathBuf::from("-e"));
-        vm.set_source_encoding(None);
+        apply_cli_flags(&mut vm, cli);
+        // Code given on the command line is named `-e`, and code read from
+        // standard input `-`, which is what a report and `__FILE__` say of it.
+        vm.set_current_file(std::path::PathBuf::from(named));
+        vm.set_source_encoding(source_encoding);
         vm.set_script_path(
-            std::path::PathBuf::from("-e"),
-            std::path::PathBuf::from("-e"),
+            std::path::PathBuf::from(named),
+            std::path::PathBuf::from(named),
         );
         // Names written after the code are the program's arguments, which is
         // where ARGF looks for the files to read.
@@ -156,12 +191,16 @@ fn real_main() {
             cli.file.clone()
         };
         vm.set_argv(named);
-        if let Err(err) = run_program(&mut vm, &program, &line_loop_from(&cli)) {
+        if let Err(err) = run_program(&mut vm, &program, &line_loop_from(cli)) {
             finish_with_error(&mut vm, &err);
         }
         process::exit(vm.run_at_exit_handlers(0, None));
     }
+}
 
+/// Run what the command line names once inline code is ruled out: the test
+/// runner, the REPL, or a script.
+fn real_main_after_inline(cli: Cli) {
     // Test discovery mode
     if let Some(ref test_dir) = cli.test {
         let dir = Path::new(test_dir);
@@ -218,18 +257,20 @@ fn real_main() {
         }
     };
 
-    // Read the source file
-    let source = match fs::read_to_string(&absolute_path) {
-        Ok(content) => content,
-        // Bytes that spell no character at all are what Ruby reports as an
-        // invalid multibyte char, naming the file and the first line.
-        Err(err) if err.kind() == std::io::ErrorKind::InvalidData => {
-            eprintln!(
-                "{}:1: invalid multibyte char (UTF-8)",
-                absolute_path.display()
-            );
-            process::exit(1);
-        }
+    // Read the source file. Bytes that spell no character in the encoding
+    // the file names are what Ruby reports as an invalid multibyte char,
+    // naming the file and the first line.
+    let source = match fs::read(&absolute_path) {
+        Ok(bytes) => match metorex::file_loader::source_text(&bytes) {
+            Some(content) => content,
+            None => {
+                eprintln!(
+                    "{}:1: invalid multibyte char (UTF-8)",
+                    absolute_path.display()
+                );
+                process::exit(1);
+            }
+        },
         Err(err) => {
             eprintln!("Error reading file '{}': {}", absolute_path.display(), err);
             process::exit(1);
@@ -422,5 +463,17 @@ fn err_exception(err: &metorex::error::MetorexError) -> Option<metorex::object::
             Some(exception.clone())
         }
         _ => None,
+    }
+}
+
+/// A command-line argument as text. One that is not UTF-8, such as code in
+/// an encoding of its own passed to `-e`, holds its other bytes escaped.
+fn argument_text(argument: std::ffi::OsString) -> String {
+    match argument.into_string() {
+        Ok(text) => text,
+        Err(raw) => {
+            use std::os::unix::ffi::OsStrExt;
+            metorex::file_loader::escaped_source_text(raw.as_bytes())
+        }
     }
 }

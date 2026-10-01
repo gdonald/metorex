@@ -70,6 +70,23 @@ impl VirtualMachine {
             "chomp" | "chop" => self.chomp_line(name, arguments),
             "open" => self.open_stream(arguments, position),
             "require" => self.require_feature(arguments, position),
+            "__resolve_feature_path__" => self.resolve_feature_path(arguments, position),
+            // A handle naming an object without keeping it alive, and the
+            // object a handle names while anything else still holds it.
+            "__weak_reference__" => {
+                let target = arguments.first().cloned().unwrap_or(Object::Nil);
+                self.weak_references
+                    .push(crate::vm::core::WeakTarget::of(&target));
+                Ok(Object::Int(self.weak_references.len() as i64 - 1))
+            }
+            "__weak_target__" => Ok(match arguments.first() {
+                Some(Object::Int(handle)) => usize::try_from(*handle)
+                    .ok()
+                    .and_then(|at| self.weak_references.get(at))
+                    .and_then(|target| target.reach())
+                    .unwrap_or(Object::Nil),
+                _ => Object::Nil,
+            }),
             "require_relative" => self.require_relative_feature(arguments, position),
             "print" => self.print_values(arguments, position),
             "printf" => self.print_formatted(arguments, position),

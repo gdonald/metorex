@@ -170,4 +170,5 @@ p Integer.from_prime_division [[2, 2], [5, 1]]
 walk = Prime.instance.each
 p walk.next
 p walk.next
-p walk.rewind.next
+walk.rewind
+p walk.next

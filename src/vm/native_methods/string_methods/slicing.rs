@@ -159,7 +159,7 @@ impl VirtualMachine {
                 // which is what `to_int` is asked for.
                 let start = self.coerce_slice_number(&arguments[0], method_name, position)?;
                 let len = self.coerce_slice_number(&arguments[1], method_name, position)?;
-                let chars: Vec<char> = string_value.as_str().chars().collect();
+                let chars = character_units(string_value);
                 let char_count = chars.len() as i64;
                 // A start past the end names no substring at all, where a
                 // start exactly at the end names the empty one.
@@ -176,8 +176,16 @@ impl VirtualMachine {
                     Ok(Some(Object::Nil))
                 } else {
                     let end_idx = end_idx.clamp(start_idx, chars.len());
-                    let sliced: String = chars[start_idx..end_idx].iter().collect();
-                    Ok(Some(Object::string(sliced)))
+                    let sliced: String = chars[start_idx..end_idx].concat();
+                    // A piece is written in the whole string's encoding.
+                    let piece = crate::object::StringValue::with_encoding(
+                        sliced,
+                        string_value.encoding_name(),
+                    );
+                    if string_value.holds_bytes() {
+                        piece.mark_bytes();
+                    }
+                    Ok(Some(Object::String(Rc::new(piece))))
                 }
             }
             _ => Ok(None),

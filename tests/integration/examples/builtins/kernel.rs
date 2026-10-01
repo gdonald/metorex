@@ -13,7 +13,7 @@ fn test_builtins_type_introspection() {
 
 #[test]
 fn test_defined_keyword_execution() {
-    let expected = "local-variable\n\nmethod\nconstant\n\nglobal-variable\n\nexpression\nexpression\nexpression\nexpression\nlocal-variable\n";
+    let expected = "local-variable\n\nmethod\nconstant\n\nglobal-variable\n\nexpression\nexpression\nnil\ntrue\nlocal-variable\n";
     let output = run_example("builtins/defined_keyword.rb");
     assert_eq!(output, expected);
 }
@@ -55,7 +55,7 @@ fn test_or_assign_parens_execution() {
 
 #[test]
 fn test_defined_extended_execution() {
-    let expected = "local-variable\nmethod\nconstant\n\nglobal-variable\n\ninstance-variable\n\nexpression\nexpression\nexpression\nexpression\nyield\n\n\n";
+    let expected = "local-variable\nmethod\nconstant\n\nglobal-variable\n\ninstance-variable\n\nexpression\nexpression\nnil\ntrue\nyield\n\n\n";
     let output = run_example("builtins/defined_extended.rb");
     assert_eq!(output, expected);
 }
@@ -492,4 +492,34 @@ fn test_builtins_hash_literal_rules_execution() {
 fn test_builtins_hash_literal_rules_no_parens_execution() {
     let output = run_example("builtins/hash_literal_rules_no_parens.rb");
     assert_eq!(output, HASH_LITERAL_RULES_OUTPUT);
+}
+
+/// The expected output of both `builtins/defined_forms` variants.
+const DEFINED_FORMS_OUTPUT: &str = "[\"self\", \"nil\", \"true\", \"false\"]\ntrue\n[\"expression\", nil]\n\"method\"\n\"expression\"\n\"expression\"\n[:note]\n[\"method\", \"method\", \"method\", nil]\n[\"assignment\", \"assignment\", \"assignment\"]\n[\"global-variable\", nil, \"global-variable\"]\n[\"global-variable\", \"global-variable\", nil]\n[[\"super\"], nil]\n[\"method\", nil]\n[\"expression\", \"expression\", \"method\"]\n";
+
+#[test]
+fn test_defined_forms_execution() {
+    let output = run_example("builtins/defined_forms.rb");
+    assert_eq!(output, DEFINED_FORMS_OUTPUT);
+}
+
+#[test]
+fn test_defined_forms_no_parens_execution() {
+    let output = run_example("builtins/defined_forms_no_parens.rb");
+    assert_eq!(output, DEFINED_FORMS_OUTPUT);
+}
+
+/// The expected output of both `builtins/process_hash_seed` variants.
+const PROCESS_HASH_SEED_OUTPUT: &str = "[\"14\", Integer, true, true]\n[\"10**30\", Integer, true, true]\n[\"3.14\", Integer, true, true]\n[\"Rational(1, 2)\", Integer, true, true]\n[\"Complex(1, 2)\", Integer, true, true]\n[\"'abc'\", Integer, true, true]\n[\":a\", Integer, true, true]\n[\"[1, 2]\", Integer, true, true]\n[\"{a: 1}\", Integer, true, true]\n";
+
+#[test]
+fn test_builtins_process_hash_seed_execution() {
+    let output = run_example("builtins/process_hash_seed.rb");
+    assert_eq!(output, PROCESS_HASH_SEED_OUTPUT);
+}
+
+#[test]
+fn test_builtins_process_hash_seed_no_parens_execution() {
+    let output = run_example("builtins/process_hash_seed_no_parens.rb");
+    assert_eq!(output, PROCESS_HASH_SEED_OUTPUT);
 }

@@ -26,6 +26,28 @@ impl VirtualMachine {
         Ok(sorted)
     }
 
+    /// The elements of `(key, element)` pairs ordered by their keys with
+    /// `<=>`. Pairs whose keys compare equal keep the order they came in.
+    pub(crate) fn sort_by_keys(
+        &mut self,
+        keyed: Vec<(Object, Object)>,
+        position: Position,
+    ) -> Result<Vec<Object>, MetorexError> {
+        let mut sorted: Vec<(Object, Object)> = Vec::with_capacity(keyed.len());
+        for (key, element) in keyed {
+            let held_keys: Vec<Object> = sorted.iter().map(|(held, _)| held.clone()).collect();
+            let mut place = sorted.len();
+            for (index, other) in held_keys.iter().enumerate() {
+                if self.compare_elements(&key, other, &None, position)? < 0 {
+                    place = index;
+                    break;
+                }
+            }
+            sorted.insert(place, (key, element));
+        }
+        Ok(sorted.into_iter().map(|(_, element)| element).collect())
+    }
+
     /// Order two elements with `<=>`, or with the block when one is given.
     /// A comparison that answers nil is an ArgumentError, which is what Ruby
     /// raises when the two cannot be ordered.
@@ -114,27 +136,6 @@ impl VirtualMachine {
             index += 1;
         }
         Ok(unique)
-    }
-}
-
-pub(crate) fn compare_for_sort(a: &Object, b: &Object) -> std::cmp::Ordering {
-    // Two exact integers order exactly, whatever their magnitude.
-    if let (Some(x), Some(y)) = (a.as_big_integer(), b.as_big_integer()) {
-        return x.cmp(&y);
-    }
-    match (a, b) {
-        (Object::Int(x), Object::Int(y)) => x.cmp(y),
-        (Object::Float(x), Object::Float(y)) => {
-            x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal)
-        }
-        (Object::Int(x), Object::Float(y)) => (*x as f64)
-            .partial_cmp(y)
-            .unwrap_or(std::cmp::Ordering::Equal),
-        (Object::Float(x), Object::Int(y)) => x
-            .partial_cmp(&(*y as f64))
-            .unwrap_or(std::cmp::Ordering::Equal),
-        (Object::String(x), Object::String(y)) => x.as_str().cmp(&y.as_str()),
-        _ => a.to_string().cmp(&b.to_string()),
     }
 }
 

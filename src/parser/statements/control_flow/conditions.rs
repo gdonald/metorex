@@ -34,6 +34,9 @@ impl Parser {
 
             let elsif_condition = self.parse_condition()?;
             self.skip_whitespace();
+            // `elsif cond then` may hold its body on the same line.
+            self.match_token(&[TokenKind::Then]);
+            self.skip_whitespace();
 
             let mut elsif_body = Vec::new();
             while !self.check(&[TokenKind::Elsif, TokenKind::Else, TokenKind::End])

@@ -505,7 +505,7 @@ impl VirtualMachine {
     }
 
     /// Rename this process so a listing shows the new name.
-    fn set_process_title(&mut self, title: &str) {
+    pub(crate) fn set_process_title(&mut self, title: &str) {
         if let Some((start, length)) = original_argument_area() {
             // SAFETY: the area is the one the kernel copied the program's
             // arguments into, which belongs to this process for as long as it
@@ -662,9 +662,18 @@ unsafe fn write_process_title(start: *mut u8, length: usize, title: &[u8]) {
 
 /// Where the arguments this process was started with sit, and how many bytes
 /// they span: the first argument through the end of the last one that
-/// follows on from it.
+/// follows on from it. It is measured once, before a title is written over
+/// the arguments and shortens what a measure would find.
 #[cfg(any(target_os = "macos", all(target_os = "linux", target_env = "gnu")))]
 fn original_argument_area() -> Option<(*mut u8, usize)> {
+    static MEASURED: std::sync::OnceLock<Option<(usize, usize)>> = std::sync::OnceLock::new();
+    MEASURED
+        .get_or_init(|| measure_argument_area().map(|(start, length)| (start as usize, length)))
+        .map(|(start, length)| (start as *mut u8, length))
+}
+
+#[cfg(any(target_os = "macos", all(target_os = "linux", target_env = "gnu")))]
+fn measure_argument_area() -> Option<(*mut u8, usize)> {
     let (count, arguments) = original_arguments()?;
     // SAFETY: the array holds `count` pointers to the strings the process was
     // started with, which live as long as the process does.

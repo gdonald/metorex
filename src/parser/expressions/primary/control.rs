@@ -82,9 +82,9 @@ impl Parser {
 
             // Parse the pattern using the shared pattern parser (may include comma-separated alternatives)
             let pattern = self.parse_when_pattern_with_alternatives()?;
-            self.skip_whitespace();
 
-            // Parse optional guard clause (if ...)
+            // A guard stands on the line of the values it guards, so an `if`
+            // on the next line opens the clause's body instead.
             let guard = if self.match_token(&[TokenKind::If]) {
                 self.skip_whitespace();
                 Some(self.parse_expression()?)
@@ -103,7 +103,7 @@ impl Parser {
             let body = if self.check(&[TokenKind::When, TokenKind::Else, TokenKind::End]) {
                 Expression::NilLiteral { position: when_pos }
             } else {
-                self.parse_expression()?
+                self.parse_clause_value(when_pos)?
             };
 
             cases.push(ExprMatchCase {
@@ -124,7 +124,7 @@ impl Parser {
             if self.check(&[TokenKind::End]) {
                 Some(Box::new(Expression::NilLiteral { position: else_pos }))
             } else {
-                Some(Box::new(self.parse_expression()?))
+                Some(Box::new(self.parse_clause_value(else_pos)?))
             }
         } else {
             None
@@ -138,6 +138,29 @@ impl Parser {
             cases,
             else_case,
             position: start_pos,
+        })
+    }
+
+    /// What a `when` or `else` clause of a `case` expression answers: its
+    /// one expression, or the statements under it run as a `begin` body.
+    fn parse_clause_value(&mut self, position: Position) -> Result<Expression, MetorexError> {
+        let first = self.parse_expression_with_assignment()?;
+        self.skip_whitespace();
+        if self.check(&[TokenKind::When, TokenKind::Else, TokenKind::End]) || self.is_at_end() {
+            return Ok(first);
+        }
+        let first_position = first.position();
+        let mut body = vec![crate::ast::Statement::Expression {
+            expression: first,
+            position: first_position,
+        }];
+        body.extend(self.parse_clause_body()?);
+        Ok(Expression::BeginRescue {
+            body,
+            rescue_clauses: Vec::new(),
+            else_clause: None,
+            ensure_block: None,
+            position,
         })
     }
 

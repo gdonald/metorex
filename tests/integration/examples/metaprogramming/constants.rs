@@ -143,3 +143,18 @@ fn test_metaprogramming_const_added_top_level_parens_execution() {
     let output = run_example("metaprogramming/const_added_top_level_parens.rb");
     assert_eq!(output, expected);
 }
+
+/// The expected output of both `metaprogramming/constant_lookup` variants.
+const CONSTANT_LOOKUP_OUTPUT: &str = "3\n3\n:from_base\n:missing_UNDEFINED_HERE\n\"uninitialized constant #<Settings module>::ABSENT\"\n:hidden\n\"constant\"\nnil\n[\"private constant Vault::SECRET referenced\", :SECRET, Vault]\n\"private constant Vault::Inner referenced\"\ntrue\n:top\n:top\n";
+
+#[test]
+fn test_metaprogramming_constant_lookup_execution() {
+    let output = run_example("metaprogramming/constant_lookup.rb");
+    assert_eq!(output, CONSTANT_LOOKUP_OUTPUT);
+}
+
+#[test]
+fn test_metaprogramming_constant_lookup_no_parens_execution() {
+    let output = run_example("metaprogramming/constant_lookup_no_parens.rb");
+    assert_eq!(output, CONSTANT_LOOKUP_OUTPUT);
+}

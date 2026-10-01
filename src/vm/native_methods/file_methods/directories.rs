@@ -33,7 +33,14 @@ impl VirtualMachine {
                     position,
                 ));
             }
-            let pattern = self.directory_path_argument(method_name, &arguments[0], position)?;
+            let pattern = self.path_argument_text(method_name, &arguments[0], position)?;
+            if pattern.contains('\0') {
+                return Err(crate::vm::errors::simple_exception(
+                    "ArgumentError",
+                    "string contains null byte",
+                    position,
+                ));
+            }
             let path = self.directory_path_argument(method_name, &arguments[1], position)?;
             let flags = match arguments.get(2) {
                 None => 0,

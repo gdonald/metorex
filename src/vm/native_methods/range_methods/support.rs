@@ -41,6 +41,24 @@ impl VirtualMachine {
             let last = if exclusive { last - 1 } else { *last };
             return Ok((*first..=last).map(Object::Int).collect());
         }
+        // An Integer start walks by one up to a Float end, stopping at the
+        // last whole number the end allows.
+        if let (Object::Int(first), Object::Float(last)) = (start, end) {
+            if last.is_infinite() && *last > 0.0 {
+                return Err(crate::vm::errors::simple_exception(
+                    "RangeError",
+                    "cannot convert endless range to an array",
+                    position,
+                ));
+            }
+            let mut elements = Vec::new();
+            let mut at = *first;
+            while (at as f64) < *last || (!exclusive && (at as f64) == *last) {
+                elements.push(Object::Int(at));
+                at += 1;
+            }
+            return Ok(elements);
+        }
         if matches!(start, Object::Nil) {
             return Err(crate::vm::errors::simple_exception(
                 "TypeError",

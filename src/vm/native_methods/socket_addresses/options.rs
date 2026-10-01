@@ -64,7 +64,10 @@ impl VirtualMachine {
             let problem = std::io::Error::last_os_error();
             return Err(crate::vm::errors::simple_exception(
                 errno_class(&problem),
-                &format!("getsockopt: {problem}"),
+                &format!(
+                    "{} - getsockopt(2)",
+                    crate::vm::init::errno_description(problem.raw_os_error().unwrap_or(0))
+                ),
                 position,
             ));
         }
@@ -103,7 +106,10 @@ impl VirtualMachine {
             let problem = std::io::Error::last_os_error();
             return Err(crate::vm::errors::simple_exception(
                 errno_class(&problem),
-                &format!("setsockopt: {problem}"),
+                &format!(
+                    "{} - setsockopt(2)",
+                    crate::vm::init::errno_description(problem.raw_os_error().unwrap_or(0))
+                ),
                 position,
             ));
         }

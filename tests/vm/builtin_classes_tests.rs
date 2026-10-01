@@ -120,6 +120,7 @@ fn class_of_block() {
         captured_def_scope: vec![],
         captured_nesting: vec![],
         defining_method: None,
+        defining_owner: None,
         is_lambda: false,
         source_file: None,
         home_frame: None,
@@ -129,6 +130,7 @@ fn class_of_block() {
         written_depth: None,
         written_within: Rc::default(),
         ruby2_keywords: std::rc::Rc::new(std::cell::Cell::new(false)),
+        attached_call_running: std::rc::Rc::new(std::cell::Cell::new(true)),
     }));
     let class = builtins.class_of(&block);
     assert_eq!(class.name(), "Proc");
@@ -256,4 +258,15 @@ fn all_classes_has_expected_entries() {
 fn builtin_classes_default() {
     let builtins = BuiltinClasses::default();
     assert_eq!(builtins.object_class.name(), "Object");
+}
+
+#[test]
+fn an_anonymous_class_is_a_subclass_only_of_itself_and_its_ancestors() {
+    let builtins = BuiltinClasses::new();
+    let parent = Rc::new(metorex::class::Class::new("Parent", None));
+    let first = metorex::class::Class::new("", Some(Rc::clone(&parent)));
+    let second = metorex::class::Class::new("", Some(Rc::clone(&parent)));
+    assert!(!builtins.is_subclass_of(&first, &second));
+    assert!(builtins.is_subclass_of(&first, &first));
+    assert!(builtins.is_subclass_of(&first, &parent));
 }

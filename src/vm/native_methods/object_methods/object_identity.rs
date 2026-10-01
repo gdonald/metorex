@@ -92,9 +92,10 @@ pub(crate) fn matchable_text(object: &Object) -> Option<MatchSide> {
             pattern.as_str().to_string(),
             flags.as_str().to_string(),
         )),
-        Object::String(text) | Object::Symbol(text) => {
-            Some(MatchSide::Text(text.as_str().to_string()))
-        }
+        Object::String(text) => Some(MatchSide::Text(
+            crate::vm::native_methods::regexp_methods::match_text(text),
+        )),
+        Object::Symbol(text) => Some(MatchSide::Text(text.as_str().to_string())),
         _ => None,
     }
 }

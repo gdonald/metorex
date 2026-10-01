@@ -1,4 +1,13 @@
 pub(super) const SOURCE: &str = r##"
+class Binding
+  # A session that reads Ruby from standard input and runs it here, with
+  # this binding's locals in scope, until `exit` or the end of the input.
+  def irb
+    require "irb"
+    IRB.run_session(self, caller(1))
+  end
+end
+
 class Proc
   # `self >> other` reads left to right: self is called first and hands its
   # answer to other. The composition is strict about its arguments when self

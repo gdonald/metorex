@@ -214,7 +214,7 @@ pub(crate) fn apply_cli_flags(vm: &mut VirtualMachine, cli: &Cli) {
     // after everything the command line and the environment named, the way
     // Ruby's own standard library directories do.
     for path in installed_library_paths() {
-        vm.append_load_path(path);
+        vm.append_installed_load_path(path);
     }
     for lib in &cli.require_libs {
         if let Err(err) = vm.require_startup_library(lib) {

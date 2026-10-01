@@ -239,3 +239,46 @@ fn regex_hash_at_end_of_pattern() {
         TokenKind::Regex("#".to_string(), "".to_string())
     );
 }
+
+// ── A slash after a name ──────────────────────────────────────────────────
+
+/// Whether the source lexes a pattern anywhere.
+fn lexes_a_pattern(source: &str) -> bool {
+    Lexer::new(source)
+        .tokenize()
+        .iter()
+        .any(|token| matches!(token.kind, TokenKind::Regex(_, _)))
+}
+
+#[test]
+fn a_slash_after_a_method_name_with_a_space_before_it_opens_a_pattern() {
+    assert!(lexes_a_pattern("p /a/"));
+}
+
+#[test]
+fn a_slash_with_a_space_after_it_divides() {
+    assert!(!lexes_a_pattern("count / 2 / 1"));
+}
+
+#[test]
+fn a_slash_written_against_the_name_divides() {
+    assert!(!lexes_a_pattern("count/2/1"));
+}
+
+#[test]
+fn a_slash_before_an_equals_sign_divides_in_place() {
+    assert!(!lexes_a_pattern("count /=2"));
+}
+
+#[test]
+fn a_slash_after_an_assigned_local_divides() {
+    assert!(!lexes_a_pattern("total = 10\ntotal /2/1"));
+    assert!(!lexes_a_pattern("total += 1\ntotal /2/1"));
+}
+
+#[test]
+fn a_slash_after_a_parameter_divides() {
+    assert!(!lexes_a_pattern("def halve(number)\n  number /2/1\nend"));
+    assert!(!lexes_a_pattern("[4].each { |number| number /2/1 }"));
+    assert!(!lexes_a_pattern("for number in [1]\n  number /2/1\nend"));
+}

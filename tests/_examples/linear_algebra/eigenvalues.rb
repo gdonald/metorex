@@ -1,5 +1,5 @@
-# A two by two matrix answers its eigenvalues, exact where the roots come out
-# whole and a conjugate pair where they do not.
+# A matrix answers its eigenvalues as Floats, with a conjugate pair where
+# the roots are not real.
 require "matrix"
 
 real = Matrix[[14, 16], [-6, -6]]
@@ -10,8 +10,4 @@ turning = Matrix[[1, 1], [-1, 1]]
 p(turning.eigensystem.eigenvalues)
 p(turning.eigensystem.eigenvalue_matrix)
 
-begin
-  Matrix[[1, 2, 3], [4, 5, 6], [7, 8, 9]].eigensystem
-rescue ExceptionForMatrix::ErrOperationNotImplemented => refused
-  puts("a larger matrix is not worked out")
-end
+p(Matrix[[1, 2, 3], [4, 5, 6], [7, 8, 9]].eigensystem.eigenvalues.map { |value| value.round(6) })

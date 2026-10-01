@@ -187,7 +187,11 @@ impl VirtualMachine {
             }
             "hash" => {
                 no_arguments(0)?;
-                Ok(Some(Object::string(value.to_string())))
+                Ok(Some(Object::Int(
+                    crate::vm::native_methods::object_methods::hashing::seeded_text_hash(
+                        &value.to_string(),
+                    ),
+                )))
             }
             "integer?" => {
                 no_arguments(0)?;

@@ -434,3 +434,59 @@ fn test_control_flow_pattern_matching_in_no_parens_execution() {
     let output = run_example("control_flow/pattern_matching_in_no_parens.rb");
     assert_eq!(output, expected);
 }
+
+/// The expected output of both `control_flow/break_from_a_finished_call`
+/// variants.
+const BREAK_FROM_A_FINISHED_CALL_OUTPUT: &str = "\"break from proc-closure\"\nLocalJumpError\nLocalJumpError\nLocalJumpError\n:returned\n:from_super\nrefused: def stops; break; end\nrefused: module Stops; break; end\n";
+
+#[test]
+fn test_control_flow_break_from_a_finished_call_execution() {
+    let output = run_example("control_flow/break_from_a_finished_call.rb");
+    assert_eq!(output, BREAK_FROM_A_FINISHED_CALL_OUTPUT);
+}
+
+#[test]
+fn test_control_flow_break_from_a_finished_call_no_parens_execution() {
+    let output = run_example("control_flow/break_from_a_finished_call_no_parens.rb");
+    assert_eq!(output, BREAK_FROM_A_FINISHED_CALL_OUTPUT);
+}
+
+/// The expected output of both `control_flow/redo_forms` variants.
+const REDO_FORMS_OUTPUT: &str = "[1, 1, 2]\n[1, 2, 2, 3, 3, 4]\n[1, 2, 3, 3, 3, 3]\n[1, 10, 100, 1, 10, 100, 2, 20, 200, 3, 30, 300]\nSyntaxError\n";
+
+#[test]
+fn test_control_flow_redo_forms_execution() {
+    let output = run_example("control_flow/redo_forms.rb");
+    assert_eq!(output, REDO_FORMS_OUTPUT);
+}
+
+#[test]
+fn test_control_flow_redo_forms_no_parens_execution() {
+    let output = run_example("control_flow/redo_forms_no_parens.rb");
+    assert_eq!(output, REDO_FORMS_OUTPUT);
+}
+
+/// The expected output of both `control_flow/case_clause_bodies` variants.
+const CASE_CLAUSE_BODIES_OUTPUT: &str = concat!(
+    "\"ok\"\n",
+    "\"created\"\n",
+    "\"operator\"\n",
+    "\"operator\"\n",
+    "\"keyword\"\n",
+    "\"other\"\n",
+    "\"service is up\"\n",
+    "\"service is down\"\n",
+    "\"UNKNOWN\"\n",
+);
+
+#[test]
+fn test_control_flow_case_clause_bodies_execution() {
+    let output = run_example("control_flow/case_clause_bodies.rb");
+    assert_eq!(output, CASE_CLAUSE_BODIES_OUTPUT);
+}
+
+#[test]
+fn test_control_flow_case_clause_bodies_no_parens_execution() {
+    let output = run_example("control_flow/case_clause_bodies_no_parens.rb");
+    assert_eq!(output, CASE_CLAUSE_BODIES_OUTPUT);
+}

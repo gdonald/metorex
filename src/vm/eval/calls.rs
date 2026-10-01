@@ -125,7 +125,7 @@ impl VirtualMachine {
         {
             let evaluated_args = self.evaluate_arguments(arguments)?;
             if let Some(block_expr) = trailing_block {
-                self.pending_block = Some(self.evaluate_expression(block_expr)?);
+                self.pending_block = Some(self.attach_trailing_block(block_expr)?);
                 self.pending_block_from_ampersand = false;
             }
             return self.call_native_function("using", evaluated_args, position);
@@ -188,7 +188,34 @@ impl VirtualMachine {
             // `proc { }` and friends take a literal block, so attach it
             // before the native runs.
             if let Some(block_expr) = trailing_block {
-                self.pending_block = Some(self.evaluate_expression(block_expr)?);
+                self.pending_block = Some(self.attach_trailing_block(block_expr)?);
+                self.pending_block_from_ampersand = false;
+            }
+            return self.call_native_function(&native_name, evaluated_args, position);
+        }
+
+        // A Kernel function named by a call form is reached even where a
+        // local of its name holds something that cannot be called.
+        if let Expression::Identifier { name, .. } = callee
+            && matches!(
+                self.environment().get(name),
+                Some(held)
+                    if !matches!(
+                        held,
+                        Object::Block(_)
+                            | Object::Method(_)
+                            | Object::NativeFunction(_)
+                            | Object::CompiledFunction(_)
+                            | Object::Class(_)
+                            | Object::Module(_)
+                    )
+            )
+            && !self.self_defines_method(name)
+            && let Some(Object::NativeFunction(native_name)) = self.named_native_function(name)
+        {
+            let evaluated_args = self.evaluate_arguments(arguments)?;
+            if let Some(block_expr) = trailing_block {
+                self.pending_block = Some(self.attach_trailing_block(block_expr)?);
                 self.pending_block_from_ampersand = false;
             }
             return self.call_native_function(&native_name, evaluated_args, position);
@@ -291,12 +318,16 @@ impl VirtualMachine {
         // evaluating the name on its own would run it with none.
         if let Expression::Identifier { name, .. } = callee
             && let Some(Object::NativeFunction(native)) = self.named_native_function(name)
-            && crate::vm::eval::identifier::runs_when_named_bare(&native)
+            && (crate::vm::eval::identifier::runs_when_named_bare(&native)
+                || matches!(
+                    native.as_str(),
+                    "private" | "public" | "protected" | "module_function"
+                ))
         {
             let evaluated_args = self.evaluate_arguments(arguments)?;
             let has_block = trailing_block.is_some();
             if let Some(block_expr) = trailing_block {
-                self.pending_block = Some(self.evaluate_expression(block_expr)?);
+                self.pending_block = Some(self.attach_trailing_block(block_expr)?);
                 self.pending_block_from_ampersand = false;
             }
             return match self.call_native_function(&native, evaluated_args, position) {
@@ -316,7 +347,7 @@ impl VirtualMachine {
             let evaluated_args = self.evaluate_arguments(arguments)?;
             let has_block = trailing_block.is_some();
             if let Some(block_expr) = trailing_block {
-                self.pending_block = Some(self.evaluate_expression(block_expr)?);
+                self.pending_block = Some(self.attach_trailing_block(block_expr)?);
                 self.pending_block_from_ampersand = false;
             }
             let result = self.invoke_callable(value, evaluated_args, position);
@@ -350,7 +381,7 @@ impl VirtualMachine {
         let evaluated_args = self.evaluate_arguments(arguments)?;
         let has_block = trailing_block.is_some();
         if let Some(block_expr) = trailing_block {
-            self.pending_block = Some(self.evaluate_expression(block_expr)?);
+            self.pending_block = Some(self.attach_trailing_block(block_expr)?);
             self.pending_block_from_ampersand = false;
         }
         match callable {
@@ -382,13 +413,14 @@ impl VirtualMachine {
 
 impl VirtualMachine {
     /// The Kernel function a bare name stands for. A fiber runs in a scope of
-    /// its own rather than in the one the program started from, so the name is
-    /// looked for among the globals when the scope does not hold it.
+    /// its own rather than in the one the program started from, and a local
+    /// of the same name hides the function only when it is not called, so
+    /// the name is looked for among the globals when the scope holds
+    /// anything else.
     fn named_native_function(&self, name: &str) -> Option<Object> {
         match self.environment().get(name) {
             held @ Some(Object::NativeFunction(_)) => held,
-            Some(_) => None,
-            None => match self.globals().get(name) {
+            _ => match self.globals().get(name) {
                 held @ Some(Object::NativeFunction(_)) => held,
                 _ => None,
             },

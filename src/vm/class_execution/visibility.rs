@@ -2,9 +2,23 @@
 
 use super::*;
 
+/// The methods Ruby makes private whatever visibility is in force where
+/// they are defined, since they are only called from inside the object.
+const ALWAYS_PRIVATE_METHODS: [&str; 5] = [
+    "initialize",
+    "initialize_copy",
+    "initialize_dup",
+    "initialize_clone",
+    "respond_to_missing?",
+];
+
 /// Mark a freshly defined method with the visibility currently in force in
 /// the class body, as set by a bare `private` or `protected`.
 pub(crate) fn apply_current_visibility(class: &Rc<Class>, method_name: &str) {
+    if ALWAYS_PRIVATE_METHODS.contains(&method_name) {
+        class.set_method_private(method_name.to_string());
+        return;
+    }
     match class.current_visibility().as_str() {
         "private" => class.set_method_private(method_name.to_string()),
         "protected" => class.set_method_protected(method_name.to_string()),

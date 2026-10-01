@@ -122,8 +122,10 @@ impl VirtualMachine {
                     );
                     m.owner = Some(class.name().to_string());
                     m.owner_class = Some(Rc::clone(class));
+                    m.definee = Some(Rc::clone(class));
                     m.source_location = Some(self.source_location_for(*def_position));
                     self.warn_redefined_optimized_method(class.name(), method_name, *def_position)?;
+                    self.refuse_frozen_definee(class, *def_position)?;
                     class.define_method(method_name, Rc::new(m));
                     apply_current_visibility(class, method_name);
                     let hook = Self::method_added_hook_for(class);
@@ -217,6 +219,7 @@ impl VirtualMachine {
                     m.captured_nesting = self.snapshot_lexical_nesting();
                     m.owner = Some(class.name().to_string());
                     m.owner_class = Some(Rc::clone(class));
+                    m.definee = Some(Rc::clone(class));
                     let method = Rc::new(m);
                     if *is_class_method {
                         // def self.method_name — store as class method with __class__ prefix
@@ -233,6 +236,7 @@ impl VirtualMachine {
                             method_name,
                             *def_position,
                         )?;
+                        self.refuse_frozen_definee(class, *def_position)?;
                         class.define_method(method_name, method);
                         apply_current_visibility(class, method_name);
                         // A method defined in a `class << obj` body is a
@@ -501,11 +505,12 @@ impl VirtualMachine {
                         }
                     }
                 }
+                // `alias $new $old` names a global, wherever it is written.
                 Statement::Alias {
                     new_name,
                     old_name,
                     position: alias_pos,
-                } => {
+                } if !new_name.starts_with('$') => {
                     self.install_alias(class, new_name, old_name, *alias_pos)?;
                     let hook = Self::method_added_hook_for(class);
                     self.invoke_class_hook(class, hook, new_name, *alias_pos)?;
@@ -638,7 +643,7 @@ impl VirtualMachine {
                         for arg_expr in call_args {
                             define_args.push(self.evaluate_expression(arg_expr)?);
                         }
-                        self.pending_block = Some(self.evaluate_expression(block_expr)?);
+                        self.pending_block = Some(self.attach_trailing_block(block_expr)?);
                         self.pending_block_from_ampersand = false;
                         // The method stands where the call was written, not
                         // where the body it sits in opened.

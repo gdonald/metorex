@@ -6,6 +6,76 @@ class SocketError < StandardError; end
 
 # What every socket answers, whichever kind it is.
 class BasicSocket < IO
+  # Write all of `text`, waiting for room whenever the connection's buffer
+  # is full. The wait sleeps, so another thread runs meanwhile.
+  def __write_all__(command, text)
+    bytes = text.b
+    sent = 0
+    while sent < bytes.bytesize
+      # A piece at a time, since a socket takes only what its buffer holds
+      # and the rest would be handed over again on the next turn.
+      wrote = Socket.__net__(command, @handle, bytes.byteslice(sent, WRITE_PIECE), 0)
+      if wrote.zero?
+        sleep 0.001 until Socket.__net__("ready?", @handle, "", 1)
+      else
+        sent += wrote
+      end
+    end
+    text.bytesize
+  end
+  WRITE_PIECE = 65_536
+  private :__write_all__
+
+  # Write what fits without waiting, refusing only when nothing does.
+  def __send_now__(command, text)
+    wrote = Socket.__net__(command, @handle, text, 0)
+    raise Errno::EAGAIN, "sendmsg(2) would block" if wrote.zero?
+    wrote
+  end
+  private :__send_now__
+
+  # What a send writes: a String as it is, and anything else through
+  # `to_str`.
+  def self.message_text(message)
+    return message if message.is_a?(String)
+    unless message.respond_to?(:to_str)
+      named = message.nil? || message == true || message == false ? message.inspect : message.class
+      raise TypeError, "no implicit conversion of #{named} into String"
+    end
+    message.to_str
+  end
+
+  def sendmsg(message, flags = 0, destination = nil, *_controls)
+    send message, flags, destination
+  end
+
+  # A message, where it came from, and the flags it arrived with. A message
+  # read off a connection names no address, and a connection the other end
+  # has finished with answers nil.
+  def recvmsg(length = nil, flags = 0, _control_length = nil, scm_rights: false)
+    taken = begin
+      recv length, flags
+    rescue Errno::ENOTCONN
+      raise Errno::ENOTCONN, "recvmsg(2)"
+    end
+    return nil if taken.nil?
+    [taken, Addrinfo.empty(Socket::SOCK_STREAM), 0]
+  end
+
+  def recvmsg_nonblock(length = nil, flags = 0, control_length = nil, scm_rights: false,
+                       exception: true)
+    recvmsg length, flags.to_i | Socket::MSG_DONTWAIT, control_length, scm_rights: scm_rights
+  rescue Errno::EAGAIN
+    return :wait_readable unless exception
+    raise IO::EAGAINWaitReadable, "recvmsg(2) would block"
+  end
+
+  def sendmsg_nonblock(message, flags = 0, destination = nil, *controls, exception: true)
+    sendmsg message, flags.to_i | Socket::MSG_DONTWAIT, destination, *controls
+  rescue Errno::EAGAIN
+    return :wait_writable unless exception
+    raise IO::EAGAINWaitWritable, "sendmsg(2) would block"
+  end
   attr_reader :handle
 
   def initialize(handle)
@@ -158,29 +228,53 @@ class BasicSocket < IO
     Socket.sockaddr_in named[1], named[0]
   end
 
-  # Metorex keeps no options of its own on a socket, so what is set is what
-  # is read back.
-  # Change a setting on the socket itself, which the operating system keeps
-  # rather than the program.
-  # Change a setting on the socket itself. A socket that has no descriptor
-  # yet remembers what it was told until it has one.
-  def setsockopt(level, name = nil, value = nil)
+  # Change a setting on the socket itself. One argument is a
+  # Socket::Option, and three are a level, an option, and its value: an
+  # Integer or a boolean as a C int, and anything else as the bytes of the
+  # String it converts to. A socket that has no descriptor yet remembers
+  # what it was told until it has one.
+  def setsockopt(*arguments)
+    case arguments.size
+    when 1
+      held = arguments.first
+      held = Socket::Option.new(@socket_family || Socket::AF_INET, held.level, held.optname, held.data)
+    when 3
+      level, name, value = arguments
+      wanted = Socket::Option.level_number BasicSocket.option_part(level)
+      named = Socket::Option.option_number wanted, BasicSocket.option_part(name)
+      data = case value
+             when Integer then [value].pack("i")
+             when true then [1].pack("i")
+             when false then [0].pack("i")
+             else BasicSocket.message_text(value)
+             end
+      held = Socket::Option.new(@socket_family || Socket::AF_INET, wanted, named, data)
+    else
+      expected = arguments.empty? ? "1..3" : "3"
+      raise ArgumentError, "wrong number of arguments (given #{arguments.size}, expected #{expected})"
+    end
     @options = {} unless defined? @options
-    held = level.is_a?(Socket::Option) ? level : Socket::Option.new(0, level, name, value)
     @options[[held.level, held.optname]] = held
     apply_option held
     0
   end
 
-  # Put one setting on the socket itself. A setting the operating system
-  # refuses on a socket already bound is kept and put on the next one the
-  # program binds, which is where it would have taken effect anyway.
+  # A level or an option name as `setsockopt` takes it: a number, a Symbol,
+  # or a String as they are, something answering `to_str` through it, and
+  # anything else refused as a number would be.
+  def self.option_part(held)
+    return held if held.is_a?(Integer) || held.is_a?(Symbol) || held.is_a?(String)
+    return held.to_str if held.respond_to?(:to_str)
+    return held.to_int if held.respond_to?(:to_int)
+    raise TypeError, "no implicit conversion from nil to integer" if held.nil?
+    raise TypeError, "no implicit conversion of #{held.class} into Integer"
+  end
+
+  # Put one setting on the socket itself, once it has a descriptor.
   def apply_option(held)
     return if @handle.nil?
     Socket.__net__ "set_socket_option", @handle,
                    "#{held.level}/#{held.optname}/#{held.data}", 0
-  rescue Errno::EINVAL
-    raise unless @bound.nil?
   end
   private :apply_option
 
@@ -200,10 +294,10 @@ class BasicSocket < IO
     # A setting the program asked for that the operating system would not
     # take yet is what it reads back, since that is what the next socket
     # this one binds will carry.
-    kept = @options[[wanted, named]]
-    return kept if !kept.nil? && @bound.nil?
     unless @handle.nil?
-      held = Socket.__net__ "socket_option", @handle, "#{wanted}/#{named}", 4
+      # Room for the largest option, such as a linger struct, which the
+      # operating system cuts down to the size it fills.
+      held = Socket.__net__ "socket_option", @handle, "#{wanted}/#{named}", 256
       return Socket::Option.new(@socket_family || Socket::AF_INET, wanted, named, held)
     end
     @options[[wanted, named]] || Socket::Option.new(0, wanted, named, "\x00\x00\x00\x00")
@@ -336,7 +430,7 @@ class BasicSocket < IO
   # socket this program opened, and both objects then work the same one.
   def self.for_fd(number)
     handle = Socket.__net__ "handle_of_fd", 0, "", number.to_i
-    raise Errno::EBADF, "Bad file descriptor - fstat(2)" if handle.nil?
+    raise Errno::EBADF, "fstat(2)" if handle.nil?
     held = allocate
     held.__send__ :__share_handle__, handle
     held
@@ -422,6 +516,14 @@ class Socket < BasicSocket
     IPPROTO_UDP = Socket.__number__("IPPROTO_UDP", 17)
     IPPROTO_IPV6 = Socket.__number__("IPPROTO_IPV6", 41)
     IPPROTO_RAW = Socket.__number__("IPPROTO_RAW", 255)
+    # The protocols only some platforms name are defined where they do.
+    %w[IPPROTO_AH IPPROTO_DSTOPTS IPPROTO_EGP IPPROTO_EON IPPROTO_ESP IPPROTO_FRAGMENT
+       IPPROTO_GGP IPPROTO_HELLO IPPROTO_HOPOPTS IPPROTO_ICMPV6 IPPROTO_IDP IPPROTO_IGMP
+       IPPROTO_MAX IPPROTO_ND IPPROTO_NONE IPPROTO_PUP IPPROTO_ROUTING IPPROTO_TP
+       IPPROTO_XTP].each do |named|
+      found = Socket.__net__ "constant", 0, named, 0
+      const_set named, found unless found.nil?
+    end
 
     SOL_SOCKET = Socket.__number__("SOL_SOCKET", 0xffff)
     SO_DEBUG = Socket.__number__("SO_DEBUG", 0x0001)
@@ -760,6 +862,23 @@ class Addrinfo
     held
   end
 
+  # The address a message read off a connection is reported from, which
+  # names no family and no address at all.
+  def self.empty(socktype)
+    held = allocate
+    held.send :fill_empty, socktype
+    held
+  end
+
+  def fill_empty(socktype)
+    @afamily = Socket::AF_UNSPEC
+    @pfamily = 0
+    @socktype = socktype
+    @protocol = 0
+    @empty = true
+  end
+  private :fill_empty
+
   def self.foreach(host, port, family = nil, socktype = nil, protocol = nil, flags = nil, &block)
     Addrinfo.getaddrinfo(host, port, family, socktype, protocol, flags).each(&block)
   end
@@ -781,7 +900,12 @@ class Addrinfo
   # An Addrinfo built from the struct the operating system uses.
   def initialize(sockaddr, family = nil, socktype = nil, protocol = nil)
     if sockaddr.is_a? Array
-      fill_from_array sockaddr, socktype, protocol
+      fill_from_array sockaddr, family, socktype, protocol
+      return
+    end
+    if sockaddr.to_s.start_with? Socket.__unix_header__
+      fill_unix Socket.unpack_sockaddr_un(sockaddr.to_s), socktype.nil? ? 0 : Socket.socktype_numbered(Socket.named_part(socktype))
+      @pfamily = family.nil? ? Socket::PF_UNSPEC : Socket.family_numbered(Socket.named_part(family))
       return
     end
     address, port = Socket.__address__ "unpack", sockaddr.to_s, 0
@@ -937,11 +1061,14 @@ class Addrinfo
   end
 
   def inspect
+    return "#<Addrinfo: empty-sockaddr #{socktype_name}>" if @empty
     if unix?
       shown = @address.start_with?("/") ? @address : "UNIX #{@address}"
+      return "#<Addrinfo: #{shown}>" if @socktype.zero?
       return "#<Addrinfo: #{shown} #{socktype_name}>"
     end
-    "#<Addrinfo: #{shown_address}#{shown_protocol}>"
+    named = @inspected_name.nil? ? "" : " (#{@inspected_name})"
+    "#<Addrinfo: #{shown_address}#{shown_protocol}#{named}>"
   end
 
   def inspect_sockaddr
@@ -1146,13 +1273,39 @@ class Addrinfo
     self
   end
 
-  def fill_from_array(held, socktype, protocol)
-    named = held[0].to_s
-    if named == "AF_UNIX"
-      return fill_unix(held[1].to_s, socktype.nil? ? Socket::SOCK_STREAM : socktype)
-    end
-    fill_ip held[3] || held[2], held[1], socktype.nil? ? 0 : socktype,
-            protocol.nil? ? 0 : protocol
+  # An address written as the array `IPSocket#addr` answers: the family, the
+  # port, the name, and the numeric address. It is checked the way Ruby
+  # checks it, by asking the resolver with the address and the port marked
+  # numeric and the family, socket type, and protocol as hints. A socket
+  # type of 0 is asked as SOCK_DGRAM, and the address keeps the socket type
+  # and the protocol it was given.
+  def fill_from_array(held, family, socktype, protocol)
+    named = BasicSocket.message_text(held[0])
+    numbered = Socket.const_get(named.start_with?("AF_") ? named : "AF_#{named}") rescue nil
+    raise SocketError, "unknown address family: #{named}" unless numbered.is_a?(Integer)
+    return fill_unix(BasicSocket.message_text(held[1]), Socket::SOCK_STREAM) if numbered == Socket::AF_UNIX
+    raise SocketError, "unexpected address family" unless [Socket::AF_INET, Socket::AF_INET6].include?(numbered)
+    port = Socket.integer_part held[1]
+    written = BasicSocket.message_text(held[3])
+    # Ruby reads an empty host and `<any>` as the address that means every
+    # one, and `<broadcast>` as the broadcast address.
+    node = case written
+           when "", "<any>" then "0.0.0.0"
+           when "<broadcast>" then "255.255.255.255"
+           else written
+           end
+    name = held[2].nil? ? nil : BasicSocket.message_text(held[2])
+    asked_family = family.nil? ? 0 : Socket.family_numbered(Socket.named_part(family))
+    asked_family = numbered if asked_family.zero?
+    given_type = socktype.nil? ? 0 : Socket.socktype_numbered(Socket.named_part(socktype))
+    given_protocol = protocol.nil? ? 0 : Socket.integer_part(protocol)
+    asked_type = given_type.zero? ? Socket::SOCK_DGRAM : given_type
+    found = Socket.__net__ "numeric_addrinfo", 0, "#{node}\0#{asked_family}\0#{asked_type}\0#{given_protocol}", port
+    raise Socket::ResolutionError.new("getaddrinfo: #{found[1]}", found[0]) if found.size == 2
+    fill_ip found[3], found[4], given_type, given_protocol
+    @afamily = found[0]
+    @pfamily = asked_family
+    @inspected_name = name unless name == written
   end
 
   private :fill_ip, :fill_unix, :fill_from_array
@@ -1166,7 +1319,7 @@ class Addrinfo
   # An address written the way it is shown, with an IPv6 one in brackets so
   # the colon before the port reads as a separator.
   def shown_address
-    return @address if @port.nil?
+    return @address if @port.nil? || @port.zero?
     ipv6? ? "[#{@address}]:#{@port}" : "#{@address}:#{@port}"
   end
 
@@ -1324,8 +1477,13 @@ class TCPSocket < IPSocket
 
   # A connection the other end has finished with hands back nothing at all
   # rather than an empty string.
-  def recv(length = nil, _flags = nil, buffer = nil)
-    held = read length
+  def recv(length = nil, flags = nil, buffer = nil)
+    held = if flags.to_i.zero?
+             read length
+           else
+             raise IOError, "closed stream" if closed? || read_closed?
+             Socket.__net__("recv_flags", @handle, flags.to_i.to_s, length.nil? ? 0 : length.to_i)
+           end
     return nil if held.empty?
     return held if buffer.nil?
     tagged = buffer.encoding
@@ -1344,9 +1502,9 @@ class TCPSocket < IPSocket
     begin
       raise IOError, "closed stream" if closed? || read_closed?
       held = read_without_waiting length
-    rescue Errno::EAGAIN, Errno::EWOULDBLOCK => trouble
+    rescue Errno::EAGAIN, Errno::EWOULDBLOCK
       return :wait_readable unless exception
-      raise IO::EAGAINWaitReadable, trouble.message
+      raise IO::EAGAINWaitReadable, "recvfrom(2) would block"
     end
     return nil if held.empty?
     return held if buffer.nil?
@@ -1402,8 +1560,9 @@ class TCPSocket < IPSocket
   end
 
   def write(text)
-    Socket.__net__ "write", @handle, text.to_s, 0
+    __write_all__ "write", text.to_s
   end
+
 
   # Read what has arrived over the connection, paired with where the other
   # end sits. A buffer handed in takes the place of its own characters.
@@ -1484,7 +1643,7 @@ class TCPServer < BasicSocket
     handle = Socket.__net__ "accept_now", @handle, "", 0
     if handle.nil?
       return :wait_readable unless exception
-      raise IO::EAGAINWaitReadable, "Resource temporarily unavailable - accept(2) would block"
+      raise IO::EAGAINWaitReadable, "accept(2) would block"
     end
     TCPSocket.new handle
   end
@@ -1590,13 +1749,7 @@ class UNIXSocket < BasicSocket
 
   # Two ends already joined to each other, neither of which carries a name.
   def self.pair(_socktype = nil, _protocol = 0)
-    path = "#{Dir.tmpdir}/metorex_pair_#{Process.pid}_#{rand 1_000_000}.sock"
-    server = UNIXServer.new path
-    first = UNIXSocket.new path
-    second = server.accept
-    server.close
-    File.delete path if File.exist? path
-    [first.__unname__, second.__unname__]
+    Socket.__net__("unix_pair", 0, "", 0).map { |handle| UNIXSocket.new(handle).__unname__ }
   end
 
   class << self
@@ -1622,10 +1775,11 @@ class UNIXSocket < BasicSocket
   end
 
   def write(text)
-    Socket.__net__ "unix_write", @handle, text.to_s, 0
+    __write_all__ "unix_write", text.to_s
   end
 
-  def send(message, _flags = 0, _destination = nil)
+  def send(message, flags = 0, _destination = nil)
+    return __send_now__("unix_write", message.to_s) if flags.to_i & Socket::MSG_DONTWAIT != 0
     write message
   end
 
@@ -1793,7 +1947,7 @@ class UNIXServer < UNIXSocket
     handle = Socket.__net__ "unix_accept_now", @handle, "", 0
     if handle.nil?
       return :wait_readable unless exception
-      raise IO::EAGAINWaitReadable, "Resource temporarily unavailable - accept(2) would block"
+      raise IO::EAGAINWaitReadable, "accept(2) would block"
     end
     UNIXSocket.new handle
   end
@@ -1830,12 +1984,18 @@ end
 
 # A socket that sends each message on its own rather than over a connection.
 class UDPSocket < IPSocket
+  # A message and where it came from.
+  def recvmsg(length = nil, flags = 0, _control_length = nil, scm_rights: false)
+    held = Socket.__net__ "udp_receive", @handle, flags.to_i.to_s, length.nil? ? 0 : length.to_i
+    [held[0], Addrinfo.udp(held[1], held[2]), 0]
+  end
+
   def initialize(family = nil)
     @family = family.nil? ? Socket::AF_INET : Socket.family_numbered(family)
     unless [Socket::AF_INET, Socket::AF_INET6].include? @family
-      raise Errno::EAFNOSUPPORT, "Address family not supported by protocol family - socket(2)"
+      raise Errno::EAFNOSUPPORT, "socket(2)"
     end
-    super Socket.__net__("udp_open", 0, @family == Socket::AF_INET6 ? "::" : "0.0.0.0", 0)
+    super Socket.__net__("udp_fresh", 0, @family == Socket::AF_INET6 ? "6" : "4", 0)
   end
 
   # Where this end sits, and where the other end does, as a socket carrying
@@ -1873,8 +2033,7 @@ class UDPSocket < IPSocket
   # A socket may be bound to a name and a port of its own before it sends.
   def bind(host, port)
     raise Errno::EINVAL, "bind(2) for #{host.to_s.inspect} port #{port}" if @bound
-    Socket.__net__ "close", @handle, "", 0
-    @handle = Socket.__net__ "udp_open", 0, Socket.resolved(host).first, Socket.port_number(port)
+    Socket.__net__ "bind_on", @handle, Socket.resolved(host).first, Socket.port_number(port)
     @bound = true
     0
   end
@@ -1892,10 +2051,21 @@ class UDPSocket < IPSocket
   end
 
   def send(message, _flags = 0, host = nil, port = nil)
+    message = BasicSocket.message_text(message)
+    # A message sent to a host goes there alone, leaving the socket joined
+    # to whatever it was joined to before.
     unless host.nil?
-      Socket.__net__ "udp_connect", @handle, Socket.resolved(host).first, port.to_i
+      # Three arguments name the destination as a packed address or an
+      # Addrinfo, and four name it by host and port.
+      if port.nil?
+        packed = host.is_a?(Addrinfo) ? host.to_sockaddr : host
+        port, address = Socket.unpack_sockaddr_in packed
+      else
+        address = Socket.resolved(host).first
+      end
+      return Socket.__net__("udp_send_to", @handle, "#{address}\0#{message}", port.to_i)
     end
-    Socket.__net__ "udp_send", @handle, message.to_s, 0
+    Socket.__net__ "udp_send", @handle, message, 0
   end
 
   def write(message)
@@ -1919,9 +2089,9 @@ class UDPSocket < IPSocket
   def recvfrom_nonblock(length = nil, flags = 0, buffer = nil, exception: true)
     begin
       recvfrom length, flags.to_i | Socket::MSG_DONTWAIT, buffer
-    rescue Errno::EAGAIN, Errno::EWOULDBLOCK => trouble
+    rescue Errno::EAGAIN, Errno::EWOULDBLOCK
       return :wait_readable unless exception
-      raise IO::EAGAINWaitReadable, trouble.message
+      raise IO::EAGAINWaitReadable, "recvfrom(2) would block"
     end
   end
   alias_method :recv_nonblock, :recv
@@ -2134,11 +2304,15 @@ class Socket
     # it has a descriptor of its own before it is bound to anything. The
     # address it starts on decides which family it belongs to, which is what
     # lets it reach an address of that family later.
+    # A stream socket in an internet family holds a descriptor from the
+    # start too, so its settings can be read and changed before it is
+    # bound or connected.
     @handle = if datagram? && @socket_family == Socket::AF_UNIX
                 Socket.__net__("unix_dgram_open", 0, "", 0)
               elsif datagram?
-                Socket.__net__("udp_open", 0,
-                               @socket_family == Socket::AF_INET6 ? "::" : "0.0.0.0", 0)
+                Socket.__net__("udp_fresh", 0, @socket_family == Socket::AF_INET6 ? "6" : "4", 0)
+              elsif [Socket::AF_INET, Socket::AF_INET6].include?(@socket_family)
+                Socket.__net__("tcp_open", 0, @socket_family == Socket::AF_INET6 ? "6" : "4", 0)
               end
   end
 
@@ -2216,7 +2390,7 @@ class Socket
   def bind(sockaddr)
     # A socket is bound once. Binding a second time is what the operating
     # system reports as an invalid argument.
-    raise Errno::EINVAL, "Invalid argument - bind(2)" unless @bound.nil?
+    raise Errno::EINVAL, "bind(2)" unless @bound.nil?
     # A socket in the UNIX family is bound to a path rather than to a name
     # and a port.
     if @socket_family == Socket::AF_UNIX
@@ -2234,6 +2408,12 @@ class Socket
       return 0
     end
     port, address = Socket.unpack_sockaddr_in sockaddr
+    unless @handle.nil?
+      Socket.__net__ "bind_on", @handle, address, port
+      @bound = [address, port]
+      apply_options
+      return 0
+    end
     taken = if datagram?
               Socket.__net__ "udp_open", 0, address, port
             else
@@ -2257,12 +2437,58 @@ class Socket
     else
       # A connection is made once. Asking for a second one on the same
       # socket is what the operating system reports as already connected.
-      raise Errno::EISCONN, "Socket is already connected - connect(2)" if @connected
-      @handle = Socket.__net__ "connect", 0, address, port
+      raise Errno::EISCONN, "connect(2) for #{address}:#{port}" if @connected
+      if @handle.nil?
+        @handle = Socket.__net__ "connect", 0, address, port
+      elsif timeout.nil?
+        Socket.__net__ "connect_on", @handle, address, port
+      else
+        connect_within timeout, address, port
+      end
       @connected = true
       @connected_to = [address, port]
     end
     0
+  end
+
+  # Connect, giving up with IO::TimeoutError once `limit` seconds pass.
+  def connect_within(limit, address, port)
+    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + limit
+    while Socket.__net__("connect_now", @handle, address, port) == 1
+      if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+        raise IO::TimeoutError, "user specified timeout for #{address}:#{port}"
+      end
+      sleep 0.001
+    end
+  end
+  private :connect_within
+
+  # One try at connecting without waiting. A connection still under way is
+  # reported by an exception, or by `:wait_writable` when exceptions are
+  # turned off, and a socket already connected is told so.
+  def connect_nonblock(sockaddr, exception: true)
+    sockaddr = sockaddr.to_sockaddr if sockaddr.is_a?(Addrinfo)
+    sockaddr = BasicSocket.message_text(sockaddr)
+    return connect(sockaddr) if datagram? || @handle.nil?
+    port, address = Socket.unpack_sockaddr_in sockaddr
+    if @connected
+      return 0 unless exception
+      raise Errno::EISCONN, "connect(2) for #{address}:#{port}"
+    end
+    case Socket.__net__("connect_now", @handle, address, port)
+    when 0
+      @connected = true
+      @connected_to = [address, port]
+      0
+    when 1
+      return :wait_writable unless exception
+      raise IO::EINPROGRESSWaitWritable, "connect(2) would block"
+    else
+      @connected = true
+      @connected_to = [address, port]
+      return 0 unless exception
+      raise Errno::EISCONN, "connect(2) for #{address}:#{port}"
+    end
   end
 
   # Say how many connections may be waiting to be taken. A socket carrying
@@ -2270,7 +2496,7 @@ class Socket
   def listen(backlog = 5)
     wanted = Socket.integer_part backlog
     if datagram?
-      raise Errno::EOPNOTSUPP, "Operation not supported on socket - listen(2)"
+      raise Errno::EOPNOTSUPP, "listen(2)"
     end
     raise ArgumentError, "negative backlog" if wanted.negative?
     Socket.__net__ "listen_on", @handle, "", wanted
@@ -2283,12 +2509,16 @@ class Socket
   # is reached over the loopback. The address names no protocol of its own,
   # which is what Ruby reports for one read back off a socket.
   def connect_address
-    raise SocketError, "getnameinfo: ai_family not supported" if @bound.nil?
     if @socket_family == Socket::AF_UNIX
+      raise SocketError, "getnameinfo: ai_family not supported" if @bound.nil?
       return Addrinfo.unix(@bound.first, @socket_type)
     end
-    named = Socket.__net__(datagram? ? "udp_address" : "address", @handle, "", 0)
-    raise SocketError, "getnameinfo: ai_family not supported" if named.nil?
+    # A socket that listens without being bound is given a port by the
+    # operating system, which is where it is reached.
+    named = @handle.nil? ? nil : Socket.__net__(datagram? ? "udp_address" : "address", @handle, "", 0)
+    if named.nil? || named[1].zero?
+      raise SocketError, "unbound #{@socket_family == Socket::AF_INET6 ? "IPv6" : "IPv4"} socket"
+    end
     address = named[0]
     address = "127.0.0.1" if address == "0.0.0.0"
     address = "::1" if address == "::"
@@ -2300,7 +2530,7 @@ class Socket
   def accept
     raise IOError, "closed stream" if closed?
     if @handle.nil? || (!@bound.nil? && !@listening)
-      raise Errno::EINVAL, "Invalid argument - accept(2)"
+      raise Errno::EINVAL, "accept(2)"
     end
     handle = Socket.__net__ accept_action, @handle, "", 0
     taken = Socket.new @socket_family, @socket_type
@@ -2319,7 +2549,7 @@ class Socket
   # is what the system call says rather than waiting for one.
   def __refuse_unless_listening__
     return if @listening
-    raise Errno::EINVAL, "Invalid argument - accept(2)"
+    raise Errno::EINVAL, "accept(2)"
   end
   private :__refuse_unless_listening__
 
@@ -2341,12 +2571,12 @@ class Socket
     # A socket nothing is listening on has no connections to take, which is
     # what the operating system reports as an invalid argument.
     if @handle.nil? || (!@bound.nil? && !@listening)
-      raise Errno::EINVAL, "Invalid argument - accept(2)"
+      raise Errno::EINVAL, "accept(2)"
     end
     handle = Socket.__net__ unix? ? "unix_accept_now" : "accept_now", @handle, "", 0
     if handle.nil?
       return :wait_readable unless exception
-      raise IO::EAGAINWaitReadable, "Resource temporarily unavailable - accept(2) would block"
+      raise IO::EAGAINWaitReadable, "accept(2) would block"
     end
     taken = Socket.new @socket_family, @socket_type
     taken.__send__ :__take_handle__, handle
@@ -2371,37 +2601,31 @@ class Socket
   # so anything named after the destination is not sent.
   def sendmsg(message, flags = 0, destination = nil, *_controls)
     if destination.nil? && datagram? && @connected_to.nil?
-      raise Errno::EDESTADDRREQ, "Destination address required - sendmsg(2)"
+      raise Errno::EDESTADDRREQ, "sendmsg(2)"
     end
     named = destination.is_a?(Addrinfo) ? destination.to_sockaddr : destination
     send message, flags, named
   end
 
-  def sendmsg_nonblock(message, flags = 0, destination = nil, *controls, exception: true)
-    begin
-      sendmsg message, flags.to_i | Socket::MSG_DONTWAIT, destination, *controls
-    rescue Errno::EAGAIN, Errno::EWOULDBLOCK => trouble
-      return :wait_writable unless exception
-      raise IO::EAGAINWaitWritable, trouble.message
-    end
-  end
-
-  def send(message, _flags = 0, destination = nil)
-    # A socket named by a path carries no address to send to, so a
-    # destination given to one is the path it is already joined to.
-    if !destination.nil? && !unix?
-      port, address = Socket.unpack_sockaddr_in destination
-      @handle = Socket.__net__("udp_open", 0, "0.0.0.0", 0) if @handle.nil?
-      Socket.__net__ "udp_connect", @handle, address, port
-      @connected_to = [address, port]
-    end
+  def send(message, flags = 0, destination = nil)
+    message = BasicSocket.message_text(message)
+    destination = destination.to_sockaddr if destination.is_a?(Addrinfo)
     if unix? && datagram?
       path = destination.nil? ? "" : Socket.unpack_sockaddr_un(destination)
       return Socket.__net__("unix_dgram_send", @handle, "#{path}\0#{message}", 0)
     end
-    return Socket.__net__("udp_send", @handle, message.to_s, 0) if datagram?
-    return Socket.__net__("unix_write", @handle, message.to_s, 0) if unix?
-    Socket.__net__ "write", @handle, message.to_s, 0
+    # A datagram sent to an address goes there alone, leaving the socket
+    # joined to whatever it was joined to before.
+    if datagram? && !destination.nil?
+      port, address = Socket.unpack_sockaddr_in destination
+      return Socket.__net__("udp_send_to", @handle, "#{address}\0#{message}", port)
+    end
+    return Socket.__net__("udp_send", @handle, message, 0) if datagram?
+    command = unix? ? "unix_write" : "write"
+    # Told not to wait, a send writes what fits and refuses only when
+    # nothing does.
+    return __send_now__(command, message.to_s) if flags.to_i & Socket::MSG_DONTWAIT != 0
+    __write_all__ command, message.to_s
   end
 
   # Whether this socket is named by a path in the file system rather than by
@@ -2424,8 +2648,14 @@ class Socket
         # A connection the other end has finished with hands back nothing
         # at all rather than an empty string.
         raise Errno::ENOTCONN, "socket is not connected" if @handle.nil?
-        taken = Socket.__net__(unix? ? "unix_read" : "read", @handle, "",
-                               length.nil? ? 0 : length.to_i)
+        wanted = length.nil? ? 0 : length.to_i
+        taken = if unix?
+                  Socket.__net__("unix_read", @handle, flags.to_i.to_s, wanted)
+                elsif flags.to_i.zero?
+                  Socket.__net__("read", @handle, "", wanted)
+                else
+                  Socket.__net__("recv_flags", @handle, flags.to_i.to_s, wanted)
+                end
         return nil if taken.empty?
         taken
       end
@@ -2477,9 +2707,9 @@ class Socket
   def recv_nonblock(length = nil, flags = 0, buffer = nil, exception: true)
     begin
       held = recv length, flags.to_i | Socket::MSG_DONTWAIT, nil
-    rescue Errno::EAGAIN, Errno::EWOULDBLOCK => trouble
+    rescue Errno::EAGAIN, Errno::EWOULDBLOCK
       return :wait_readable unless exception
-      raise IO::EAGAINWaitReadable, trouble.message
+      raise IO::EAGAINWaitReadable, "recvfrom(2) would block"
     end
     return held if buffer.nil?
     # The buffer keeps the encoding it was tagged with, since what arrived
@@ -2500,6 +2730,13 @@ class Socket
   def write_nonblock(text, exception: true)
     self.nonblock = true unless RUBY_PLATFORM.include? "linux"
     write text
+  end
+
+  # A message carried on its own names where it came from.
+  def recvmsg(length = nil, flags = 0, control_length = nil, scm_rights: false)
+    return super unless datagram? && !unix?
+    held = Socket.__net__ "udp_receive", @handle, flags.to_i.to_s, length.nil? ? 0 : length.to_i
+    [held[0], Addrinfo.udp(held[1], held[2]), 0]
   end
 
   # Read a message, saying where it came from as an address rather than as
@@ -2524,9 +2761,9 @@ class Socket
   def recvfrom_nonblock(length = nil, flags = 0, buffer = nil, exception: true)
     begin
       recvfrom length, flags.to_i | Socket::MSG_DONTWAIT, buffer
-    rescue Errno::EAGAIN, Errno::EWOULDBLOCK => trouble
+    rescue Errno::EAGAIN, Errno::EWOULDBLOCK
       return :wait_readable unless exception
-      raise IO::EAGAINWaitReadable, trouble.message
+      raise IO::EAGAINWaitReadable, "recvfrom(2) would block"
     end
   end
 
@@ -2563,24 +2800,17 @@ class Socket
     @handle.nil? ? -1 : Socket.__net__("fileno", @handle, "", 0)
   end
 
-  # Two sockets already joined to each other, which is what `pair` gives.
   # Two sockets already joined to each other. A pair in the UNIX family is
-  # made through a name in the file system that is removed straight away, so
-  # neither end carries a name of its own.
+  # made by `socketpair`, so neither end carries a name of its own.
   def self.pair(family = nil, socktype = nil, protocol = 0)
     numbered = family.nil? ? Socket::AF_INET : Socket.family_numbered(Socket.named_part(family))
     Socket.socktype_numbered Socket.named_part(socktype) unless socktype.nil?
     if numbered == Socket::AF_UNIX
-      path = "#{Dir.tmpdir}/metorex_pair_#{Process.pid}_#{rand 1_000_000}.sock"
-      listener = Socket.unix_server_socket path
-      begin
-        first = Socket.unix path
-        second, = listener.accept
-      ensure
-        listener.close unless listener.closed?
-        File.delete path if File.exist? path
+      return Socket.__net__("unix_pair", 0, "", 0).map do |handle|
+        made = Socket.new :UNIX, :STREAM
+        made.__send__ :__take_handle__, handle
+        made
       end
-      return [first, second]
     end
     listener = Socket.__net__ "listen", 0, "127.0.0.1", 0
     named = Socket.__net__ "address", listener, "", 0
@@ -2732,9 +2962,11 @@ class Socket
   # Reach a server over a connection, binding this end to a name of its own
   # when one is asked for.
   def self.tcp(host, port, local_host = nil, local_port = nil, connect_timeout: nil)
-    held = Socket.new :INET, :STREAM
+    # The socket is opened in the family of the address it reaches.
+    remote = Socket.resolved(host).first
+    held = Socket.new remote.include?(":") ? :INET6 : :INET, :STREAM
     held.bind Socket.sockaddr_in(local_port.to_i, local_host) unless local_host.nil?
-    held.connect Socket.sockaddr_in(port, host)
+    held.connect Socket.sockaddr_in(port, remote)
     return held unless block_given?
     begin
       yield held
@@ -2846,6 +3078,9 @@ class Socket
 
   # Take up a handle the operating system already holds open.
   def __take_handle__(handle)
+    # The descriptor this socket opened when it was made is let go, since
+    # the one taken up stands in its place.
+    Socket.__net__("close", @handle, "", 0) unless @handle.nil? || @handle == handle
     @handle = handle
     self
   end
@@ -2891,8 +3126,9 @@ class Socket
   # it opens for the address asked for.
   def self.tcp_server_sockets(host = nil, port = nil, &block)
     host, port = nil, host if port.nil?
-    held = Socket.new :INET, :STREAM
-    held.bind Socket.sockaddr_in(port.nil? ? 0 : port, host)
+    local = host.nil? ? nil : Socket.resolved(host).first
+    held = Socket.new local.to_s.include?(":") ? :INET6 : :INET, :STREAM
+    held.bind Socket.sockaddr_in(port.nil? ? 0 : port, local)
     held.listen 5
     sockets_opened_for [held], &block
   end

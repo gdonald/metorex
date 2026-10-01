@@ -33,7 +33,7 @@ impl VirtualMachine {
         // supplied, and it is evaluated once no matter which branch below
         // ends up reaching the parent method.
         let super_block = match trailing_block {
-            Some(block) => Some(self.evaluate_expression(block)?),
+            Some(block) => Some(self.attach_trailing_block(block)?),
             // With no block of its own, `super` hands the parent the block
             // this method was called with.
             None => self
@@ -43,7 +43,14 @@ impl VirtualMachine {
         };
         // Get the current method name from the call stack.
         // The call stack stores method names as "Class#method".
-        let current_frame = self.get_current_method_name().ok_or_else(|| {
+        // A block names the method it was written in, whichever method is
+        // running it, and `super` there reaches that method's parent.
+        let current_frame = match self.call_stack.last() {
+            Some(top) if top.block_depth() > 0 => top.written_in().map(str::to_string),
+            Some(top) => Some(top.name().to_string()),
+            None => None,
+        }
+        .ok_or_else(|| {
             MetorexError::runtime_error(
                 "super called outside of a method context".to_string(),
                 position_to_location(position),
@@ -83,12 +90,19 @@ impl VirtualMachine {
                 unreachable!("the match above admits only classes and modules")
             };
             let self_class = Rc::clone(self_class);
-            let evaluated_args = self.super_arguments(arguments, forward_args, &super_block)?;
+            let evaluated_args =
+                self.super_arguments(arguments, forward_args, &super_block, position)?;
             // A module extended with another module reaches that module's
             // copy through `super`: the extended copy sits just above the
-            // receiver's own module-level method in the singleton chain.
+            // receiver's own module-level method in the singleton chain. The
+            // copy's own `super` goes on past it, below.
+            let running_owner = self.method_owner_stack.last().cloned().flatten();
             if let Some(Object::Method(extended)) =
                 self_class.get_class_var(&format!("__ext__{}", method_name))
+                && !self
+                    .method_running_stack
+                    .last()
+                    .is_some_and(|running| Rc::ptr_eq(running, &extended))
             {
                 return self.invoke_method(
                     Rc::clone(&self_class),
@@ -97,6 +111,31 @@ impl VirtualMachine {
                     evaluated_args,
                     position,
                 );
+            }
+            // A method written in a module a class extended sits among the
+            // class's singleton ancestors, and `super` there reaches the next
+            // one of them that defines the method.
+            let mut holder = Some(Rc::clone(&self_class));
+            while let (Some(owner), Some(class)) = (&running_owner, holder.clone()) {
+                if let Some(singleton) = class.singleton_class_slot().clone() {
+                    let chain = walk_ancestors(&singleton);
+                    if let Some(at) = chain.iter().position(|held| Rc::ptr_eq(held, owner)) {
+                        if let Some((next, method)) = chain.iter().skip(at + 1).find_map(|held| {
+                            held.find_own_method(&method_name)
+                                .map(|method| (Rc::clone(held), method))
+                        }) {
+                            return self.invoke_method(
+                                next,
+                                method,
+                                self_object,
+                                evaluated_args,
+                                position,
+                            );
+                        }
+                        break;
+                    }
+                }
+                holder = class.superclass();
             }
             let class_method_key = format!("__class__{}", method_name);
             let mut current = self_class.superclass();
@@ -171,7 +210,7 @@ impl VirtualMachine {
                     return Ok(Object::Nil);
                 }
                 let evaluated_args = if forward_args {
-                    self.method_arg_stack.last().cloned().unwrap_or_default()
+                    self.implicit_super_arguments(position)?
                 } else {
                     self.evaluate_arguments(arguments)?
                 };
@@ -277,8 +316,14 @@ impl VirtualMachine {
             found
         };
         if let Some((owner, method)) = next_in_chain {
-            let evaluated_args = self.super_arguments(arguments, forward_args, &super_block)?;
+            let evaluated_args =
+                self.super_arguments(arguments, forward_args, &super_block, position)?;
             drop(instance_borrowed);
+            // An ancestor that undefined the method ends the search there.
+            if method.is_undefined {
+                let self_val = Object::Instance(Rc::clone(&instance));
+                return self.super_finds_nothing(&self_val, &method_name, evaluated_args, position);
+            }
             return self.invoke_method(
                 owner,
                 method,
@@ -312,25 +357,12 @@ impl VirtualMachine {
                     let evaluated_args = self.evaluate_arguments(arguments)?;
                     return self.super_initialize(&evaluated_args, position);
                 }
-                // A prepended module whose class does not define the method
-                // has nothing left above it, which Ruby reports as a
-                // NoMethodError naming the method.
-                let self_val = self.environment().get("self").unwrap_or(Object::Nil);
-                let message = format!(
-                    "super: no superclass method '{}' for an instance of {}",
-                    method_name,
-                    self.builtins().class_of(&self_val).name()
-                );
-                return Err(MetorexError::UncaughtException {
-                    exception: crate::vm::errors::no_method_error(
-                        &message,
-                        &method_name,
-                        &self_val,
-                        &[],
-                    ),
-                    location: position_to_location(position),
-                    message,
-                });
+                // A module has no superclass of its own, so what answers
+                // next is what every object answers.
+                drop(instance_borrowed);
+                let evaluated_args =
+                    self.super_arguments(arguments, forward_args, &super_block, position)?;
+                return self.super_past_every_ancestor(&method_name, evaluated_args, position);
             }
         };
 
@@ -359,92 +391,16 @@ impl VirtualMachine {
                 // that overrides one (a `def load` calling `super`) has to
                 // reach them here.
                 drop(instance_borrowed);
-                let evaluated_args = self.super_arguments(arguments, forward_args, &super_block)?;
-                let self_val = self.environment().get("self").unwrap_or(Object::Nil);
-                if let Some(result) =
-                    self.call_object_method(&self_val, &method_name, &evaluated_args, position)?
-                {
-                    return Ok(result);
-                }
-                if matches!(
-                    self.globals().get(&method_name),
-                    Some(Object::NativeFunction(_))
-                ) {
-                    return self.call_native_function(&method_name, evaluated_args, position);
-                }
-                // `super` from an override of `method_missing` reaches
-                // BasicObject's, whose whole job is to raise NoMethodError
-                // naming the method that was called.
-                if method_name == "method_missing" {
-                    let missing = match evaluated_args.first() {
-                        Some(Object::Symbol(name)) => name.as_str().to_string(),
-                        Some(Object::String(name)) => name.as_str().to_string(),
-                        Some(other) => other.to_string(),
-                        None => "method_missing".to_string(),
-                    };
-                    let message = format!(
-                        "undefined method '{}' for an instance of {}",
-                        missing,
-                        self.builtins().class_of(&self_val).name()
-                    );
-                    return Err(MetorexError::UncaughtException {
-                        exception: crate::vm::errors::no_method_error(
-                            &message,
-                            &missing,
-                            &self_val,
-                            evaluated_args.get(1..).unwrap_or(&[]),
-                        ),
-                        location: position_to_location(position),
-                        message,
-                    });
-                }
-                // `super` from an `initialize` that nothing above defines
-                // reaches Object's, which takes no arguments and does
-                // nothing at all.
-                if method_name == "initialize" {
-                    return self.super_initialize(&evaluated_args, position);
-                }
-                // A collection the program subclassed answers the methods of
-                // the collection it is backed by, and those live in the
-                // native table rather than in any method map above. Only an
-                // instance is backed that way, and a class reaching its own
-                // native method through here would find this same method
-                // again.
-                let backing = self.builtins().class_of(&self_val);
-                if matches!(self_val, Object::Instance(_))
-                    && let Some(result) = self.call_native_method(
-                        backing.as_ref(),
-                        &self_val,
-                        &method_name,
-                        &evaluated_args,
-                        position,
-                    )?
-                {
-                    return Ok(result);
-                }
-                // Nothing above the defining class answers the call, which
-                // Ruby reports as a NoMethodError naming the method.
-                let message = format!(
-                    "super: no superclass method '{}' for an instance of {}",
-                    method_name,
-                    self.builtins().class_of(&self_val).name()
-                );
-                return Err(MetorexError::UncaughtException {
-                    exception: crate::vm::errors::no_method_error(
-                        &message,
-                        &method_name,
-                        &self_val,
-                        &evaluated_args,
-                    ),
-                    location: position_to_location(position),
-                    message,
-                });
+                let evaluated_args =
+                    self.super_arguments(arguments, forward_args, &super_block, position)?;
+                return self.super_past_every_ancestor(&method_name, evaluated_args, position);
             }
         };
 
         // Evaluate the arguments (or forward the enclosing method's args for
         // bare `super`).
-        let evaluated_args = self.super_arguments(arguments, forward_args, &super_block)?;
+        let evaluated_args =
+            self.super_arguments(arguments, forward_args, &super_block, position)?;
 
         // Drop the borrow before invoking the method
         drop(instance_borrowed);
@@ -472,10 +428,14 @@ impl VirtualMachine {
         arguments: &[Expression],
         forward_args: bool,
         super_block: &Option<Object>,
+        position: Position,
     ) -> Result<Vec<Object>, MetorexError> {
+        // The block `super` hands on was given to the method making the call,
+        // which is the one that answers for whether it is used.
+        self.pending_block_from_ampersand = super_block.is_some();
         if forward_args {
             self.pending_block = super_block.clone();
-            return Ok(self.method_arg_stack.last().cloned().unwrap_or_default());
+            return self.implicit_super_arguments(position);
         }
         if arguments
             .iter()
@@ -487,6 +447,204 @@ impl VirtualMachine {
         let evaluated = self.evaluate_arguments(arguments)?;
         self.pending_block = super_block.clone();
         Ok(evaluated)
+    }
+
+    /// What `super` reaches once no ancestor defines the method: the
+    /// methods every object answers, which live in the native tables.
+    fn super_past_every_ancestor(
+        &mut self,
+        method_name: &str,
+        evaluated_args: Vec<Object>,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let self_val = self.environment().get("self").unwrap_or(Object::Nil);
+        if let Some(result) =
+            self.call_object_method(&self_val, method_name, &evaluated_args, position)?
+        {
+            return Ok(result);
+        }
+        if matches!(
+            self.globals().get(method_name),
+            Some(Object::NativeFunction(_))
+        ) {
+            return self.call_native_function(method_name, evaluated_args, position);
+        }
+        // `super` from an override of `method_missing` reaches
+        // BasicObject's, whose whole job is to raise NoMethodError
+        // naming the method that was called.
+        if method_name == "method_missing" {
+            let missing = match evaluated_args.first() {
+                Some(Object::Symbol(name)) => name.as_str().to_string(),
+                Some(Object::String(name)) => name.as_str().to_string(),
+                Some(other) => other.to_string(),
+                None => "method_missing".to_string(),
+            };
+            let message = format!(
+                "undefined method '{}' for an instance of {}",
+                missing,
+                self.builtins().class_of(&self_val).name()
+            );
+            return Err(MetorexError::UncaughtException {
+                exception: crate::vm::errors::no_method_error(
+                    &message,
+                    &missing,
+                    &self_val,
+                    evaluated_args.get(1..).unwrap_or(&[]),
+                ),
+                location: position_to_location(position),
+                message,
+            });
+        }
+        // `super` from an `initialize` that nothing above defines
+        // reaches Object's, which takes no arguments and does
+        // nothing at all.
+        if method_name == "initialize" {
+            return self.super_initialize(&evaluated_args, position);
+        }
+        // A collection the program subclassed answers the methods of
+        // the collection it is backed by, and those live in the
+        // native table rather than in any method map above. Only an
+        // instance is backed that way, and a class reaching its own
+        // native method through here would find this same method
+        // again.
+        let backing = self.builtins().class_of(&self_val);
+        if matches!(self_val, Object::Instance(_))
+            && let Some(result) = self.call_native_method(
+                backing.as_ref(),
+                &self_val,
+                method_name,
+                &evaluated_args,
+                position,
+            )?
+        {
+            return Ok(result);
+        }
+        self.super_finds_nothing(&self_val, method_name, evaluated_args, position)
+    }
+
+    /// Nothing answers a `super`: a `method_missing` the program defined is
+    /// asked, and without one Ruby reports a NoMethodError naming the method.
+    fn super_finds_nothing(
+        &mut self,
+        self_val: &Object,
+        method_name: &str,
+        evaluated_args: Vec<Object>,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        if let Some((owner, missing)) = self.lookup_method(self_val, "method_missing")
+            && !missing.is_undefined
+        {
+            let mut handed = vec![Object::symbol(method_name.to_string())];
+            handed.extend(evaluated_args);
+            return self.invoke_method(owner, missing, self_val.clone(), handed, position);
+        }
+        let message = format!(
+            "super: no superclass method '{}' for an instance of {}",
+            method_name,
+            self.builtins().class_of(self_val).name()
+        );
+        Err(MetorexError::UncaughtException {
+            exception: crate::vm::errors::no_method_error(
+                &message,
+                method_name,
+                self_val,
+                &evaluated_args,
+            ),
+            location: position_to_location(position),
+            message,
+        })
+    }
+
+    /// What a `super` written without arguments hands on: the running
+    /// method's parameters as they stand now, so a value the body changed
+    /// goes along changed and a default the call left out goes along too.
+    pub(crate) fn implicit_super_arguments(
+        &mut self,
+        position: Position,
+    ) -> Result<Vec<Object>, MetorexError> {
+        let Some(method) = self.method_running_stack.last().cloned() else {
+            return Ok(self.method_arg_stack.last().cloned().unwrap_or_default());
+        };
+        // A method built from a block has a block's parameters, which Ruby
+        // does not hand on for it.
+        if method.lambda_body {
+            return Err(crate::vm::errors::simple_exception(
+                "RuntimeError",
+                "implicit argument passing of super from method defined by define_method() is not supported. Specify all arguments explicitly.",
+                position,
+            ));
+        }
+        // A parameter that takes its argument apart has no one local holding
+        // it, so the arguments go along as they were given.
+        if method
+            .parameters
+            .iter()
+            .any(|name| name.starts_with(crate::object::DESTRUCTURED_GROUP_PREFIX))
+        {
+            return Ok(self.method_arg_stack.last().cloned().unwrap_or_default());
+        }
+        let mut handed = Vec::new();
+        let mut tail_from_splat = false;
+        for index in 0..method.parameters.len() {
+            let local = crate::vm::param_binding::parameter_local(&method.parameters, index);
+            let value = self.environment().get(&local);
+            match (&method.variadic_param, value) {
+                (Some((at, _)), value) if *at == index => match value {
+                    Some(Object::Array(items)) => {
+                        tail_from_splat =
+                            index + 1 == method.parameters.len() && !items.borrow().is_empty();
+                        handed.extend(items.borrow().iter().cloned())
+                    }
+                    Some(other) => handed.push(other),
+                    None => {}
+                },
+                (_, value) => handed.push(value.unwrap_or(Object::Nil)),
+            }
+        }
+        // The keyword rest goes first and the named keywords after it, the
+        // order Ruby hands them on in.
+        let mut keywords = indexmap::IndexMap::new();
+        if let Some(rest) = &method.keyword_rest_parameter
+            && let Some(Object::Dict(held)) = self.environment().get(rest)
+        {
+            for (key, value) in held.borrow().iter() {
+                if key != crate::vm::param_binding::KWARGS_MARKER {
+                    keywords.insert(key.clone(), value.clone());
+                }
+            }
+        }
+        for (name, _) in &method.keyword_parameters {
+            let value = self.environment().get(name).unwrap_or(Object::Nil);
+            keywords.insert(format!(":{name}"), value);
+        }
+        // A hash `ruby2_keywords` marked, last among what the rest parameter
+        // gathered, goes on as the keywords it was gathered from.
+        if keywords.is_empty()
+            && tail_from_splat
+            && let Some(Object::Dict(entries)) = handed.last()
+            && entries
+                .borrow()
+                .contains_key(crate::vm::native_methods::hash_methods::RUBY2_KEYWORDS_KEY)
+        {
+            keywords = entries
+                .borrow()
+                .iter()
+                .filter(|(key, _)| {
+                    key.as_str() != crate::vm::native_methods::hash_methods::RUBY2_KEYWORDS_KEY
+                })
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect();
+            handed.pop();
+        }
+        if !keywords.is_empty() {
+            keywords.shift_insert(
+                0,
+                crate::vm::param_binding::KWARGS_MARKER.to_string(),
+                Object::Bool(true),
+            );
+            handed.push(Object::Dict(Rc::new(std::cell::RefCell::new(keywords))));
+        }
+        Ok(handed)
     }
 
     fn eval_super_on_builtin(
@@ -520,7 +678,8 @@ impl VirtualMachine {
             .filter(|owner| chain.iter().any(|c| Rc::ptr_eq(c, owner)))
             .or_else(|| chain.iter().find(|c| c.name() == class_name).cloned());
 
-        let evaluated_args = self.super_arguments(arguments, forward_args, &super_block)?;
+        let evaluated_args =
+            self.super_arguments(arguments, forward_args, &super_block, position)?;
 
         if let Some(defining_class) = &defining_class
             && let Some(index) = chain.iter().position(|c| Rc::ptr_eq(c, defining_class))
@@ -700,4 +859,78 @@ fn walk_ancestors(class: &Rc<Class>) -> Vec<Rc<Class>> {
         }
     }
     out
+}
+
+impl VirtualMachine {
+    /// Whether `super` written in the running method would reach a method,
+    /// which is what `defined?(super)` reports. A method an ancestor undefined
+    /// is not reached.
+    pub(crate) fn super_method_defined(&self) -> bool {
+        // A block names the method it was written in, whichever method is
+        // running it.
+        let (frame, in_a_block) = match self.call_stack.last() {
+            Some(top) if top.block_depth() > 0 => match top.written_in() {
+                Some(written) => (written.to_string(), true),
+                None => return false,
+            },
+            Some(top) => (top.name().to_string(), false),
+            None => return false,
+        };
+        let Some(separator) = frame.rfind('#').into_iter().chain(frame.rfind('.')).max() else {
+            return false;
+        };
+        let (class_name, method_name) = (&frame[..separator], &frame[separator + 1..]);
+        match self.environment().get("self") {
+            Some(Object::Class(self_class) | Object::Module(self_class)) => {
+                let class_method_key = format!("__class__{}", method_name);
+                let mut current = self_class.superclass();
+                while let Some(class) = current {
+                    let candidate = class
+                        .singleton_class_slot()
+                        .clone()
+                        .and_then(|singleton| singleton.find_method(method_name))
+                        .or_else(|| class.find_method(&class_method_key));
+                    if let Some(method) = candidate {
+                        return !method.is_undefined;
+                    }
+                    current = class.superclass();
+                }
+                false
+            }
+            Some(Object::Instance(instance)) => {
+                let borrowed = instance.borrow();
+                let mut chain = Vec::new();
+                if let Some(singleton) = borrowed.singleton_class.borrow().clone() {
+                    chain.push(singleton);
+                }
+                for ancestor in walk_ancestors(&borrowed.class) {
+                    if !chain.iter().any(|held| Rc::ptr_eq(held, &ancestor)) {
+                        chain.push(ancestor);
+                    }
+                }
+                let running_owner = self
+                    .method_owner_stack
+                    .last()
+                    .cloned()
+                    .flatten()
+                    .filter(|_| !in_a_block)
+                    .filter(|owner| chain.iter().any(|held| Rc::ptr_eq(held, owner)));
+                let placed = running_owner
+                    .or_else(|| chain.iter().find(|held| held.name() == class_name).cloned());
+                let start = match &placed {
+                    Some(found) => chain
+                        .iter()
+                        .position(|held| Rc::ptr_eq(held, found))
+                        .map_or(0, |at| at + 1),
+                    None => 0,
+                };
+                chain
+                    .iter()
+                    .skip(start)
+                    .find_map(|ancestor| ancestor.find_own_method(method_name))
+                    .is_some_and(|method| !method.is_undefined)
+            }
+            _ => false,
+        }
+    }
 }

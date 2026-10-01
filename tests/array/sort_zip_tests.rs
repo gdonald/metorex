@@ -317,3 +317,37 @@ fn array_uniq_empty_coverage() {
     let result = run("[].uniq.length");
     assert_eq!(result, Some(Object::Int(0)));
 }
+
+#[test]
+fn sort_by_orders_array_keys_with_the_spaceship_operator() {
+    assert_eq!(
+        run("[[1, 12], [1, 3], [0, 9]].sort_by { |key| key }.inspect"),
+        Some(Object::string("[[0, 9], [1, 3], [1, 12]]".to_string()))
+    );
+}
+
+#[test]
+fn sort_by_keeps_elements_with_equal_keys_in_their_order() {
+    assert_eq!(
+        run("%w[pear fig plum kiwi].sort_by(&:size).inspect"),
+        Some(Object::string(
+            "[\"fig\", \"pear\", \"plum\", \"kiwi\"]".to_string()
+        ))
+    );
+}
+
+#[test]
+fn sort_by_bang_orders_array_keys_in_place() {
+    assert_eq!(
+        run("held = [[2, 1], [1, 12], [1, 3]]\nheld.sort_by! { |key| key }\nheld.inspect"),
+        Some(Object::string("[[1, 3], [1, 12], [2, 1]]".to_string()))
+    );
+}
+
+#[test]
+fn sort_by_refuses_keys_that_cannot_be_compared() {
+    assert!(
+        run_err("[[1], [\"a\"]].sort_by { |key| key }")
+            .contains("comparison of Array with Array failed")
+    );
+}

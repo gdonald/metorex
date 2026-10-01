@@ -28,6 +28,9 @@ module RbConfig
     "build_os" => os,
     "EXEEXT" => "",
     "DLEXT" => os.include?("darwin") ? "bundle" : "so",
+    # The extensions metorex carries are built into the binary, and none is
+    # loaded from a file of its own.
+    "EXTSTATIC" => "static",
     "LIBEXT" => "a",
     "OBJEXT" => "o",
     "ENABLE_SHARED" => "no",
@@ -46,6 +49,12 @@ module RbConfig
     "EXTOUT" => ".ext",
     "NULLCMD" => ":"
   }
+
+  # A library installed alongside metorex goes under the prefix the binary
+  # sits in, which is where `$LOAD_PATH` looks for one.
+  prefix = File.dirname(File.dirname(__interpreter_path__()))
+  CONFIG["sitelibdir"] = "#{prefix}/lib/metorex/#{RUBY_VERSION}"
+  CONFIG["sitearchdir"] = "#{CONFIG["sitelibdir"]}/#{RUBY_PLATFORM}"
 
   # Metorex runs from wherever its binary sits rather than from an installed
   # tree, so there is no prefix to name.

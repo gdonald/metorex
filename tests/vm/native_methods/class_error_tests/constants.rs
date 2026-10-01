@@ -335,9 +335,9 @@ fn a_signal_caught_on_one_thread_is_handled_there_and_not_where_it_arrives() {
         }
     });
     caught_rx.recv().expect("recv");
-    // SAFETY: SIGWINCH goes to this process, where the thread above has a
-    // handler for it.
-    unsafe { libc::kill(libc::getpid(), libc::SIGWINCH) };
+    // SAFETY: SIGWINCH arrives on this thread, and the handler the thread
+    // above installed has run by the time `raise` returns.
+    unsafe { libc::raise(libc::SIGWINCH) };
 
     let here = run("x = 1; x + 1");
     sent_tx.send(()).expect("send");

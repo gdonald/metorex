@@ -26,8 +26,12 @@ impl VirtualMachine {
         arguments: Vec<Object>,
         position: Position,
     ) -> Result<Object, MetorexError> {
-        // No arguments: no-op (in Ruby this toggles subsequent-definition visibility).
+        // No arguments at the top level says whether the methods defined
+        // after it there are public or private.
         if arguments.is_empty() {
+            if self.def_scope_stack.is_empty() {
+                self.toplevel_public = modifier == "public";
+            }
             return Ok(Object::Nil);
         }
 

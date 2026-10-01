@@ -21,7 +21,7 @@ mod body_errors;
 mod class_body;
 mod class_definition;
 mod class_eval;
-mod constants;
+pub(crate) mod constants;
 mod extending;
 mod freezing;
 mod function_definition;

@@ -25,6 +25,28 @@ class Rational
     Rational(whole * inner.numerator + inner.denominator, inner.numerator)
   end
 
+  # The pair an arithmetic operator works on: an Integer becomes a Rational,
+  # a Float makes this a Float, and a Complex with an exactly zero imaginary
+  # part reads as its real part.
+  def coerce(other)
+    case other
+    when Integer
+      [Rational(other, 1), self]
+    when Float
+      [other, to_f]
+    when Rational
+      [other, self]
+    when Complex
+      if other.imaginary.is_a?(Integer) && other.imaginary.zero?
+        [Rational(other.real), self]
+      else
+        [other, Complex(self)]
+      end
+    else
+      raise TypeError, "#{other.class} can't be coerced into Rational"
+    end
+  end
+
   # What `Marshal` writes for a Rational: the two parts, in the order
   # `Rational(numerator, denominator)` takes them.
   def marshal_dump

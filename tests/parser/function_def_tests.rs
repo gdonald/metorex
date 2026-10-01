@@ -616,3 +616,39 @@ fn an_empty_percent_i_is_an_empty_array() {
     let result = run("%i[].inspect");
     assert_eq!(result.map(|o| o.to_string()), Some("[]".to_string()));
 }
+
+#[test]
+fn a_spaced_equal_before_a_parenthesis_makes_an_endless_definition() {
+    assert_eq!(
+        run("class Probe\n  def one = (1 + 1)\nend\nProbe.new.one"),
+        Some(Object::Int(2))
+    );
+}
+
+#[test]
+fn a_spaced_equal_before_a_parenthesis_makes_an_endless_singleton_definition() {
+    assert_eq!(
+        run("class Probe\n  def self.four = (4)\nend\nProbe.four"),
+        Some(Object::Int(4))
+    );
+}
+
+#[test]
+fn an_equal_joined_to_the_name_makes_a_writer() {
+    assert_eq!(
+        run(
+            "class Probe\n  def two=(value)\n    @two = value\n  end\nend\nheld = Probe.new\nheld.two = 3\nheld.instance_variable_get(:@two)"
+        ),
+        Some(Object::Int(3))
+    );
+}
+
+#[test]
+fn an_endless_definition_may_assign_as_its_body() {
+    assert_eq!(
+        run(
+            "class Box\n  def initialize(value) = @value = value\n  def bump = @value += 1\nend\nBox.new(4).bump"
+        ),
+        Some(Object::Int(5))
+    );
+}

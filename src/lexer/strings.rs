@@ -77,7 +77,14 @@ impl<'a> Lexer<'a> {
                             parts.push(InterpolationPart::Text(current_text));
                         }
                         return Ok(TokenKind::InterpolatedString(parts));
-                    } else if self.frozen_literals && !command {
+                    }
+                    // Every character of a literal that holds bytes stands for
+                    // one: an escaped byte for itself, and any other character
+                    // for the bytes that spell it.
+                    if holds_bytes {
+                        current_text = byte_text(&current_text);
+                    }
+                    if self.frozen_literals && !command {
                         // The source asked for its literals to be frozen, and
                         // one written in escapes still stands for its bytes.
                         if holds_bytes {
@@ -180,9 +187,7 @@ impl<'a> Lexer<'a> {
                                 Ok(text) => current_text.push_str(&text),
                                 Err(_) => {
                                     holds_bytes = true;
-                                    for byte in bytes {
-                                        current_text.push(byte as char);
-                                    }
+                                    push_escaped_bytes(&mut current_text, &bytes);
                                 }
                             }
                         }
@@ -244,9 +249,7 @@ impl<'a> Lexer<'a> {
                                 Ok(text) => current_text.push_str(&text),
                                 Err(_) => {
                                     holds_bytes = true;
-                                    for byte in bytes {
-                                        current_text.push(byte as char);
-                                    }
+                                    push_escaped_bytes(&mut current_text, &bytes);
                                 }
                             }
                         }
@@ -259,7 +262,7 @@ impl<'a> Lexer<'a> {
                             }
                             Some(byte) => {
                                 holds_bytes = true;
-                                current_text.push(byte as char);
+                                push_escaped_bytes(&mut current_text, &[byte]);
                             }
                             None => {
                                 if quote == '\'' {
@@ -361,12 +364,6 @@ impl<'a> Lexer<'a> {
                                         self.line
                                     ));
                                 }
-                                Some('\n') => {
-                                    return Err(format!(
-                                        "Unterminated interpolation starting at line {}",
-                                        self.line
-                                    ));
-                                }
                                 Some('{') => {
                                     depth += 1;
                                     expr.push('{');
@@ -414,6 +411,27 @@ impl<'a> Lexer<'a> {
 /// The text a run of numeric escapes spells. In a source written in bytes
 /// each byte stands alone, and elsewhere bytes that spell a character in
 /// UTF-8 read back as that character.
+/// Add bytes an escape named: an ASCII one as its character, and any other
+/// as the marker the file loader gives a byte, so it stays apart from a
+/// character that happens to share its number.
+pub(super) fn push_escaped_bytes(text: &mut String, bytes: &[u8]) {
+    for byte in bytes {
+        if byte.is_ascii() {
+            text.push(*byte as char);
+        } else {
+            text.push(crate::file_loader::escaped_byte(*byte));
+        }
+    }
+}
+
+/// A literal's text read as bytes, one character to each: a marked byte for
+/// itself, and any other character for the bytes that spell it in UTF-8.
+pub(super) fn byte_text(text: &str) -> String {
+    let bytes =
+        crate::file_loader::escaped_source_bytes(text).unwrap_or_else(|| text.as_bytes().to_vec());
+    bytes.iter().map(|byte| *byte as char).collect()
+}
+
 pub(super) fn binary_run(binary_source: bool, bytes: &[u8]) -> Result<String, ()> {
     if binary_source {
         return Err(());

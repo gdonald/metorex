@@ -75,10 +75,9 @@ pub(crate) fn text_in_encoding(
     if let Some(text) = string_methods::latin_text(&bytes, named) {
         return text;
     }
-    match String::from_utf8(bytes) {
-        Ok(text) => text,
-        Err(_) => name_text(held),
-    }
+    // An encoding metorex has no table for keeps the bytes that are not
+    // UTF-8 as escaped characters, which a literal turns back into bytes.
+    crate::file_loader::escaped_source_text(&bytes)
 }
 
 pub(crate) fn is_valid_constant_name(name: &str) -> bool {

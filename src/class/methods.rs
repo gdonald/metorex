@@ -228,6 +228,10 @@ impl Class {
                     .unwrap_or_else(|| method.name.clone()),
             );
             aliased.name = new_name.to_string();
+            aliased.alias_origin = method
+                .alias_origin
+                .clone()
+                .or_else(|| method.owner_class.clone());
             // The alias belongs to the class that made it, even when the
             // method it copies came from a prepended or included module.
             aliased.owner_class = Some(Rc::clone(self));

@@ -270,6 +270,11 @@ impl VirtualMachine {
             return Ok(false);
         }
         self.mark_file_loaded(marker);
+        // One file can be required under more than one name, as
+        // `bigdecimal/util` names `bigdecimal`, and it runs only once.
+        if !self.embedded_sources_run.insert(source.as_ptr() as usize) {
+            return Ok(false);
+        }
         let tokens = crate::lexer::Lexer::for_embedded_library(source).tokenize();
         let statements = crate::parser::Parser::new(tokens)
             .parse()

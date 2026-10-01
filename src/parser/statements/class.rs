@@ -153,14 +153,21 @@ impl Parser {
         // Parse class body - set flag to indicate we're inside a class
         let was_in_class = self.in_class_body;
         self.in_class_body = true;
+        // A loop or block around the definition is not one its body can
+        // jump out of.
+        let enclosing_jump_targets = std::mem::take(&mut self.jump_target_depth);
+        let redo_scope_start = self.peek().position.offset;
 
         // A class body takes `rescue` and `ensure` clauses of its own, the
         // way a method body does.
         self.skip_whitespace();
-        let body = self.parse_block_body_with_optional_rescue_ensure(self.peek().position)?;
+        let body = self.parse_block_body_with_optional_rescue_ensure(self.peek().position);
 
         // Restore the previous state
         self.in_class_body = was_in_class;
+        self.jump_target_depth = enclosing_jump_targets;
+        self.refuse_unlooped_redos_after(redo_scope_start)?;
+        let body = body?;
 
         self.expect(TokenKind::End, "Expected 'end' after class body")?;
 
@@ -286,13 +293,20 @@ impl Parser {
 
         let was_in_class = self.in_class_body;
         self.in_class_body = true;
+        // A loop or block around the definition is not one its body can
+        // jump out of.
+        let enclosing_jump_targets = std::mem::take(&mut self.jump_target_depth);
+        let redo_scope_start = self.peek().position.offset;
 
         // A class body takes `rescue` and `ensure` clauses of its own, the
         // way a method body does.
         self.skip_whitespace();
-        let body = self.parse_block_body_with_optional_rescue_ensure(self.peek().position)?;
+        let body = self.parse_block_body_with_optional_rescue_ensure(self.peek().position);
 
         self.in_class_body = was_in_class;
+        self.jump_target_depth = enclosing_jump_targets;
+        self.refuse_unlooped_redos_after(redo_scope_start)?;
+        let body = body?;
         self.expect(TokenKind::End, "Expected 'end' after module body")?;
 
         if top_level && namespace_expr.is_none() {
@@ -571,6 +585,19 @@ impl Parser {
             TokenKind::If => Ok("if".to_string()),
             TokenKind::Else => Ok("else".to_string()),
             TokenKind::Do => Ok("do".to_string()),
+            TokenKind::Continue => Ok("next".to_string()),
+            TokenKind::Redo => Ok("redo".to_string()),
+            TokenKind::Retry => Ok("retry".to_string()),
+            TokenKind::For => Ok("for".to_string()),
+            TokenKind::Raise => Ok("raise".to_string()),
+            TokenKind::Begin => Ok("begin".to_string()),
+            TokenKind::Lambda => Ok("lambda".to_string()),
+            TokenKind::Yield => Ok("yield".to_string()),
+            TokenKind::Return => Ok("return".to_string()),
+            TokenKind::Break => Ok("break".to_string()),
+            TokenKind::True => Ok("true".to_string()),
+            TokenKind::False => Ok("false".to_string()),
+            TokenKind::Nil => Ok("nil".to_string()),
             // An operator is a method name too, so `alias old <=>` names one.
             TokenKind::Plus => Ok("+".to_string()),
             TokenKind::Minus => Ok("-".to_string()),

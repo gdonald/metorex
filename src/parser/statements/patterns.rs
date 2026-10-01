@@ -199,7 +199,7 @@ impl Parser {
             }
             TokenKind::Ident(name) => {
                 self.advance();
-                if !self.pattern_names.contains(&name) && !self.bound_names.contains(&name) {
+                if !self.pattern_names.contains(&name) && !self.names_a_local(&name) {
                     return Err(self.error_at_previous(&format!("{name}: no such local variable")));
                 }
                 Expression::Identifier {

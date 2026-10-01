@@ -204,6 +204,57 @@ fn a_matrix_answers_the_one_that_undoes_it() {
     assert!(err.contains("ErrNotRegular"), "Error was: {}", err);
 }
 
+fn inspected(code: &str) -> String {
+    match run(&format!("require 'matrix'\n({code}).inspect")) {
+        Some(Object::String(text)) => text.as_str().to_string(),
+        other => panic!("expected an inspection, got {other:?}"),
+    }
+}
+
+#[test]
+fn an_integer_matrix_inverts_to_rationals() {
+    assert_eq!(
+        inspected("Matrix[[2, 1], [7, 4]].inverse"),
+        "Matrix[[(4/1), (-1/1)], [(-7/1), (2/1)]]"
+    );
+}
+
+#[test]
+fn a_float_matrix_inverts_to_floats() {
+    assert_eq!(
+        inspected("Matrix[[2.0, 1], [7, 4]].inv"),
+        "Matrix[[4.000000000000002, -1.0000000000000004], [-7.0000000000000036, 2.000000000000001]]"
+    );
+}
+
+#[test]
+fn inverting_swaps_rows_to_find_a_pivot() {
+    assert_eq!(
+        inspected("Matrix[[0, 1], [1, 0]].inverse"),
+        "Matrix[[(0/1), (1/1)], [(1/1), (0/1)]]"
+    );
+}
+
+#[test]
+fn a_matrix_that_is_not_square_has_no_inverse() {
+    assert_eq!(
+        inspected(
+            "begin\n  Matrix[[1, 2]].inverse\nrescue ExceptionForMatrix::ErrDimensionMismatch => error\n  error.class\nend"
+        ),
+        "ExceptionForMatrix::ErrDimensionMismatch"
+    );
+}
+
+#[test]
+fn a_singular_matrix_raises_a_rescuable_error() {
+    assert_eq!(
+        inspected(
+            "begin\n  Matrix[[1, 2], [2, 4]].inverse\nrescue ExceptionForMatrix::ErrNotRegular => error\n  error.class\nend"
+        ),
+        "ExceptionForMatrix::ErrNotRegular"
+    );
+}
+
 #[test]
 fn a_matrix_says_what_shape_it_has() {
     assert_eq!(

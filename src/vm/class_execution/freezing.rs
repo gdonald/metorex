@@ -35,6 +35,24 @@ impl VirtualMachine {
         }
     }
 
+    /// Refuse a method definition on a frozen class or module, which names
+    /// the class or module in the FrozenError.
+    pub(crate) fn refuse_frozen_definee(
+        &mut self,
+        definee: &Rc<Class>,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        if !definee.is_frozen() {
+            return Ok(());
+        }
+        let receiver = if definee.is_module() {
+            Object::Module(Rc::clone(definee))
+        } else {
+            Object::Class(Rc::clone(definee))
+        };
+        Err(self.frozen_modification_error(&receiver, position))
+    }
+
     /// The FrozenError Ruby raises for modifying `receiver`. The message
     /// names the class and inspects the object, falling back to `...` when
     /// that inspection would itself modify the frozen object.

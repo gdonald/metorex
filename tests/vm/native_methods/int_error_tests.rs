@@ -69,6 +69,38 @@ end
     );
 }
 
+/// The class of the exception `walk` raises from its block, rescued in the
+/// program.
+fn rescued_class(walk: &str) -> Option<Object> {
+    run(&format!(
+        "class WalkFailure < StandardError; end\nbegin\n  {walk} {{ raise WalkFailure }}\nrescue => error\n  error.class.name\nend"
+    ))
+}
+
+#[test]
+fn an_exception_raised_in_a_times_block_reaches_rescue_as_itself() {
+    assert_eq!(
+        rescued_class("1.times"),
+        Some(Object::string("WalkFailure"))
+    );
+}
+
+#[test]
+fn an_exception_raised_in_an_upto_block_reaches_rescue_as_itself() {
+    assert_eq!(
+        rescued_class("0.upto(1)"),
+        Some(Object::string("WalkFailure"))
+    );
+}
+
+#[test]
+fn an_exception_raised_in_a_downto_block_reaches_rescue_as_itself() {
+    assert_eq!(
+        rescued_class("1.downto(0)"),
+        Some(Object::string("WalkFailure"))
+    );
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // Int methods - abs, to_f, to_i, to_s
 // ══════════════════════════════════════════════════════════════════════════════

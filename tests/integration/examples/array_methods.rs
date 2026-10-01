@@ -187,3 +187,25 @@ fn test_array_methods_strided_slices_parens_execution() {
     let output = run_example("array_methods/strided_slices_parens.rb");
     assert_eq!(output, STRIDED_SLICES_OUTPUT);
 }
+
+/// The expected output of both `array_methods/sort_by_array_keys` variants.
+const SORT_BY_ARRAY_KEYS_OUTPUT: &str = concat!(
+    "[[1, 3], [1, 12], [2, 1], [2, 10]]\n",
+    "[1, 3]\n",
+    "[2, 10]\n",
+    "[\"x\", \"def\", \"end\"]\n",
+    "[[1, 3], [1, 12], [2, 1], [2, 10]]\n",
+    "\"comparison of Array with Array failed\"\n",
+);
+
+#[test]
+fn test_array_methods_sort_by_array_keys_execution() {
+    let output = run_example("array_methods/sort_by_array_keys.rb");
+    assert_eq!(output, SORT_BY_ARRAY_KEYS_OUTPUT);
+}
+
+#[test]
+fn test_array_methods_sort_by_array_keys_no_parens_execution() {
+    let output = run_example("array_methods/sort_by_array_keys_no_parens.rb");
+    assert_eq!(output, SORT_BY_ARRAY_KEYS_OUTPUT);
+}

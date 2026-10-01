@@ -88,10 +88,7 @@ impl Parser {
             }
             _ => return Err(self.error_at_previous("Expected method name after '.'")),
         };
-        if self.writer_equal_follows(&method_name)
-            || (self.check(&[TokenKind::Equal])
-                && matches!(self.peek_ahead(1).kind, TokenKind::LParen))
-        {
+        if self.writer_equal_follows(&method_name) {
             self.advance(); // consume =
             return Ok(format!("{}=", method_name));
         }
@@ -122,10 +119,7 @@ impl Parser {
                     self.advance(); // consume .
                     _singleton_receiver = Some(name);
                     self.parse_singleton_method_name()?
-                } else if self.writer_equal_follows(&name)
-                    || (self.check(&[TokenKind::Equal])
-                        && matches!(self.peek_ahead(1).kind, TokenKind::LParen))
-                {
+                } else if self.writer_equal_follows(&name) {
                     // Setter method: `def name=(value)` or `def name= value`.
                     self.advance(); // consume =
                     format!("{}=", name)
@@ -242,6 +236,9 @@ impl Parser {
                     crate::ast::Expression::GlobalVariable { name, .. } => {
                         Some(format!("${}", name))
                     }
+                    // `def (held).name` names the object a local holds, the
+                    // same as `def held.name`.
+                    crate::ast::Expression::Identifier { name, .. } => Some(name.clone()),
                     crate::ast::Expression::BinaryOp {
                         op: crate::ast::BinaryOp::Assign,
                         left,
@@ -254,6 +251,10 @@ impl Parser {
                         crate::ast::Expression::GlobalVariable { name, .. } => {
                             receiver_setup = Some(receiver_expr.clone());
                             Some(format!("${}", name))
+                        }
+                        crate::ast::Expression::Identifier { name, .. } => {
+                            receiver_setup = Some(receiver_expr.clone());
+                            Some(name.clone())
                         }
                         _ => None,
                     },
@@ -277,6 +278,16 @@ impl Parser {
             self.skip_whitespace();
             Vec::new()
         };
+        // A method takes one `*` parameter at most, which gathers what the
+        // others leave.
+        if parameters
+            .iter()
+            .filter(|parameter| parameter.is_variadic)
+            .count()
+            > 1
+        {
+            return Err(self.error_at_previous("unexpected *"));
+        }
 
         // An endless definition, `def name = expression`, has its body on the
         // same line and no `end`.
@@ -287,10 +298,15 @@ impl Parser {
             // The expression is the method's body, where `yield` and
             // `return` reach the method as they do in a written-out one.
             self.def_body_depth += 1;
+            self.method_anonymous_block
+                .push(declares_anonymous_block(&parameters));
             let enclosing_jump_targets = std::mem::take(&mut self.jump_target_depth);
-            let value = self.parse_expression();
+            let redo_scope_start = self.peek().position.offset;
+            let value = self.parse_expression_with_assignment();
+            self.method_anonymous_block.pop();
             self.def_body_depth -= 1;
             self.jump_target_depth = enclosing_jump_targets;
+            self.refuse_unlooped_redos_after(redo_scope_start)?;
             let value = value?;
             let body = vec![Statement::Expression {
                 expression: value,
@@ -332,7 +348,10 @@ impl Parser {
         // Parse function body
         let mut body = Vec::new();
         self.def_body_depth += 1;
+        self.method_anonymous_block
+            .push(declares_anonymous_block(&parameters));
         let enclosing_jump_targets = std::mem::take(&mut self.jump_target_depth);
+        let redo_scope_start = self.peek().position.offset;
         let collected = (|| -> Result<(), MetorexError> {
             while !self.check(&[TokenKind::End, TokenKind::Rescue, TokenKind::Ensure])
                 && !self.is_at_end()
@@ -346,8 +365,10 @@ impl Parser {
             }
             Ok(())
         })();
+        self.method_anonymous_block.pop();
         self.def_body_depth -= 1;
         self.jump_target_depth = enclosing_jump_targets;
+        self.refuse_unlooped_redos_after(redo_scope_start)?;
         collected?;
 
         // Check for method-level rescue/ensure (implicit begin)
@@ -695,4 +716,11 @@ pub(crate) fn with_receiver_setup(
             position,
         },
     }
+}
+
+/// Whether a method's parameters include the anonymous block parameter.
+fn declares_anonymous_block(parameters: &[Parameter]) -> bool {
+    parameters
+        .iter()
+        .any(|parameter| parameter.name == ANONYMOUS_BLOCK)
 }

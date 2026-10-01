@@ -31,6 +31,7 @@ impl Parser {
     pub(crate) fn parse_statement_inner(&mut self) -> Result<Statement, MetorexError> {
         // Skip leading whitespace
         self.skip_whitespace();
+        self.statement_start = self.stream.current_position();
 
         // Nothing at all is not a statement. A group left open at the end of
         // the source reaches here, and stops rather than reading on.
@@ -196,9 +197,11 @@ impl Parser {
                     TokenKind::LogicalOrAssign,
                     TokenKind::LogicalAndAssign,
                 ]) {
+                    self.refuse_fixed_target(&expr)?;
                     if !is_assignable(&expr) {
                         return Err(self.error_at_current("Cannot assign to this expression"));
                     }
+                    self.refuse_dynamic_constant_assignment(&expr)?;
                     if let Expression::Identifier { name, .. } = &expr
                         && names_a_numbered_parameter(name)
                     {
@@ -319,9 +322,24 @@ impl Parser {
                     let stmt = self.fold_keyword_logic(stmt)?;
                     self.wrap_with_modifier(stmt)
                 } else {
-                    // It's just an expression statement
+                    // It's just an expression statement. A `defined?` whose
+                    // answer the next statement leaves unused is dropped,
+                    // and a verbose run warns about it.
+                    let expression = if matches!(expr, Expression::Defined { .. })
+                        && self.another_statement_follows()
+                    {
+                        self.warnings.push((
+                            token.position,
+                            "possibly useless use of defined? in void context".to_string(),
+                        ));
+                        Expression::NilLiteral {
+                            position: token.position,
+                        }
+                    } else {
+                        expr
+                    };
                     let stmt = Statement::Expression {
-                        expression: expr,
+                        expression,
                         position: token.position,
                     };
                     self.wrap_with_modifier(stmt)

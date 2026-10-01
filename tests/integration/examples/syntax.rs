@@ -183,3 +183,134 @@ fn test_syntax_keyword_symbols_in_when_no_parens_execution() {
     let output = run_example("syntax/keyword_symbols_in_when_no_parens.rb");
     assert_eq!(output, KEYWORD_SYMBOLS_IN_WHEN_OUTPUT);
 }
+
+/// The expected output of both `syntax/assignment_order` variants.
+const ASSIGNMENT_ORDER_OUTPUT: &str = "[:receiver, :value]\n[:receiver, :key, :value]\n[:namespace, :value]\n80\n[:a, :b, :c, :d]\n[:a, :b]\n5\n[:receiver]\n3\n[:receiver, :key]\n15\n[:namespace]\n2\n7\n9\n[1, 2]\n4\nnil\nnil\nsingle x 1\n\":not_a_module is not a class/module\"\n1\nNoMethodError\ntrue\ntrue\n2\nnil\nSyntaxError\n";
+
+#[test]
+fn test_syntax_assignment_order_execution() {
+    let output = run_example("syntax/assignment_order.rb");
+    assert_eq!(output, ASSIGNMENT_ORDER_OUTPUT);
+}
+
+#[test]
+fn test_syntax_assignment_order_no_parens_execution() {
+    let output = run_example("syntax/assignment_order_no_parens.rb");
+    assert_eq!(output, ASSIGNMENT_ORDER_OUTPUT);
+}
+
+/// The expected output of both `syntax/block_parameters` variants.
+const BLOCK_PARAMETERS_OUTPUT: &str = "[1, [], 2, nil]\n[5, 1, 2, nil]\n[1, 2, 6, 3, 4]\n[1, 2, 3, 4, 5]\n[1, 2, 6, [], 3, 4]\n[:left, :right, nil]\n[:left, nil, :right]\n[true, nil]\nasked to_ary true\n3\n12\n\"can't convert Wrong to Array (Wrong#to_ary gives Integer)\"\n1\nnil\n:outer\n[1, nil]\nrefused: [1].each { |x, x| }\nrefused: -> (x, x) {}\nrefused: [1].each { |a; a| }\nrefused: [1].each { |a; b; c| }\nrefused: def lone; hand(1, &); end\n\"10 and 20\"\n";
+
+#[test]
+fn test_syntax_block_parameters_execution() {
+    let output = run_example("syntax/block_parameters.rb");
+    assert_eq!(output, BLOCK_PARAMETERS_OUTPUT);
+}
+
+#[test]
+fn test_syntax_block_parameters_no_parens_execution() {
+    let output = run_example("syntax/block_parameters_no_parens.rb");
+    assert_eq!(output, BLOCK_PARAMETERS_OUTPUT);
+}
+
+/// The expected output of both `syntax/constant_names` variants.
+const CONSTANT_NAMES_OUTPUT: &str = "1\n1\n2\nModule\n3\n";
+
+#[test]
+fn test_syntax_constant_names_execution() {
+    let output = run_example("syntax/constant_names.rb");
+    assert_eq!(output, CONSTANT_NAMES_OUTPUT);
+}
+
+#[test]
+fn test_syntax_constant_names_no_parens_execution() {
+    let output = run_example("syntax/constant_names_no_parens.rb");
+    assert_eq!(output, CONSTANT_NAMES_OUTPUT);
+}
+
+/// The expected output of both `syntax/special_globals` variants.
+const SPECIAL_GLOBALS_OUTPUT: &str = "[TypeError, \"wrong argument type Object (expected MatchData)\"]\n[TypeError, \"$stdout must have write method, NilClass given\"]\n[NameError, \"$! is a read-only variable\"]\n[NameError, \"$FILENAME is a read-only variable\"]\n[TypeError, \"value of $/ must be String\"]\n[TypeError, \"value of $-0 must be String\"]\n[TypeError, \"no implicit conversion of nil into String\"]\n[TypeError, \"no implicit conversion from nil to integer\"]\n[ArgumentError, \"$! not set\"]\n[String, true, true]\ntrue\n12\n7\ntrue\n[true, true, true, true]\n[\"here:1\"]\n\"Can't assign to nil\"\n\"Can't assign to true\"\n\"Can't assign to false\"\n\"Can't change the value of self\"\n\"Can't set variable $&\"\n\"Can't set variable $1\"\n[NameError, \"$matched_text is a read-only variable\"]\n[#<Encoding:ISO-8859-1>, #<Encoding:ISO-8859-1>, #<Encoding:ISO-8859-1>, #<Encoding:ISO-8859-1>]\n[\"inner\", \"inner\"]\n\"main line\"\n[:rb, \"pp.rb\"]\nnil\n[true, false]\n[\"variable $= is no longer effective\\n\", \"variable $= is no longer effective; ignored\\n\", \"non-nil '$,' is deprecated\\n\"]\n";
+
+#[test]
+fn test_syntax_special_globals_execution() {
+    let output = run_example("syntax/special_globals.rb");
+    assert_eq!(output, SPECIAL_GLOBALS_OUTPUT);
+}
+
+#[test]
+fn test_syntax_special_globals_no_parens_execution() {
+    let output = run_example("syntax/special_globals_no_parens.rb");
+    assert_eq!(output, SPECIAL_GLOBALS_OUTPUT);
+}
+
+/// The expected output of both `syntax/multiple_assignment_conversions` variants.
+const MULTIPLE_ASSIGNMENT_CONVERSIONS_OUTPUT: &str = "[1, 2, nil]\n[1, [2]]\n[3, 4]\n[true, nil]\n[true, nil]\n\"can't convert Object to Array (Object#to_ary gives Integer)\"\n[5, 6]\n[1, 7]\n[[7, 8], false]\nfalse\n\"can't convert Object to Array (Object#to_a gives Integer)\"\n[1, 1, 2, 4]\n[\"local-variable\", nil]\n[]\n[\"global variable '$never_assigned_global' not initialized\\n\"]\n\"-\"\n";
+
+#[test]
+fn test_syntax_multiple_assignment_conversions_execution() {
+    let output = run_example("syntax/multiple_assignment_conversions.rb");
+    assert_eq!(output, MULTIPLE_ASSIGNMENT_CONVERSIONS_OUTPUT);
+}
+
+#[test]
+fn test_syntax_multiple_assignment_conversions_no_parens_execution() {
+    let output = run_example("syntax/multiple_assignment_conversions_no_parens.rb");
+    assert_eq!(output, MULTIPLE_ASSIGNMENT_CONVERSIONS_OUTPUT);
+}
+
+/// The expected output of both `syntax/interpolated_statements` variants.
+const INTERPOLATED_STATEMENTS_OUTPUT: &str =
+    "\"keyword\"\n\"20\"\n\"total: 5\"\n\"inner 2\"\n\"rescued\"\n:symbol1\n";
+
+#[test]
+fn test_syntax_interpolated_statements_execution() {
+    let output = run_example("syntax/interpolated_statements.rb");
+    assert_eq!(output, INTERPOLATED_STATEMENTS_OUTPUT);
+}
+
+#[test]
+fn test_syntax_interpolated_statements_no_parens_execution() {
+    let output = run_example("syntax/interpolated_statements_no_parens.rb");
+    assert_eq!(output, INTERPOLATED_STATEMENTS_OUTPUT);
+}
+
+/// The expected output of both `syntax/statement_conditionals` variants.
+const STATEMENT_CONDITIONALS_OUTPUT: &str =
+    "[\"zero\", \"small\", \"large\"]\nLibrary::NameError\n";
+
+#[test]
+fn test_syntax_statement_conditionals_execution() {
+    let output = run_example("syntax/statement_conditionals.rb");
+    assert_eq!(output, STATEMENT_CONDITIONALS_OUTPUT);
+}
+
+#[test]
+fn test_syntax_statement_conditionals_no_parens_execution() {
+    let output = run_example("syntax/statement_conditionals_no_parens.rb");
+    assert_eq!(output, STATEMENT_CONDITIONALS_OUTPUT);
+}
+
+/// The expected output of both `syntax/keyword_labels` variants.
+const KEYWORD_LABELS_OUTPUT: &str = concat!(
+    "{if: :ready, next: 2, class: \"primary\", end: 10, self: true, not: false}\n",
+    "12\n",
+    "[true, 5, \"UTC\"]\n",
+    "[true, 9, \"CET\"]\n",
+    "[:not, :and, :or, :in, :__FILE__, :__LINE__, :__dir__, :__ENCODING__, :defined?]\n",
+    "0\n",
+    "20\n",
+    "12\n",
+);
+
+#[test]
+fn test_syntax_keyword_labels_execution() {
+    let output = run_example("syntax/keyword_labels.rb");
+    assert_eq!(output, KEYWORD_LABELS_OUTPUT);
+}
+
+#[test]
+fn test_syntax_keyword_labels_no_parens_execution() {
+    let output = run_example("syntax/keyword_labels_no_parens.rb");
+    assert_eq!(output, KEYWORD_LABELS_OUTPUT);
+}

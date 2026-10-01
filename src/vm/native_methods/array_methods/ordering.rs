@@ -84,8 +84,7 @@ impl VirtualMachine {
                         self.execute_block_callable(&block, vec![element.clone()], position)?;
                     keyed.push((key, element.clone()));
                 }
-                keyed.sort_by(|(a, _), (b, _)| compare_for_sort(a, b));
-                let sorted: Vec<Object> = keyed.into_iter().map(|(_, v)| v).collect();
+                let sorted = self.sort_by_keys(keyed, position)?;
                 Ok(Some(Object::Array(Rc::new(RefCell::new(sorted)))))
             }
             "reverse" => {

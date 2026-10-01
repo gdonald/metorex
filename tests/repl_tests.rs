@@ -392,6 +392,7 @@ fn format_object_block() {
         captured_def_scope: vec![],
         captured_nesting: vec![],
         defining_method: None,
+        defining_owner: None,
         is_lambda: false,
         source_file: None,
         home_frame: None,
@@ -401,6 +402,7 @@ fn format_object_block() {
         written_depth: None,
         written_within: Rc::default(),
         ruby2_keywords: std::rc::Rc::new(std::cell::Cell::new(false)),
+        attached_call_running: Rc::new(std::cell::Cell::new(true)),
     }));
     assert_eq!(ReplCore::format_object(&block), "<Block>");
 }

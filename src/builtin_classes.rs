@@ -186,7 +186,10 @@ impl BuiltinClasses {
         let target_name = class_b.name();
 
         // Start with class_a itself, then walk superclasses.
-        if std::ptr::eq(class_a, class_b) || class_a.name() == target_name {
+        // An anonymous class has no name to compare, so only the class
+        // itself matches it.
+        let named = !target_name.is_empty();
+        if std::ptr::eq(class_a, class_b) || (named && class_a.name() == target_name) {
             return true;
         }
         for prepended in class_a.prepend_chain() {
@@ -201,7 +204,7 @@ impl BuiltinClasses {
         }
         let mut current: Option<Rc<Class>> = class_a.superclass();
         while let Some(parent) = current {
-            if Rc::as_ptr(&parent) == target_ptr || parent.name() == target_name {
+            if Rc::as_ptr(&parent) == target_ptr || (named && parent.name() == target_name) {
                 return true;
             }
             for prepended in parent.prepend_chain() {
@@ -223,7 +226,9 @@ impl BuiltinClasses {
     /// Recursively check whether `module` (or any module it includes) matches
     /// the target class/module by pointer identity or by name.
     fn module_matches(module: &Rc<Class>, target_ptr: *const Class, target_name: &str) -> bool {
-        if Rc::as_ptr(module) == target_ptr || module.name() == target_name {
+        if Rc::as_ptr(module) == target_ptr
+            || (!target_name.is_empty() && module.name() == target_name)
+        {
             return true;
         }
         for inner in module.prepend_chain() {

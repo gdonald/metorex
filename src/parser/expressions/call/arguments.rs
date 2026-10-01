@@ -30,15 +30,12 @@ impl Parser {
             return Ok(arguments);
         }
 
-        // Collect any keyword args (ident: value) to build a hash at the end
-        let mut keyword_pairs: Vec<(String, Expression)> = Vec::new();
+        // The `name: value` and `key => value` pairs, in the order they were
+        // written, which is the order the hash they build holds them in.
+        let mut pairs: Vec<(Expression, Expression)> = Vec::new();
         // Where each `**held` sat among the keyword arguments, so the two can
         // be put back in the order they were written.
         let mut splat_slots: Vec<(usize, usize)> = Vec::new();
-        // `foo(key => value)` with a key that is not a literal symbol, which
-        // is the implicit-hash form `Struct.new(name, keyword_init: true)`
-        // takes in `struct_class.new(key => 1)`.
-        let mut rocket_pairs: Vec<(Expression, Expression)> = Vec::new();
 
         loop {
             self.skip_whitespace();
@@ -69,13 +66,13 @@ impl Parser {
                 } else {
                     self.parse_expression()?
                 };
-                keyword_pairs.push((name, value));
+                pairs.push((symbol_key(&name, named_at), value));
             } else if matches!(self.peek().kind, TokenKind::Colon)
                 && matches!(self.peek_ahead(1).kind, TokenKind::Ident(_))
                 && matches!(self.peek_ahead(2).kind, TokenKind::FatArrow)
             {
                 // Old-style hash arg: `:name => value`. Equivalent to `name: value`.
-                self.advance(); // consume ':'
+                let named_at = self.advance().position; // consume ':'
                 let name = match self.advance().kind {
                     TokenKind::Ident(n) => n,
                     _ => unreachable!(),
@@ -83,7 +80,7 @@ impl Parser {
                 self.advance(); // consume '=>'
                 self.skip_whitespace();
                 let value = self.parse_expression()?;
-                keyword_pairs.push((name, value));
+                pairs.push((symbol_key(&name, named_at), value));
             } else if self.check(&[TokenKind::DotDotDot]) && self.dots_are_forwarding() {
                 // `foo(...)` passes on everything `def foo(...)` collected. A
                 // `...` with an operand after it is a beginless range instead.
@@ -143,7 +140,7 @@ impl Parser {
                 } else {
                     self.parse_expression()?
                 };
-                splat_slots.push((arguments.len(), keyword_pairs.len() + rocket_pairs.len()));
+                splat_slots.push((arguments.len(), pairs.len()));
                 arguments.push(Expression::KeywordSplat {
                     expression: Box::new(expr),
                     position,
@@ -159,6 +156,9 @@ impl Parser {
                         return Err(self.error_at_previous(
                             "anonymous block parameter is also used within block",
                         ));
+                    }
+                    if self.method_anonymous_block.last() != Some(&true) {
+                        return Err(self.error_at_previous("no anonymous block parameter"));
                     }
                     Expression::Identifier {
                         name: crate::parser::ANONYMOUS_BLOCK.to_string(),
@@ -179,7 +179,9 @@ impl Parser {
                 if self.match_token(&[TokenKind::FatArrow]) {
                     self.skip_whitespace();
                     let value = self.parse_expression()?;
-                    rocket_pairs.push((expression, value));
+                    // A key that is not a literal symbol makes the pairs the
+                    // implicit hash `struct_class.new(key => 1)` takes.
+                    pairs.push((expression, value));
                 } else {
                     arguments.push(expression);
                 }
@@ -200,21 +202,9 @@ impl Parser {
 
         // If there were keyword args, append them as a Dict with a sentinel marker
         // so the runtime can distinguish parser-synthesized kwargs from a user hash.
-        if !keyword_pairs.is_empty() || !rocket_pairs.is_empty() {
+        if !pairs.is_empty() {
             let position = self.peek().position;
-            let mut entries: Vec<(Expression, Expression)> = keyword_pairs
-                .into_iter()
-                .map(|(k, v)| {
-                    (
-                        Expression::StringLiteral {
-                            value: format!(":{}", k),
-                            position,
-                        },
-                        v,
-                    )
-                })
-                .collect();
-            entries.extend(rocket_pairs);
+            let mut entries = pairs;
             fold_keyword_splats(&mut arguments, &mut entries, &splat_slots, position);
             // Marker entry the runtime recognizes (see split_keyword_args).
             entries.push((
@@ -281,39 +271,16 @@ impl Parser {
         let Expression::Identifier { name, .. } = callee else {
             return false;
         };
-        self.peek().had_leading_space && !self.bound_names.contains(name)
+        self.peek().had_leading_space && !self.names_a_local(name)
     }
 
-    /// `p (1..3).to_a` passes what the parentheses hold along with the calls
-    /// that follow, where `p(1..3).to_a` calls those on what `p` answers.
-    /// Ruby tells them apart by the space before the parenthesis and by what
-    /// follows the matching one.
+    /// `m (1)` passes what the parentheses hold as one argument, so
+    /// `p (1..3).to_a` passes the Array and `m (1), (2)` passes two, where
+    /// `m(1, 2)` is an argument list. Ruby tells them apart by the space
+    /// before the parenthesis, and reads a local of the same name followed by
+    /// one as a call all the same.
     pub(crate) fn spaced_paren_opens_argument(&mut self, callee: &Expression) -> bool {
-        let Expression::Identifier { name, .. } = callee else {
-            return false;
-        };
-        if !self.peek().had_leading_space || self.bound_names.contains(name) {
-            return false;
-        }
-        let mut depth = 0;
-        let mut offset = 0;
-        loop {
-            match self.peek_ahead(offset).kind {
-                TokenKind::LParen => depth += 1,
-                TokenKind::RParen => {
-                    depth -= 1;
-                    if depth == 0 {
-                        return matches!(
-                            self.peek_ahead(offset + 1).kind,
-                            TokenKind::Dot | TokenKind::ColonColon
-                        );
-                    }
-                }
-                TokenKind::EOF => return false,
-                _ => {}
-            }
-            offset += 1;
-        }
+        matches!(callee, Expression::Identifier { .. }) && self.peek().had_leading_space
     }
 
     /// Whether the brackets open a Hash rather than a subscript, which they do
@@ -346,5 +313,14 @@ impl Parser {
             },
             value,
         )))
+    }
+}
+
+/// The key a `name: value` argument is held under, which is how the runtime
+/// stores a Symbol key.
+fn symbol_key(name: &str, position: crate::lexer::Position) -> Expression {
+    Expression::StringLiteral {
+        value: format!(":{}", name),
+        position,
     }
 }

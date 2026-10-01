@@ -40,7 +40,8 @@ impl VirtualMachine {
                         if let Some(bytes) =
                             crate::vm::native_methods::string_methods::spelled_bytes(
                                 value, &named,
-                            ) =>
+                            )
+                            .or_else(|| crate::file_loader::escaped_source_bytes(value)) =>
                     {
                         let held = crate::object::StringValue::with_encoding(
                             crate::vm::native_methods::string_methods::bytes_as_text(&bytes),
@@ -70,7 +71,9 @@ impl VirtualMachine {
                             .to_string(),
                     ),
                 }
-                Ok(Object::String(std::rc::Rc::new(made)))
+                let made = Object::String(std::rc::Rc::new(made));
+                self.record_allocation(&made, *position);
+                Ok(made)
             }
             Expression::Symbol { value, .. } => {
                 // A symbol is named in the encoding the source naming it is
@@ -159,6 +162,15 @@ impl VirtualMachine {
                 if name == "?" {
                     return Ok(self.process_last_status());
                 }
+                // `$=` once made matches ignore case, and reading it says it
+                // no longer does once the deprecated category is asked for.
+                if name == "=" && self.warning_category_enabled("deprecated") {
+                    let message = format!(
+                        "{}variable $= is no longer effective\n",
+                        self.warning_prefix(0, *position)
+                    );
+                    self.warn_through_warning_module(message, *position)?;
+                }
                 // A number past what a capture can be numbered names no
                 // group at all, which Ruby says so about and reads as nil.
                 if number_variable_is_too_big(&name) {
@@ -189,7 +201,21 @@ impl VirtualMachine {
                     }
                     return self.send_to_object(raised, "backtrace", Vec::new(), *position);
                 }
-                Ok(self.globals().get(&name).unwrap_or(Object::Nil))
+                match self.globals().get(&name) {
+                    Some(held) => Ok(held),
+                    None => {
+                        // Reading a global nothing has set says so in
+                        // verbose mode.
+                        if matches!(self.globals().get("VERBOSE"), Some(Object::Bool(true))) {
+                            let message = format!(
+                                "{}global variable '${name}' not initialized\n",
+                                self.warning_prefix(0, *position)
+                            );
+                            self.warn_through_warning_module(message, *position)?;
+                        }
+                        Ok(Object::Nil)
+                    }
+                }
             }
             Expression::MagicFile { .. } => {
                 // The file the code was written in, which is not the file
@@ -309,6 +335,7 @@ impl VirtualMachine {
                     self.enclosing_method_names(),
                     *is_lambda,
                 );
+                block.defining_owner = self.enclosing_method_owner().and_then(|(owner, _)| owner);
                 // The block's body belongs to the file it was written in,
                 // wherever it is later called from.
                 // A block the core library opens stands in for Ruby's C code,
@@ -360,7 +387,9 @@ impl VirtualMachine {
                         crate::ast::UnaryOp::Plus => Some("+@"),
                         crate::ast::UnaryOp::Not => Some("!"),
                     }
-                    && (self.responds_to(&value, name)
+                    && (self
+                        .lookup_method(&value, name)
+                        .is_some_and(|(_, method)| !method.is_undefined)
                         || crate::vm::native_methods::rational_parts(&value).is_some()
                         || crate::vm::native_methods::complex_parts(&value).is_some())
                 {
@@ -392,151 +421,25 @@ impl VirtualMachine {
                             self.evaluate_expression(right)
                         };
                     }
-                    BinaryOp::Assign => {
-                        // `held&.name = value` writes nothing and answers nil
-                        // when there is no receiver to write to.
-                        if let Expression::MethodCall {
-                            receiver, method, ..
-                        } = left.as_ref()
-                            && method == crate::parser::SAFE_CALL
-                            && matches!(self.evaluate_expression(receiver)?, Object::Nil)
-                        {
-                            return Ok(Object::Nil);
-                        }
-                        let value = self.evaluate_expression(right)?;
-                        self.assign_value(left, value.clone())?;
-                        return Ok(value);
-                    }
+                    BinaryOp::Assign => return self.evaluate_assignment(left, right),
                     _ => {}
                 }
                 let left_value = self.evaluate_expression(left)?;
                 let right_value = self.evaluate_expression(right)?;
-                // A reopened core class, or a module prepended to one,
-                // holds the operator in a method table rather than in the
-                // native one, so `1 + 2` consults it before the built-in
-                // arithmetic runs. Only the receiver's own class and its
-                // prepended modules are asked: an ancestor's definition, such
-                // as the core library's Numeric#%, describes the operator the
-                // native path already implements, and answering from there
-                // would replace every built-in operator with its Ruby-level
-                // spelling.
-                if !matches!(left_value, Object::Instance(_))
-                    && let Some(op_name) = binary_op_method_name(op)
-                    && let Some((class, method)) =
-                        self.lookup_own_operator_method(&left_value, op_name)
-                {
-                    return self.invoke_method(
-                        class,
-                        method,
-                        left_value.clone(),
-                        vec![right_value],
-                        *position,
-                    );
-                }
-                // Check for user-defined operator methods on instances. Walk
-                // via lookup_method so per-instance singleton-class overrides
-                // (used by mspec mocks, among other things) win over the
-                // underlying class definition.
-                if let (Some(op_name), Object::Instance(_)) =
-                    (binary_op_method_name(op), &left_value)
-                {
-                    if let Some((class, method)) = self.lookup_method(&left_value, op_name)
-                        && !method.is_undefined
-                    {
-                        return self.invoke_method(
-                            class,
-                            method,
-                            left_value.clone(),
-                            vec![right_value],
-                            *position,
-                        );
-                    }
-                    // A generated struct class answers `==` from Struct's
-                    // native table, which the method map above does not hold.
-                    let instance_class = match &left_value {
-                        Object::Instance(instance) => {
-                            Some(std::rc::Rc::clone(&instance.borrow().class))
-                        }
-                        _ => None,
-                    };
-                    if let Some(class) = &instance_class
-                        && let Some(members) = crate::vm::native_methods::struct_members(class)
-                        && let Some(result) = self.call_struct_instance_method(
-                            class,
-                            &members,
-                            &left_value,
-                            op_name,
-                            std::slice::from_ref(&right_value),
-                            *position,
-                        )?
-                    {
-                        return Ok(result);
-                    }
-                    // Rational arithmetic likewise lives in a native table.
-                    if let Some(class) = &instance_class
-                        && class.name() == "Rational"
-                        && let Some(result) = self.call_rational_method(
-                            &left_value,
-                            op_name,
-                            std::slice::from_ref(&right_value),
-                            *position,
-                        )?
-                    {
-                        return Ok(result);
-                    }
-                    // Comparable-style fallback: if the class defines `<=>`,
-                    // derive `<`, `<=`, `>`, `>=` from its result. (Ruby gets
-                    // these from the Comparable mixin; metorex synthesizes
-                    // them.)
-                    if matches!(
-                        op,
-                        BinaryOp::Less
-                            | BinaryOp::LessEqual
-                            | BinaryOp::Greater
-                            | BinaryOp::GreaterEqual
-                    ) && let Some((class, spaceship)) = self.lookup_method(&left_value, "<=>")
-                    {
-                        let cmp = self.invoke_method(
-                            class,
-                            spaceship,
-                            left_value.clone(),
-                            vec![right_value.clone()],
-                            *position,
-                        )?;
-                        if let Object::Int(c) = cmp {
-                            let result = match op {
-                                BinaryOp::Less => c < 0,
-                                BinaryOp::LessEqual => c <= 0,
-                                BinaryOp::Greater => c > 0,
-                                BinaryOp::GreaterEqual => c >= 0,
-                                _ => unreachable!(),
-                            };
-                            return Ok(Object::Bool(result));
-                        }
-                    }
-                }
-                // `1 / 2r` — an Integer or Float on the left of a Rational is
-                // promoted so the Rational's own arithmetic runs.
-                if let (Some(op_name), Object::Int(_) | Object::Float(_)) =
-                    (binary_op_method_name(op), &left_value)
-                    && crate::vm::native_methods::rational_parts(&right_value).is_some()
-                {
-                    let promoted = self.promote_to_rational(&left_value, *position)?;
-                    if let Some(result) = self.call_rational_method(
-                        &promoted,
-                        op_name,
-                        std::slice::from_ref(&right_value),
-                        *position,
-                    )? {
-                        return Ok(result);
-                    }
-                }
-                self.evaluate_binary_operation(op, left_value, right_value, *position)
+                self.operate_on_values(op, left_value, right_value, position)
             }
 
             // ── Collections ─────────────────────────────────────────────────
-            Expression::Array { elements, .. } => self.evaluate_array_literal(elements),
-            Expression::Dictionary { entries, .. } => self.evaluate_dictionary_literal(entries),
+            Expression::Array { elements, position } => {
+                let made = self.evaluate_array_literal(elements)?;
+                self.record_allocation(&made, *position);
+                Ok(made)
+            }
+            Expression::Dictionary { entries, position } => {
+                let made = self.evaluate_dictionary_literal(entries)?;
+                self.record_allocation(&made, *position);
+                Ok(made)
+            }
             Expression::Index {
                 array,
                 index,
@@ -609,35 +512,58 @@ impl VirtualMachine {
                 arguments,
                 trailing_block,
                 position,
-            } => self.evaluate_method_call(
-                receiver,
-                method,
-                arguments,
-                trailing_block.as_ref().map(|b| b.as_ref()),
-                *position,
-            ),
+            } => {
+                let attached = self.attached_block_flags.len();
+                let result = self.evaluate_method_call(
+                    receiver,
+                    method,
+                    arguments,
+                    trailing_block.as_ref().map(|b| b.as_ref()),
+                    *position,
+                );
+                self.release_attached_blocks(attached);
+                result
+            }
             Expression::Call {
                 callee,
                 arguments,
                 trailing_block,
                 position,
-            } => self.eval_call(
-                callee,
-                arguments,
-                trailing_block.as_ref().map(|b| b.as_ref()),
-                *position,
-            ),
+            } => {
+                let attached = self.attached_block_flags.len();
+                let result = self.eval_call(
+                    callee,
+                    arguments,
+                    trailing_block.as_ref().map(|b| b.as_ref()),
+                    *position,
+                );
+                self.release_attached_blocks(attached);
+                result
+            }
             Expression::Super {
                 arguments,
                 forward_args,
                 trailing_block,
                 position,
-            } => self.eval_super(
-                arguments,
-                *forward_args,
-                trailing_block.as_ref().map(|block| block.as_ref()),
-                *position,
-            ),
+            } => {
+                let attached = self.attached_block_flags.len();
+                let calling_frame = self.current_method_frame;
+                let result = self.eval_super(
+                    arguments,
+                    *forward_args,
+                    trailing_block.as_ref().map(|block| block.as_ref()),
+                    *position,
+                );
+                self.release_attached_blocks(attached);
+                // `break` in the block written on the `super` returns from
+                // the `super` call.
+                match result {
+                    Err(MetorexError::BlockBreak {
+                        value, home_frame, ..
+                    }) if trailing_block.is_some() && home_frame == calling_frame => Ok(value),
+                    other => other,
+                }
+            }
             Expression::Yield {
                 arguments,
                 position,
@@ -651,21 +577,11 @@ impl VirtualMachine {
                 expression,
                 position,
             } => {
-                // Outside of argument lists, splat evaluates to the array
-                // itself. Splatting nil names nothing at all, which is what
-                // `[*nil]` and `x = *nil` both answer.
-                let value = self.evaluate_expression(expression)?;
-                match value {
-                    arr @ Object::Array(_) => Ok(arr),
-                    Object::Nil => Ok(Object::array(Vec::new())),
-                    other if self.responds_to(&other, "to_a") => {
-                        match self.send_to_object(other.clone(), "to_a", vec![], *position)? {
-                            arr @ Object::Array(_) => Ok(arr),
-                            _ => Ok(Object::array(vec![other])),
-                        }
-                    }
-                    other => Ok(Object::array(vec![other])),
-                }
+                // Outside of argument lists, a splat makes a new Array of
+                // what it spreads, the way `[*held]` does. Splatting nil
+                // names nothing at all.
+                let spread = self.evaluate_expression(expression)?;
+                Ok(Object::array(self.splat_elements(spread, *position)?))
             }
             // An integer literal past the i64 range, parsed exactly.
             Expression::BigIntLiteral { digits, position } => {
@@ -680,12 +596,22 @@ impl VirtualMachine {
             // `::Name` reads the top level directly, skipping the lexical
             // chain and any class-local constant of the same name.
             Expression::TopLevelConstant { name, position } => {
+                // `::Name` writes Object out as the scope, which a private
+                // constant refuses.
+                if let Some(Object::Class(object_class)) = self.globals().get("Object")
+                    && object_class.is_private_constant(name)
+                {
+                    return self.private_constant_refused(
+                        &object_class,
+                        &object_class,
+                        name,
+                        *position,
+                    );
+                }
                 if let Some(value) = self.globals().get(name) {
                     return Ok(value);
                 }
-                if let Some(Object::Class(object_class)) = self.globals().get("Object")
-                    && let Some(value) = object_class.get_class_var(name)
-                {
+                if let Some(value) = self.object_constant(name) {
                     return Ok(value);
                 }
                 let message = format!("uninitialized constant {}", name);
@@ -775,75 +701,7 @@ impl VirtualMachine {
                 position,
             } => {
                 let ns_value = self.evaluate_expression(namespace)?;
-                match ns_value {
-                    Object::Class(class_rc) | Object::Module(class_rc) => {
-                        // Own constants first, then (like Ruby's qualified
-                        // lookup) the ancestor chain — but not top-level
-                        // constants, which a qualified reference must not
-                        // reach. Registered autoloads fire on their owner.
-                        // Top-level constants are Object's own, so a name
-                        // written as `Object::Name` reaches one of them before
-                        // any module mixed into Object.
-                        let top_level = if class_rc.name() == "Object"
-                            && name.starts_with(|held: char| held.is_ascii_uppercase())
-                        {
-                            self.globals()
-                                .get(name)
-                                .filter(|held| !matches!(held, Object::NativeFunction(_)))
-                        } else {
-                            None
-                        };
-                        let entry = match top_level {
-                            Some(held) => Some((Rc::clone(&class_rc), Some(held))),
-                            None => self.const_entry_on(&class_rc, name, true, false),
-                        };
-                        let value = match entry {
-                            Some((_, Some(v))) => Some(v),
-                            Some((owner, None)) => self.try_autoload_constant(&owner, name)?,
-                            None => self.try_autoload_constant(&class_rc, name)?,
-                        };
-                        if let Some(v) = value {
-                            // A constant marked private via
-                            // `Module#private_constant` only resolves from
-                            // inside the owning class's body. Anywhere else
-                            // — including methods defined elsewhere that
-                            // happen to be invoked — raises NameError.
-                            if class_rc.is_private_constant(name) {
-                                let inside = self
-                                    .def_scope_stack
-                                    .iter()
-                                    .any(|s| Rc::ptr_eq(s, &class_rc));
-                                if !inside {
-                                    let msg = format!(
-                                        "private constant {}::{} referenced",
-                                        class_rc.name(),
-                                        name
-                                    );
-                                    let exc = Object::exception("NameError", msg.clone());
-                                    return Err(MetorexError::UncaughtException {
-                                        exception: exc,
-                                        location: position_to_location(*position),
-                                        message: msg,
-                                    });
-                                }
-                            }
-                            self.warn_deprecated_constant(&class_rc, name, *position);
-                            return Ok(v);
-                        }
-                        // Uninitialized constants dispatch const_missing —
-                        // the default implementation raises NameError.
-                        // Autoload's "loaded but didn't define" path lands
-                        // here too.
-                        self.dispatch_const_missing(&class_rc, name, *position)
-                    }
-                    // Only a class or module holds constants, so reading one
-                    // out of anything else is refused by its type.
-                    held => Err(crate::vm::errors::simple_exception(
-                        "TypeError",
-                        &format!("{} is not a class/module", held.type_name()),
-                        *position,
-                    )),
-                }
+                self.read_scoped_constant(ns_value, name, position)
             }
             Expression::If {
                 condition,
@@ -869,6 +727,249 @@ impl VirtualMachine {
                 body,
                 *position,
             ),
+        }
+    }
+
+    /// Apply a binary operator to operands already evaluated, which is how a
+    /// compound assignment combines what it read with its right-hand side.
+    /// Evaluate the block written after a call, marking the call it is
+    /// attached to as running until `release_attached_blocks` clears it.
+    pub(crate) fn attach_trailing_block(
+        &mut self,
+        block_expr: &Expression,
+    ) -> Result<Object, MetorexError> {
+        let block = self.evaluate_expression(block_expr)?;
+        if let Object::Block(held) = &block {
+            held.attached_call_running.set(true);
+            self.attached_block_flags
+                .push(Rc::clone(&held.attached_call_running));
+        }
+        Ok(block)
+    }
+
+    /// The signal a `break` in a block raises: a BlockBreak that returns
+    /// from the call the block was attached to, or a LocalJumpError when
+    /// that call has already returned.
+    pub(crate) fn break_signal(
+        &self,
+        value: Object,
+        location: crate::error::SourceLocation,
+    ) -> MetorexError {
+        if let Some(Some(running)) = self.running_block_breaks.last()
+            && !running.get()
+        {
+            let message = "break from proc-closure".to_string();
+            return MetorexError::UncaughtException {
+                exception: Object::exception("LocalJumpError", message.clone()),
+                location,
+                message,
+            };
+        }
+        MetorexError::BlockBreak {
+            value,
+            location,
+            home_frame: None,
+        }
+    }
+
+    /// Mark every block attached since the stack stood at `depth` as no
+    /// longer running, since the call it was attached to has returned.
+    pub(crate) fn release_attached_blocks(&mut self, depth: usize) {
+        while self.attached_block_flags.len() > depth {
+            if let Some(flag) = self.attached_block_flags.pop() {
+                flag.set(false);
+            }
+        }
+    }
+
+    pub(crate) fn operate_on_values(
+        &mut self,
+        op: &BinaryOp,
+        left_value: Object,
+        right_value: Object,
+        position: &crate::lexer::Position,
+    ) -> Result<Object, MetorexError> {
+        // A reopened core class, or a module prepended to one,
+        // holds the operator in a method table rather than in the
+        // native one, so `1 + 2` consults it before the built-in
+        // arithmetic runs. Only the receiver's own class and its
+        // prepended modules are asked: an ancestor's definition, such
+        // as the core library's Numeric#%, describes the operator the
+        // native path already implements, and answering from there
+        // would replace every built-in operator with its Ruby-level
+        // spelling.
+        if !matches!(left_value, Object::Instance(_))
+            && let Some(op_name) = binary_op_method_name(op)
+            && let Some((class, method)) = self.lookup_own_operator_method(&left_value, op_name)
+        {
+            return self.invoke_method(
+                class,
+                method,
+                left_value.clone(),
+                vec![right_value],
+                *position,
+            );
+        }
+        // Check for user-defined operator methods on instances. Walk
+        // via lookup_method so per-instance singleton-class overrides
+        // (used by mspec mocks, among other things) win over the
+        // underlying class definition.
+        if let (Some(op_name), Object::Instance(_)) = (binary_op_method_name(op), &left_value) {
+            if let Some((class, method)) = self.lookup_method(&left_value, op_name)
+                && !method.is_undefined
+            {
+                return self.invoke_method(
+                    class,
+                    method,
+                    left_value.clone(),
+                    vec![right_value],
+                    *position,
+                );
+            }
+            // A generated struct class answers `==` from Struct's
+            // native table, which the method map above does not hold.
+            let instance_class = match &left_value {
+                Object::Instance(instance) => Some(std::rc::Rc::clone(&instance.borrow().class)),
+                _ => None,
+            };
+            if let Some(class) = &instance_class
+                && let Some(members) = crate::vm::native_methods::struct_members(class)
+                && let Some(result) = self.call_struct_instance_method(
+                    class,
+                    &members,
+                    &left_value,
+                    op_name,
+                    std::slice::from_ref(&right_value),
+                    *position,
+                )?
+            {
+                return Ok(result);
+            }
+            // Rational arithmetic likewise lives in a native table.
+            if let Some(class) = &instance_class
+                && class.name() == "Rational"
+                && let Some(result) = self.call_rational_method(
+                    &left_value,
+                    op_name,
+                    std::slice::from_ref(&right_value),
+                    *position,
+                )?
+            {
+                return Ok(result);
+            }
+            // Comparable-style fallback: if the class defines `<=>`,
+            // derive `<`, `<=`, `>`, `>=` from its result. (Ruby gets
+            // these from the Comparable mixin; metorex synthesizes
+            // them.)
+            if matches!(
+                op,
+                BinaryOp::Less | BinaryOp::LessEqual | BinaryOp::Greater | BinaryOp::GreaterEqual
+            ) && let Some((class, spaceship)) = self.lookup_method(&left_value, "<=>")
+            {
+                let cmp = self.invoke_method(
+                    class,
+                    spaceship,
+                    left_value.clone(),
+                    vec![right_value.clone()],
+                    *position,
+                )?;
+                if let Object::Int(c) = cmp {
+                    let result = match op {
+                        BinaryOp::Less => c < 0,
+                        BinaryOp::LessEqual => c <= 0,
+                        BinaryOp::Greater => c > 0,
+                        BinaryOp::GreaterEqual => c >= 0,
+                        _ => unreachable!(),
+                    };
+                    return Ok(Object::Bool(result));
+                }
+            }
+        }
+        // `1 / 2r` — an Integer or Float on the left of a Rational is
+        // promoted so the Rational's own arithmetic runs.
+        if let (Some(op_name), Object::Int(_) | Object::Float(_)) =
+            (binary_op_method_name(op), &left_value)
+            && crate::vm::native_methods::rational_parts(&right_value).is_some()
+        {
+            let promoted = self.promote_to_rational(&left_value, *position)?;
+            if let Some(result) = self.call_rational_method(
+                &promoted,
+                op_name,
+                std::slice::from_ref(&right_value),
+                *position,
+            )? {
+                return Ok(result);
+            }
+        }
+        self.evaluate_binary_operation(op, left_value, right_value, *position)
+    }
+
+    /// Read `name` out of a namespace already evaluated, which is how
+    /// `Ns::Name` resolves and how `Ns::Name += 1` reads before it writes.
+    pub(crate) fn read_scoped_constant(
+        &mut self,
+        ns_value: Object,
+        name: &str,
+        position: &crate::lexer::Position,
+    ) -> Result<Object, MetorexError> {
+        match ns_value {
+            Object::Class(class_rc) | Object::Module(class_rc) => {
+                // Own constants first, then (like Ruby's qualified
+                // lookup) the ancestor chain — but not top-level
+                // constants, which a qualified reference must not
+                // reach. Registered autoloads fire on their owner.
+                // Top-level constants are Object's own, so a name
+                // written as `Object::Name` reaches one of them before
+                // any module mixed into Object.
+                let top_level = if class_rc.name() == "Object"
+                    && name.starts_with(|held: char| held.is_ascii_uppercase())
+                {
+                    self.globals()
+                        .get(name)
+                        .filter(|held| !matches!(held, Object::NativeFunction(_)))
+                } else {
+                    None
+                };
+                let entry = match top_level {
+                    Some(held) => Some((Rc::clone(&class_rc), Some(held))),
+                    None => self.const_entry_on(&class_rc, name, true, false),
+                };
+                let owner = match &entry {
+                    Some((owner, _)) => Rc::clone(owner),
+                    None => Rc::clone(&class_rc),
+                };
+                let value = match entry {
+                    Some((_, Some(v))) => Some(v),
+                    Some((owner, None)) => self.try_autoload_constant(&owner, name)?,
+                    None => self.try_autoload_constant(&class_rc, name)?,
+                };
+                if let Some(v) = value {
+                    // A private constant is read with its scope written out
+                    // only from inside the body of the class that owns it.
+                    if owner.is_private_constant(name)
+                        && !self
+                            .def_scope_stack
+                            .iter()
+                            .any(|open| Rc::ptr_eq(open, &owner))
+                    {
+                        return self.private_constant_refused(&class_rc, &owner, name, *position);
+                    }
+                    self.warn_deprecated_constant(&class_rc, name, *position);
+                    return Ok(v);
+                }
+                // Uninitialized constants dispatch const_missing —
+                // the default implementation raises NameError.
+                // Autoload's "loaded but didn't define" path lands
+                // here too.
+                self.dispatch_const_missing(&class_rc, name, *position)
+            }
+            // Only a class or module holds constants, so reading one
+            // out of anything else is refused by its type.
+            held => Err(crate::vm::errors::simple_exception(
+                "TypeError",
+                &format!("{} is not a class/module", held.type_name()),
+                *position,
+            )),
         }
     }
 }

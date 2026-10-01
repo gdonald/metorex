@@ -200,34 +200,20 @@ pub(crate) fn register_builtin_modules(globals: &mut GlobalRegistry, builtins: &
     let fiber_error = Class::new("FiberError", Some(Class::new("StandardError", None)));
     globals.set("FiberError", Object::Class(fiber_error));
 
-    // Queue / SizedQueue — minimal FIFO stub. metorex runs Thread blocks
-    // synchronously, so blocking-pop semantics aren't meaningful;
-    // `pop` returns nil on an empty queue rather than blocking. Enough
-    // for spec helpers and autoload coordination patterns to make
-    // forward progress.
-    let queue = Class::new("Queue", Some(Class::new("Object", None)));
-    globals.set("Queue", Object::Class(queue));
-    let sized_queue = Class::new("SizedQueue", Some(Class::new("Object", None)));
-    globals.set("SizedQueue", Object::Class(sized_queue));
-    // Ruby names both of these under Thread as well as at the top level, and
-    // the two names reach the same class.
-    if let (Some(queue_class), Some(sized_class)) =
-        (globals.get("Queue"), globals.get("SizedQueue"))
-    {
-        thread.set_class_var("Queue", queue_class.clone());
-        thread.set_class_var("SizedQueue", sized_class.clone());
-        globals.set("Thread::Queue", queue_class);
-        globals.set("Thread::SizedQueue", sized_class);
+    // Queue, SizedQueue, Mutex, and ConditionVariable live under Thread, and
+    // Ruby names each at the top level too. The two names reach the same
+    // class.
+    for (short, full) in [
+        ("Queue", "Thread::Queue"),
+        ("SizedQueue", "Thread::SizedQueue"),
+        ("Mutex", "Thread::Mutex"),
+        ("ConditionVariable", "Thread::ConditionVariable"),
+    ] {
+        let made = Object::Class(Class::new(full, Some(Class::new("Object", None))));
+        thread.set_class_var(short, made.clone());
+        globals.set(full, made.clone());
+        globals.set(short, made);
     }
-
-    // Mutex / ConditionVariable — single-threaded stubs. We don't have real
-    // OS threads (Thread.new runs synchronously), so locks never contend and
-    // condvars never need to actually wake anyone. Just enough surface for
-    // fixtures (CyclicBarrier, ThreadSafeCounter, ...) to compile and run.
-    let mutex = Class::new("Mutex", Some(Class::new("Object", None)));
-    globals.set("Mutex", Object::Class(mutex));
-    let cv = Class::new("ConditionVariable", Some(Class::new("Object", None)));
-    globals.set("ConditionVariable", Object::Class(cv));
 
     // ENV — use a Dict so ENV['KEY'] works. Keys are plain strings (no quotes)
     // because object_to_dict_key returns the raw String for Object::String.

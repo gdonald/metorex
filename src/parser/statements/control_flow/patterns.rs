@@ -73,8 +73,9 @@ impl Parser {
                 break;
             }
 
+            // The line break after the last value ends the list, so an `if`
+            // on the next line opens the clause's body.
             patterns.push(self.parse_case_pattern()?);
-            self.skip_whitespace();
         }
 
         // If we only collected one pattern, return it directly
@@ -219,27 +220,14 @@ impl Parser {
                 let start = MatchPattern::StringLiteral(value);
                 self.parse_range_pattern_suffix(start)
             }
-            // Symbol pattern (:name)
+            // Symbol pattern, written any way a Symbol literal can be:
+            // `:name`, `:"!"`, `:+`, `:return`.
             TokenKind::Colon => {
-                self.advance();
-                let name = match self.advance().kind {
-                    TokenKind::Ident(n) => n,
-                    TokenKind::InstanceVar(n) => format!("@{}", n),
-                    TokenKind::ClassVar(n) => format!("@@{}", n),
-                    // A keyword spelled after the colon is a Symbol by that
-                    // name, which is how `:return` reads in a pattern.
-                    other => match crate::parser::expressions::primary::groups::keyword_symbol_key(
-                        &other,
-                    ) {
-                        Some(keyword) => keyword.to_string(),
-                        None => {
-                            return Err(
-                                self.error_at_previous("Expected identifier after ':' in pattern")
-                            );
-                        }
-                    },
-                };
-                Ok(MatchPattern::SymbolLiteral(name))
+                let position = self.advance().position;
+                match self.parse_symbol_literal(position)? {
+                    Expression::Symbol { value, .. } => Ok(MatchPattern::SymbolLiteral(value)),
+                    built => Ok(MatchPattern::Expression(Box::new(built))),
+                }
             }
             TokenKind::True => {
                 self.advance();

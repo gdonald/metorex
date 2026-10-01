@@ -221,3 +221,63 @@ fn test_methods_argument_binding_no_parens_execution() {
     let output = run_example("methods/argument_binding_no_parens.rb");
     assert_eq!(output, ARGUMENT_BINDING_OUTPUT);
 }
+
+/// The expected output of both `methods/default_that_redefines` variants.
+const DEFAULT_THAT_REDEFINES_OUTPUT: &str = "42\n1\n\"hello\"\n[true, true]\nfalse\n";
+
+#[test]
+fn test_methods_default_that_redefines_execution() {
+    let output = run_example("methods/default_that_redefines.rb");
+    assert_eq!(output, DEFAULT_THAT_REDEFINES_OUTPUT);
+}
+
+#[test]
+fn test_methods_default_that_redefines_no_parens_execution() {
+    let output = run_example("methods/default_that_redefines_no_parens.rb");
+    assert_eq!(output, DEFAULT_THAT_REDEFINES_OUTPUT);
+}
+
+/// The expected output of both `methods/nested_definitions` variants.
+const NESTED_DEFINITIONS_OUTPUT: &str = "true\ntrue\n:entry\ntrue\n:prepared\nfalse\n:configured\nfalse\n:labeled\nFrozenError\n\"wrong number of arguments (given 0, expected 1..2)\"\nnil\nSyntaxError\nfalse\n";
+
+#[test]
+fn test_methods_nested_definitions_execution() {
+    let output = run_example("methods/nested_definitions.rb");
+    assert_eq!(output, NESTED_DEFINITIONS_OUTPUT);
+}
+
+#[test]
+fn test_methods_nested_definitions_no_parens_execution() {
+    let output = run_example("methods/nested_definitions_no_parens.rb");
+    assert_eq!(output, NESTED_DEFINITIONS_OUTPUT);
+}
+
+/// The expected output of both `methods/call_arguments` variants.
+const CALL_ARGUMENTS_OUTPUT: &str = "\"can't convert Refuses to Array (Refuses#to_a gives Integer)\"\nDeclines\n{\"name\" => 1, size: 2}\n{a: 4, b: 2, c: 7}\n[1, {\"a\" => 1, b: 2}]\n{a: 1}\n\"no keywords accepted\"\n[nil]\n[1, 3]\nSyntaxError\n[1, 2]\n";
+
+#[test]
+fn test_methods_call_arguments_execution() {
+    let output = run_example("methods/call_arguments.rb");
+    assert_eq!(output, CALL_ARGUMENTS_OUTPUT);
+}
+
+#[test]
+fn test_methods_call_arguments_no_parens_execution() {
+    let output = run_example("methods/call_arguments_no_parens.rb");
+    assert_eq!(output, CALL_ARGUMENTS_OUTPUT);
+}
+
+/// The expected output of both `methods/super_forms` variants.
+const SUPER_FORMS_OUTPUT: &str = "[[10, 2, :added, 5], {flag: :off}]\n[[10, 3, 4, :added, 5], {flag: :on}]\n[:changed, :b]\n[[], {}]\n[3, 4]\n\"implicit argument passing of super from method defined by define_method() is not supported. Specify all arguments explicitly.\"\n[:missing, :frozen?]\n[:relabeled, :named]\n[:wrapped, :plain]\n42\n";
+
+#[test]
+fn test_methods_super_forms_execution() {
+    let output = run_example("methods/super_forms.rb");
+    assert_eq!(output, SUPER_FORMS_OUTPUT);
+}
+
+#[test]
+fn test_methods_super_forms_no_parens_execution() {
+    let output = run_example("methods/super_forms_no_parens.rb");
+    assert_eq!(output, SUPER_FORMS_OUTPUT);
+}

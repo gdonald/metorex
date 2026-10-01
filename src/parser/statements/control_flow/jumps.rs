@@ -6,6 +6,17 @@ impl Parser {
     /// Parse a break statement, optionally with a value (e.g. `break 42`).
     pub(crate) fn parse_break_statement(&mut self) -> Result<Statement, MetorexError> {
         let pos = self.expect(TokenKind::Break, "Expected 'break'")?.position;
+        // A `break` in a method, class, or module body, with no loop or block
+        // around it, has nothing to break out of.
+        if (self.def_body_depth > 0 || self.in_class_body)
+            && self.jump_target_depth == 0
+            && !self.in_defined_argument
+        {
+            return Err(MetorexError::syntax_error(
+                "Invalid break".to_string(),
+                SourceLocation::new(pos.line, pos.column, pos.offset),
+            ));
+        }
         // A value only applies when the very next token is an expression on
         // the same line — stop if we hit a statement terminator or an `if`/
         // `unless`/`while`/`until` modifier.
@@ -104,7 +115,6 @@ impl Parser {
         Ok(value)
     }
 
-    /// Parse a redo statement, which re-runs the enclosing body from the top.
     /// `retry` runs the begin body its rescue clause belongs to again. It is
     /// only written inside a rescue body, and Ruby refuses it anywhere else
     /// while the source is still being read.
@@ -119,9 +129,35 @@ impl Parser {
         self.wrap_with_modifier(Statement::Retry { position: pos })
     }
 
+    /// Parse a redo statement, which re-runs the enclosing body from the top.
+    /// With no loop or block around it there is no body to re-run, which is
+    /// known once the statement it sits in has ended.
     pub(crate) fn parse_redo_statement(&mut self) -> Result<Statement, MetorexError> {
         let pos = self.expect(TokenKind::Redo, "Expected 'redo'")?.position;
+        if self.jump_target_depth == 0 && !self.in_defined_argument {
+            self.unlooped_redos.push(pos);
+        }
         self.wrap_with_modifier(Statement::Redo { position: pos })
+    }
+
+    /// Refuse a `redo` written from `offset` on that no loop took in.
+    pub(crate) fn refuse_unlooped_redos_after(
+        &mut self,
+        offset: usize,
+    ) -> Result<(), MetorexError> {
+        let Some(at) = self
+            .unlooped_redos
+            .iter()
+            .find(|at| at.offset >= offset)
+            .copied()
+        else {
+            return Ok(());
+        };
+        self.unlooped_redos.retain(|at| at.offset < offset);
+        Err(MetorexError::syntax_error(
+            "Invalid redo".to_string(),
+            SourceLocation::new(at.line, at.column, at.offset),
+        ))
     }
 
     /// Parse an unless statement

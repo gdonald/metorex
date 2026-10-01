@@ -114,7 +114,7 @@ pub(super) const SOURCE: &str = r##"
     wanted = __as_integer__ maxlen
     at = __as_integer__ offset
     raise ArgumentError, "negative string size (or size too big)" if wanted < 0
-    raise Errno::EINVAL, "Invalid argument" if at < 0
+    raise Errno::EINVAL if at < 0
     target = nil
     unless buffer.nil?
       if buffer.is_a? String
@@ -528,29 +528,102 @@ pub(super) const SOURCE: &str = r##"
     __wait_ready__("write", timeout)
   end
 
-  def wait(timeout = nil, mode = :read)
-    __wait_ready__(mode.to_s.include?("write") ? "write" : "read", timeout)
+  READABLE = 1
+  PRIORITY = 2
+  WRITABLE = 4
+
+  # Two arguments with no Symbol among them are an event mask and a
+  # timeout, answered with the events that came ready. Any other shape is
+  # a timeout and modes in any order, answered with the stream itself.
+  def wait(*arguments)
+    if arguments.size == 2 && arguments.none?(Symbol)
+      events = arguments[0]
+      events = Integer === events ? events : __events_number__(events)
+      raise ArgumentError, "Events must be positive integer!" if events <= 0
+      timeout = arguments[1]
+      __time_interval__(timeout) unless timeout.nil?
+      return __wait_events__(events, timeout, false)
+    end
+    timeout = nil
+    timed = false
+    events = 0
+    arguments.each do |argument|
+      if argument.is_a?(Symbol)
+        events |= __wait_mode__(argument)
+      elsif !timed
+        __time_interval__(argument)
+        timeout = argument
+        timed = true
+      else
+        raise ArgumentError, "timeout given more than once"
+      end
+    end
+    events = READABLE if events == 0
+    __wait_events__(events, timeout, true)
   end
 
-  def __wait_ready__(mode, timeout)
+  def __events_number__(events)
+    raise TypeError, "no implicit conversion from nil to integer" if events.nil?
+    return events.to_i if events.is_a?(Float)
+    unless events.respond_to?(:to_int)
+      raise TypeError, "no implicit conversion of #{events.class} into Integer"
+    end
+    events.to_int
+  end
+  private :__events_number__
+
+  def __wait_mode__(mode)
+    case mode
+    when :r, :read, :readable then READABLE
+    when :w, :write, :writable then WRITABLE
+    when :rw, :read_write, :readable_writable then READABLE | WRITABLE
+    else raise ArgumentError, "unsupported mode: #{mode}"
+    end
+  end
+  private :__wait_mode__
+
+  def __time_interval__(timeout)
+    unless timeout.is_a?(Numeric)
+      raise TypeError, "can't convert #{timeout.class} into time interval"
+    end
+    raise ArgumentError, "time interval must not be negative" if timeout < 0
+  end
+  private :__time_interval__
+
+  def __wait_events__(events, timeout, answer_stream)
     raise IOError, "closed stream" if closed?
+    ready = __ready_events__(events, timeout)
+    return nil if ready == 0
+    answer_stream ? self : ready
+  end
+  private :__wait_events__
+
+  def __wait_ready__(mode, timeout)
+    __wait_events__(mode == "write" ? WRITABLE : READABLE, timeout, true)
+  end
+  private :__wait_ready__
+
+  # The events among those asked for that are ready, waiting up to
+  # `timeout` seconds for one of them, or for as long as it takes when it
+  # is nil. The wait sleeps between checks, so the thread reads as asleep
+  # and whatever else the program has to run gets a turn.
+  def __ready_events__(events, timeout)
     waited = timeout.nil? ? -1 : (timeout.to_f * 1000).to_i
     # A wait longer than the counter holds is the same as waiting forever.
     waited = -1 if waited > 2147483647 || waited < -1
     handle = __stream_handle__
-    return IO.__stream__("wait", handle, mode, 0) ? self : nil if waited == 0
-    # The wait is taken in slices so whatever else the program has to run
-    # gets a turn, and so a thread waiting here can be woken or stopped.
     left = waited
-    while left != 0
+    loop do
+      ready = 0
+      ready |= READABLE if events & READABLE != 0 && IO.__stream__("wait", handle, "read", 0)
+      ready |= WRITABLE if events & WRITABLE != 0 && IO.__stream__("wait", handle, "write", 0)
+      return ready if ready != 0 || left == 0
       slice = left < 0 || left > WAIT_SLICE_MS ? WAIT_SLICE_MS : left
-      return self if IO.__stream__("wait", handle, mode, slice)
+      sleep slice / 1000.0
       left -= slice if left > 0
-      sleep 0.001
     end
-    nil
   end
-  private :__wait_ready__
+  private :__ready_events__
 
 
   def to_io

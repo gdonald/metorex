@@ -567,4 +567,9 @@ class Float
     to_r.rationalize(Rational(Math.ldexp(1, Math.frexp(self)[1] - 53).to_r, 2))
   end
 end
+
+# What a `require` of a name would load, without loading it.
+def $LOAD_PATH.resolve_feature_path(feature)
+  __resolve_feature_path__(feature)
+end
 "##;

@@ -224,17 +224,25 @@ impl VirtualMachine {
                 // A character an encoding spells in bytes of its own is named
                 // by those bytes together, since the answer cannot show the
                 // character itself.
-                if held == "EUC-JP" && string_value.holds_bytes() {
+                if (held == "EUC-JP" || spells_shift_jis(&held)) && string_value.holds_bytes() {
                     let bytes = binary_bytes(string_value);
                     let mut at = 0usize;
                     while at < bytes.len() {
-                        let width = match crate::vm::native_methods::euc_jp_table::euc_jp_character(
-                            &bytes[at..],
-                        ) {
-                            Some((_, width)) => width,
-                            None => 1,
+                        let decoded = if held == "EUC-JP" {
+                            crate::vm::native_methods::euc_jp_table::euc_jp_character(&bytes[at..])
+                        } else {
+                            crate::vm::native_methods::shift_jis_table::shift_jis_character(
+                                &bytes[at..],
+                            )
                         };
-                        if width == 1 && bytes[at] < 0x80 {
+                        let width = decoded.map_or(1, |(_, width)| width);
+                        // A byte standing alone past ASCII is named by itself.
+                        if width == 1 && bytes[at] >= 0x80 {
+                            out.push_str(&format!("\\x{:02X}", bytes[at]));
+                            at += 1;
+                            continue;
+                        }
+                        if width == 1 {
                             match bytes[at] {
                                 b'"' => out.push_str("\\\""),
                                 b'\\' => out.push_str("\\\\"),

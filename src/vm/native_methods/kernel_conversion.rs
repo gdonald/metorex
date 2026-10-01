@@ -708,8 +708,10 @@ impl VirtualMachine {
         method_name: &str,
         position: Position,
     ) -> Result<Object, MetorexError> {
+        // A conversion written in Ruby is called directly, and one a value
+        // answers natively is sent the way any call is.
         let Some((class, method)) = self.lookup_method(value, method_name) else {
-            return Ok(Object::Nil);
+            return self.send_to_object(value.clone(), method_name, Vec::new(), position);
         };
         self.invoke_method(class, method, value.clone(), Vec::new(), position)
     }

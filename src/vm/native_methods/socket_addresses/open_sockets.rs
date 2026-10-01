@@ -115,7 +115,9 @@ pub(crate) fn errno_class(problem: &std::io::Error) -> &'static str {
         Some(libc::EACCES) => "Errno::EACCES",
         Some(libc::EADDRINUSE) => "Errno::EADDRINUSE",
         Some(libc::EOPNOTSUPP) => "Errno::EOPNOTSUPP",
-        _ => "Errno::ECONNREFUSED",
+        Some(libc::EAGAIN) => "Errno::EAGAIN",
+        Some(number) => crate::vm::init::errno_class_name(number).unwrap_or("Errno::ECONNREFUSED"),
+        None => "Errno::ECONNREFUSED",
     }
 }
 

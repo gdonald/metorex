@@ -35,7 +35,7 @@ fn test_linear_algebra_matrix_shapes_no_parens_execution() {
 }
 
 /// The expected output of both `linear_algebra/eigenvalues` variants.
-const EIGENVALUES_OUTPUT: &str = "[6, 2]\nMatrix[[6, 0], [0, 2]]\n[(1+1i), (1-1i)]\nMatrix[[(1+1i), 0], [0, (1-1i)]]\na larger matrix is not worked out\n";
+const EIGENVALUES_OUTPUT: &str = "[6.0, 2.0]\nMatrix[[6.0, 0], [0, 2.0]]\n[(1.0+1.0i), (1.0-1.0i)]\nMatrix[[(1.0+1.0i), 0], [0, (1.0-1.0i)]]\n[16.116844, -1.116844, 0.0]\n";
 
 #[test]
 fn test_linear_algebra_eigenvalues_execution() {
@@ -52,7 +52,7 @@ fn test_linear_algebra_eigenvalues_no_parens_execution() {
 /// The expected output of both `linear_algebra/eigenvectors` variants, which show
 /// the eigenvectors of a matrix and the factorization they take part in and differ only in whether the calls are
 /// written with parentheses.
-const EIGENVECTORS_OUTPUT: &str = "[-1, 3]\n[Vector[0.7071067811865475, -0.7071067811865475], Vector[0.7071067811865475, 0.7071067811865475]]\nMatrix[[0.7071067811865475, 0.7071067811865475], [-0.7071067811865475, 0.7071067811865475]]\n[Vector[1, (0+1i)], Vector[1, (0-1i)]]\nMatrix[[(14/1), (16/1)], [(-6/1), (-6/1)]]\nMatrix[[(5/1), (4/1)], [(4/1), (5/1)]]\n";
+const EIGENVECTORS_OUTPUT: &str = "[-0.9999999999999996, 3.0]\n[Vector[0.7071067811865475, -0.7071067811865475], Vector[0.7071067811865475, 0.7071067811865475]]\nMatrix[[0.7071067811865475, 0.7071067811865475], [-0.7071067811865475, 0.7071067811865475]]\n[Vector[(1.0+0.0i), (0.0+1.0i)], Vector[(1.0-0.0i), (0.0-1.0i)]]\nMatrix[[14.0, 16.0], [-6.0, -6.0]]\nMatrix[[5.0, 4.0], [4.0, 5.0]]\n";
 
 #[test]
 fn test_linear_algebra_eigenvectors_execution() {

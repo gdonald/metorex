@@ -160,7 +160,7 @@ impl VirtualMachine {
                     let spelling = written.as_str().to_string();
                     if spelling.chars().any(|held| {
                         !(matches!(held, 'i' | 'm' | 'x')
-                            || (written_out && matches!(held, 'n' | 'u' | 'o')))
+                            || (written_out && matches!(held, 'n' | 'e' | 's' | 'u' | 'o')))
                     }) {
                         let message = format!("unknown regexp option: {}", spelling);
                         return Err(crate::vm::errors::simple_exception(
@@ -171,7 +171,7 @@ impl VirtualMachine {
                     }
                     // `o` says when the pattern is built rather than what it
                     // matches, so the built one does not carry it.
-                    for held in ['i', 'm', 'x', 'n', 'u'] {
+                    for held in ['i', 'm', 'x', 'n', 'e', 's', 'u'] {
                         if spelling.contains(held) {
                             flags.push(held);
                         }
@@ -225,7 +225,15 @@ impl VirtualMachine {
             // A pattern built here is not frozen, which is what tells it
             // apart from one written as a literal.
             self.record_built_pattern(&built);
-            if let Some(named) = source_encoding {
+            // A literal written with `u`, `e` or `s` matches in the encoding
+            // the letter names, whatever its parts were written in.
+            let named_by_letter = match flags.chars().find(|held| "ues".contains(*held)) {
+                Some('u') if written_out => Some("UTF-8"),
+                Some('e') if written_out => Some("EUC-JP"),
+                Some('s') if written_out => Some("Windows-31J"),
+                _ => None,
+            };
+            if let Some(named) = named_by_letter.map(str::to_string).or(source_encoding) {
                 self.record_pattern_encoding(&built, named);
             }
             let made = Object::Regex(built, Rc::new(flags));

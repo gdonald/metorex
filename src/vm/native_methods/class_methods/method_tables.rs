@@ -485,6 +485,13 @@ pub(crate) fn is_native_kernel_method(name: &str) -> bool {
             | "public_method"
             | "__id__"
             | "__send__"
+            // The comparisons every object answers through BasicObject and
+            // Kernel.
+            | "!"
+            | "=="
+            | "!="
+            | "!~"
+            | "==="
     )
 }
 

@@ -14,9 +14,12 @@ pub(crate) use std::rc::Rc;
 mod clocks;
 mod collecting;
 mod dispatch;
+mod dynamic_libraries;
+mod openssl_objects;
 mod processes;
 mod reachable;
 mod refinements;
+mod rsa_keys;
 
 pub(crate) use clocks::*;
 pub(crate) use processes::PROCESS_NATIVE_METHODS;

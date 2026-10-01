@@ -4,7 +4,7 @@ use super::run_example;
 
 /// The expected output of both `stdlib_libraries/shipped_libraries` variants,
 /// which differ only in whether the calls are written with parentheses.
-const SHIPPED_LIBRARIES_OUTPUT: &str = "\"Tm93IGlzIHRoZSB0aW1lIGZvciBhbGwgZ29vZCBjb2RlcnMKdG8gbGVhcm4g\\nUnVieQ==\\n\"\n\"aGVsbG8=\"\n\"hello\"\n\"hello\"\n\"aGVsbG8_\"\n\"aGVsbG8_\"\n\"hello?\"\n[\"ruby\", \"-e\", \"puts 1\", \"--name\", \"value\"]\n\"a\\\\ b\"\n\"ruby a\\\\ b\"\n[\"one\", \"two three\"]\n{\"r\" => \"ruby\", \"ru\" => \"ruby\", \"rub\" => \"ruby\", \"ruby\" => \"ruby\"}\n{\"ca\" => \"car\", \"car\" => \"car\", \"co\" => \"cone\", \"con\" => \"cone\", \"cone\" => \"cone\"}\ntrue\n0\nNoMethodError\nTypeError\n0\n1\n:moved\n0\n32\n8\n\"\"\n36\nInteger\n7\n7\n\"e\"\n1\n\"xam\"\n4\nfalse\nnil\nnil\nfalse\ntrue\ntrue\nfalse\ntrue\n\"first\\n\"\n1\n[\"second\\n\"]\n0\n[\"first\\n\", \"second\\n\"]\n[\"a\", \"b\", \"c\"]\n[97, 98, 99]\n\"a\"\n97\n\"one two!\\nthree\"\n14\n13\n0\n2\n0\n\"exam\"\nIOError\n\"Ada\"\n1843\n\"computing\"\n\"Ada\"\n\"London\"\n{name: \"Ada\", year: 1843, field: \"computing\", city: \"London\"}\n\"#<OpenStruct name=\\\"Ada\\\", year=1843, field=\\\"computing\\\", city=\\\"London\\\">\"\ntrue\nfalse\nnil\ntrue\n\"#<OpenStruct>\"\ntrue\nfalse\n[2, 3, 5, 7, 11]\n[[2, 3], [3, 2], [5, 1]]\n72\n[[-1, 1], [2, 1], [5, 1]]\ntrue\n[[2, 2], [3, 1]]\n20\n2\n3\n2\n";
+const SHIPPED_LIBRARIES_OUTPUT: &str = "\"Tm93IGlzIHRoZSB0aW1lIGZvciBhbGwgZ29vZCBjb2RlcnMKdG8gbGVhcm4g\\nUnVieQ==\\n\"\n\"aGVsbG8=\"\n\"hello\"\n\"hello\"\n\"aGVsbG8_\"\n\"aGVsbG8_\"\n\"hello?\"\n[\"ruby\", \"-e\", \"puts 1\", \"--name\", \"value\"]\n\"a\\\\ b\"\n\"ruby a\\\\ b\"\n[\"one\", \"two three\"]\n{\"ruby\" => \"ruby\", \"rub\" => \"ruby\", \"ru\" => \"ruby\", \"r\" => \"ruby\"}\n{\"car\" => \"car\", \"ca\" => \"car\", \"cone\" => \"cone\", \"con\" => \"cone\", \"co\" => \"cone\"}\ntrue\n0\nNoMethodError\nTypeError\n0\n1\n:moved\n0\n32\n8\n\"\"\n36\nInteger\n7\n7\n\"e\"\n1\n\"xam\"\n4\nfalse\nnil\nnil\nfalse\ntrue\ntrue\nfalse\ntrue\n\"first\\n\"\n1\n[\"second\\n\"]\n0\n[\"first\\n\", \"second\\n\"]\n[\"a\", \"b\", \"c\"]\n[97, 98, 99]\n\"a\"\n97\n\"one two!\\nthree\"\n14\n13\n0\n2\n0\n\"exam\"\nIOError\n\"Ada\"\n1843\n\"computing\"\n\"Ada\"\n\"London\"\n{name: \"Ada\", year: 1843, field: \"computing\", city: \"London\"}\n\"#<OpenStruct name=\\\"Ada\\\", year=1843, field=\\\"computing\\\", city=\\\"London\\\">\"\ntrue\nfalse\nnil\ntrue\n\"#<OpenStruct>\"\ntrue\nfalse\n[2, 3, 5, 7, 11]\n[[2, 3], [3, 2], [5, 1]]\n72\n[[-1, 1], [2, 1], [5, 1]]\ntrue\n[[2, 2], [3, 1]]\n20\n2\n3\n2\n";
 
 #[test]
 fn test_stdlib_libraries_shipped_libraries_execution() {
@@ -179,7 +179,7 @@ fn test_stdlib_libraries_logging_and_scratch_files_parens_execution() {
 #[test]
 fn test_stdlib_libraries_decimal_numbers_execution() {
     let expected = concat!(
-        "\"0.33333333333333333333e0\"\n",
+        "\"0.33333333333333333333333333333333e0\"\n",
         "\"0.3e0\"\n",
         "false\n",
         "true\n",
@@ -191,10 +191,10 @@ fn test_stdlib_libraries_decimal_numbers_execution() {
         "\"10 00010.0\"\n",
         "\"0.14142135623730950488e1\"\n",
         "\"0.1e1\"\n",
-        "[\"0.2e1\", \"0.1e1\"]\n",
+        "[\"2\", \"0.1e1\"]\n",
         "\"0.1024e4\"\n",
-        "2\n",
-        "3\n",
+        "0.2e1\n",
+        "0.3e1\n",
         "-2\n",
         "-1\n",
         "\"0.198e1\"\n",
@@ -211,7 +211,7 @@ fn test_stdlib_libraries_decimal_numbers_execution() {
 #[test]
 fn test_stdlib_libraries_decimal_numbers_parens_execution() {
     let expected = concat!(
-        "\"0.33333333333333333333e0\"\n",
+        "\"0.33333333333333333333333333333333e0\"\n",
         "\"0.3e0\"\n",
         "false\n",
         "true\n",
@@ -223,10 +223,10 @@ fn test_stdlib_libraries_decimal_numbers_parens_execution() {
         "\"10 00010.0\"\n",
         "\"0.14142135623730950488e1\"\n",
         "\"0.1e1\"\n",
-        "[\"0.2e1\", \"0.1e1\"]\n",
+        "[\"2\", \"0.1e1\"]\n",
         "\"0.1024e4\"\n",
-        "2\n",
-        "3\n",
+        "0.2e1\n",
+        "0.3e1\n",
         "-2\n",
         "-1\n",
         "\"0.198e1\"\n",
@@ -762,4 +762,240 @@ fn test_stdlib_libraries_open3_streams_execution() {
 fn test_stdlib_libraries_open3_streams_parens_execution() {
     let output = run_example("stdlib_libraries/open3_streams_parens.rb");
     assert_eq!(output, OPEN3_STREAMS_OUTPUT);
+}
+
+/// The expected output of both `stdlib_libraries/io_wait_forms` variants.
+const IO_WAIT_FORMS_OUTPUT: &str = "[1, 2, 4]\nnil\n4\n1\ntrue\ntrue\ntrue\n[ArgumentError, \"Events must be positive integer!\"]\n[ArgumentError, \"Events must be positive integer!\"]\n[ArgumentError, \"unsupported mode: sideways\"]\n[ArgumentError, \"timeout given more than once\"]\n[ArgumentError, \"time interval must not be negative\"]\n[TypeError, \"no implicit conversion from nil to integer\"]\n[IOError, \"closed stream\"]\n[IOError, \"closed stream\"]\n";
+
+#[test]
+fn test_stdlib_libraries_io_wait_forms_execution() {
+    let output = run_example("stdlib_libraries/io_wait_forms.rb");
+    assert_eq!(output, IO_WAIT_FORMS_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_libraries_io_wait_forms_no_parens_execution() {
+    let output = run_example("stdlib_libraries/io_wait_forms_no_parens.rb");
+    assert_eq!(output, IO_WAIT_FORMS_OUTPUT);
+}
+
+/// The expected output of both `stdlib_libraries/irb_session` variants.
+const IRB_SESSION_OUTPUT: &str = "total ** 2\n100\ntotal = 4\n4\ndef twice(number) = number * 2\n:twice\ntwice(total)\n8\n[1,\n  2]\n[1, 2]\nmissing_name\n(irb):7:in '<main>': undefined local variable or method 'missing_name' for main (NameError)\n\nexit\n[:after, 4]\n";
+
+#[test]
+fn test_stdlib_libraries_irb_session_execution() {
+    let output = run_example("stdlib_libraries/irb_session.rb");
+    assert_eq!(output, IRB_SESSION_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_libraries_irb_session_no_parens_execution() {
+    let output = run_example("stdlib_libraries/irb_session_no_parens.rb");
+    assert_eq!(output, IRB_SESSION_OUTPUT);
+}
+
+/// `stdlib_libraries/irb_source_window` prints its own source, so each
+/// variant has an expected output of its own.
+const IRB_SOURCE_WINDOW_OUTPUT: &str = "\nFrom: here @ line 16 :\n\n    11:   end\n    12:   written.sub(/From: \\S+/, \"From: here\")\n    13: end\n    14: \n    15: if ARGV.first == \"early\"\n => 16:   binding.irb\n    17: elsif ARGV.first == \"late\"\n    18:   binding.irb\n    19: else\n    20:   puts(header_of(\"early\"))\n    21:   puts(header_of(\"late\"))\n\nSwitch to inspect mode.\n\n\nFrom: here @ line 18 :\n\n    13: end\n    14: \n    15: if ARGV.first == \"early\"\n    16:   binding.irb\n    17: elsif ARGV.first == \"late\"\n => 18:   binding.irb\n    19: else\n    20:   puts(header_of(\"early\"))\n    21:   puts(header_of(\"late\"))\n    22: end\n\nSwitch to inspect mode.\n\n";
+
+const IRB_SOURCE_WINDOW_NO_PARENS_OUTPUT: &str = "\nFrom: here @ line 16 :\n\n    11:   end\n    12:   written.sub(/From: \\S+/, \"From: here\")\n    13: end\n    14: \n    15: if ARGV.first == \"early\"\n => 16:   binding.irb\n    17: elsif ARGV.first == \"late\"\n    18:   binding.irb\n    19: else\n    20:   puts header_of \"early\"\n    21:   puts header_of \"late\"\n\nSwitch to inspect mode.\n\n\nFrom: here @ line 18 :\n\n    13: end\n    14: \n    15: if ARGV.first == \"early\"\n    16:   binding.irb\n    17: elsif ARGV.first == \"late\"\n => 18:   binding.irb\n    19: else\n    20:   puts header_of \"early\"\n    21:   puts header_of \"late\"\n    22: end\n\nSwitch to inspect mode.\n\n";
+
+#[test]
+fn test_stdlib_libraries_irb_source_window_execution() {
+    let output = run_example("stdlib_libraries/irb_source_window.rb");
+    assert_eq!(output, IRB_SOURCE_WINDOW_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_libraries_irb_source_window_no_parens_execution() {
+    let output = run_example("stdlib_libraries/irb_source_window_no_parens.rb");
+    assert_eq!(output, IRB_SOURCE_WINDOW_NO_PARENS_OUTPUT);
+}
+
+/// The expected output of both `stdlib_libraries/drb_remote_calls` variants.
+const DRB_REMOTE_CALLS_OUTPUT: &str = "6\n[3, 5]\nDRb::DRbObject\n[6, 6]\n[ArgumentError, \"bad input\"]\n\"private method 'hidden' called\"\n";
+
+#[test]
+fn test_stdlib_libraries_drb_remote_calls_execution() {
+    let output = run_example("stdlib_libraries/drb_remote_calls.rb");
+    assert_eq!(output, DRB_REMOTE_CALLS_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_libraries_drb_remote_calls_no_parens_execution() {
+    let output = run_example("stdlib_libraries/drb_remote_calls_no_parens.rb");
+    assert_eq!(output, DRB_REMOTE_CALLS_OUTPUT);
+}
+
+/// The expected output of both `stdlib_libraries/fiddle_handles` variants.
+const FIDDLE_HANDLES_OUTPUT: &str = "[Fiddle::DLError, Fiddle::Error, StandardError]\n[true, true, true]\ntrue\n\"unknown symbol \\\"no_such_symbol_here\\\"\"\n0\n\"dlclose() called too many times\"\n\"closed handle\"\n";
+
+#[test]
+fn test_stdlib_libraries_fiddle_handles_execution() {
+    let output = run_example("stdlib_libraries/fiddle_handles.rb");
+    assert_eq!(output, FIDDLE_HANDLES_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_libraries_fiddle_handles_no_parens_execution() {
+    let output = run_example("stdlib_libraries/fiddle_handles_no_parens.rb");
+    assert_eq!(output, FIDDLE_HANDLES_OUTPUT);
+}
+
+/// The expected output of both `stdlib_libraries/socket_full_buffers` variants.
+const SOCKET_FULL_BUFFERS_OUTPUT: &str = "[IO::EAGAINWaitWritable, \"Resource temporarily unavailable - sendmsg(2) would block\"]\n:wait_writable\n3000000\n3000000\n";
+
+#[test]
+fn test_stdlib_libraries_socket_full_buffers_execution() {
+    let output = run_example("stdlib_libraries/socket_full_buffers.rb");
+    assert_eq!(output, SOCKET_FULL_BUFFERS_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_libraries_socket_full_buffers_no_parens_execution() {
+    let output = run_example("stdlib_libraries/socket_full_buffers_no_parens.rb");
+    assert_eq!(output, SOCKET_FULL_BUFFERS_OUTPUT);
+}
+
+/// The expected output of both `stdlib_libraries/socket_options` variants.
+const SOCKET_OPTIONS_OUTPUT: &str = "true\n0\ntrue\n0\n64\n10\n[Errno::EINVAL, \"Invalid argument - setsockopt(2)\"]\n\"no implicit conversion of nil into String\"\n";
+
+#[test]
+fn test_stdlib_libraries_socket_options_execution() {
+    let output = run_example("stdlib_libraries/socket_options.rb");
+    assert_eq!(output, SOCKET_OPTIONS_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_libraries_socket_options_no_parens_execution() {
+    let output = run_example("stdlib_libraries/socket_options_no_parens.rb");
+    assert_eq!(output, SOCKET_OPTIONS_OUTPUT);
+}
+
+/// The expected output of both `stdlib_libraries/socket_connect_nonblock` variants.
+const SOCKET_CONNECT_NONBLOCK_OUTPUT: &str = "[IO::EINPROGRESSWaitWritable, \"Operation now in progress - connect(2) would block\"]\n0\n\"connected\"\n:wait_writable\n\"unbound IPv4 socket\"\n";
+
+#[test]
+fn test_stdlib_libraries_socket_connect_nonblock_execution() {
+    let output = run_example("stdlib_libraries/socket_connect_nonblock.rb");
+    assert_eq!(output, SOCKET_CONNECT_NONBLOCK_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_libraries_socket_connect_nonblock_no_parens_execution() {
+    let output = run_example("stdlib_libraries/socket_connect_nonblock_no_parens.rb");
+    assert_eq!(output, SOCKET_CONNECT_NONBLOCK_OUTPUT);
+}
+
+/// The expected output of both `stdlib_libraries/socket_recvmsg` variants.
+const SOCKET_RECVMSG_OUTPUT: &str = "[\"hello\", \"127.0.0.1\", true, 0]\n\"tr\"\n:wait_readable\n[\"over a connection\", \"#<Addrinfo: empty-sockaddr SOCK_STREAM>\", 0, 0]\nErrno::ENOTCONN\nnil\n";
+
+#[test]
+fn test_stdlib_libraries_socket_recvmsg_execution() {
+    let output = run_example("stdlib_libraries/socket_recvmsg.rb");
+    assert_eq!(output, SOCKET_RECVMSG_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_libraries_socket_recvmsg_no_parens_execution() {
+    let output = run_example("stdlib_libraries/socket_recvmsg_no_parens.rb");
+    assert_eq!(output, SOCKET_RECVMSG_OUTPUT);
+}
+
+/// The expected output of both `stdlib_libraries/addrinfo_from_arrays` variants.
+const ADDRINFO_FROM_ARRAYS_OUTPUT: &str = "#<Addrinfo: 127.0.0.1:46102 (localhost)>\n#<Addrinfo: [::1]:80 (hostname)>\n#<Addrinfo: 127.0.0.1:80 TCP>\n[true, true]\n17\nSocketError\nSocket::ResolutionError\nSocket::ResolutionError\n[\"socket\", true, 0, 0]\n";
+
+#[test]
+fn test_stdlib_libraries_addrinfo_from_arrays_execution() {
+    let output = run_example("stdlib_libraries/addrinfo_from_arrays.rb");
+    assert_eq!(output, ADDRINFO_FROM_ARRAYS_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_libraries_addrinfo_from_arrays_no_parens_execution() {
+    let output = run_example("stdlib_libraries/addrinfo_from_arrays_no_parens.rb");
+    assert_eq!(output, ADDRINFO_FROM_ARRAYS_OUTPUT);
+}
+
+/// The expected output of both `stdlib_libraries/openssl_scrypt` variants.
+const OPENSSL_SCRYPT_OUTPUT: &str = "\"300420e0918b3cc46a24504429ff1f43\"\n\"300420e0\"\ntrue\n\"\"\n[{N: 3}, \"EVP_PBE_scrypt\"]\n[{r: 0}, \"EVP_PBE_scrypt\"]\n[{p: 0}, \"EVP_PBE_scrypt\"]\n\"missing keywords: :N, :r, :p, :length\"\n";
+
+#[test]
+fn test_stdlib_libraries_openssl_scrypt_execution() {
+    let output = run_example("stdlib_libraries/openssl_scrypt.rb");
+    assert_eq!(output, OPENSSL_SCRYPT_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_libraries_openssl_scrypt_no_parens_execution() {
+    let output = run_example("stdlib_libraries/openssl_scrypt_no_parens.rb");
+    assert_eq!(output, OPENSSL_SCRYPT_OUTPUT);
+}
+
+/// The expected output of both `stdlib_libraries/x509_names` variants.
+const X509_NAMES_OUTPUT: &str = "\"/DC=org/DC=ruby-lang/CN=www.ruby-lang.org\"\n[[\"DC\", \"org\", 22], [\"DC\", \"ruby-lang\", 22], [\"CN\", \"www.ruby-lang.org\", 12]]\n\"CN=www.ruby-lang.org,DC=ruby-lang,DC=org\"\n\"DC = org, DC = ruby-lang, CN = www.ruby-lang.org\"\n\"#<OpenSSL::X509::Name CN=www.ruby-lang.org,DC=ruby-lang,DC=org>\"\n[[\"C\", \"US\", 19], [\"O\", \"Acme\", 12], [\"CN\", \"x\", 12]]\n\"/CN=a\\\\+b/O=x,y\"\n\"O=x\\\\,y,CN=a\\\\+b\"\n\"CN = \\\"a+b\\\", O = \\\"x,y\\\"\"\n\"commonName                = a+b\\norganizationName          = x,y\"\ntrue\n-1\n\"3019310b3009060355040613025553310a300806035504030c0161\"\n[TypeError, \"no implicit conversion of nil into String\"]\n[OpenSSL::X509::NameError, \"X509_NAME_add_entry_by_txt: invalid field name (name=hello)\"]\n";
+
+#[test]
+fn test_stdlib_libraries_x509_names_execution() {
+    let output = run_example("stdlib_libraries/x509_names.rb");
+    assert_eq!(output, X509_NAMES_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_libraries_x509_names_no_parens_execution() {
+    let output = run_example("stdlib_libraries/x509_names_no_parens.rb");
+    assert_eq!(output, X509_NAMES_OUTPUT);
+}
+
+/// The expected output of both `stdlib_libraries/x509_certificates` variants.
+const X509_CERTIFICATES_OUTPUT: &str = "[\"sha256WithRSAEncryption\", 1, \"/CN=Example Root\"]\n[\"basicConstraints\", \"keyUsage\", \"subjectKeyIdentifier\"]\n\"keyUsage = critical, Digital Signature\"\n[true, false]\n[false, \"unable to get local issuer certificate\"]\n[true, \"ok\", 2]\n[false, 10, \"certificate has expired\"]\n";
+
+#[test]
+fn test_stdlib_libraries_x509_certificates_execution() {
+    let output = run_example("stdlib_libraries/x509_certificates.rb");
+    assert_eq!(output, X509_CERTIFICATES_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_libraries_x509_certificates_no_parens_execution() {
+    let output = run_example("stdlib_libraries/x509_certificates_no_parens.rb");
+    assert_eq!(output, X509_CERTIFICATES_OUTPUT);
+}
+
+/// The expected output of both `stdlib_libraries/ripper_events` variants.
+const RIPPER_EVENTS_OUTPUT: &str = concat!(
+    "[\"def\", \" \", \"area\", \"(\", \"width\", \",\", \" \", \"height\", \" \", \"=\", \" \", \"2\", \")\", \" \", \"=\", \" \", \"width\", \" \", \"*\", \" \", \"height\", \"\\n\", \"puts\", \" \", \"area\", \"(\", \"3\", \")\", \"\\n\"]\n",
+    "[[1, 0], :on_ident, \"total\", \"CMDARG\"]\n",
+    "[[1, 5], :on_sp, \" \", \"CMDARG\"]\n",
+    "[[1, 6], :on_op, \"=\", \"BEG\"]\n",
+    "[[1, 7], :on_sp, \" \", \"BEG\"]\n",
+    "[[1, 8], :on_ident, \"price\", \"ARG\"]\n",
+    "[[1, 13], :on_sp, \" \", \"ARG\"]\n",
+    "[[1, 14], :on_op, \"*\", \"BEG\"]\n",
+    "[[1, 15], :on_sp, \" \", \"BEG\"]\n",
+    "[[1, 16], :on_int, \"2\", \"END\"]\n",
+    "[:program, [[:assign, [:var_field, [:@ident, \"total\", [1, 0]]], [:binary, [:vcall, [:@ident, \"price\", [1, 8]]], :*, [:@int, \"2\", [1, 16]]]]]]\n",
+    "[:program, [:stmts_add, [:stmts_new], [:array, [:args_add_star, [:args_add, [:args_new], [:@int, \"1\", [1, 1]]], [:vcall, [:@ident, \"rest\", [1, 5]]]]]]]\n",
+    "[:program, [[:def, [:@ident, \"area\", [1, 4]], [:paren, [:params, [[:@ident, \"width\", [1, 9]]], [[[:@ident, \"height\", [1, 16]], [:@int, \"2\", [1, 25]]]], nil, nil, nil, nil, nil]], [:bodystmt, [:binary, [:var_ref, [:@ident, \"width\", [1, 30]]], :*, [:var_ref, [:@ident, \"height\", [1, 38]]]], nil, nil, nil]], [:command, [:@ident, \"puts\", [2, 0]], [:args_add_block, [[:method_add_arg, [:fcall, [:@ident, \"area\", [2, 5]]], [:arg_paren, [:args_add_block, [[:@int, \"3\", [2, 10]]], false]]]], false]]]]\n",
+    "nil\n",
+    "\"BEG|LABEL\"\n",
+    "[:program, [[:assign, [:var_field, [:@ident, \"message\", [1, 0]]], [:string_literal, [:string_content, [:@tstring_content, \"Deploy finished\\n\", [2, 4]], [:@tstring_content, \"  on schedule\\n\", [3, 4]]]]]]]\n",
+    "[[:on_ident, \"message\"], [:on_sp, \" \"], [:on_op, \"=\"], [:on_sp, \" \"], [:on_heredoc_beg, \"<<~TEXT\"], [:on_nl, \"\\n\"], [:on_ignored_sp, \"    \"], [:on_tstring_content, \"Deploy finished\\n\"], [:on_ignored_sp, \"    \"], [:on_tstring_content, \"  on schedule\\n\"], [:on_heredoc_end, \"TEXT\\n\"]]\n",
+    "[:program, [[:case, [:vcall, [:@ident, \"reading\", [1, 5]]], [:in, [:hshptn, nil, [[[:@label, \"status:\", [2, 4]], [:@int, \"200\", [2, 12]]], [[:@label, \"body:\", [2, 17]], nil]], nil], [[:var_ref, [:@ident, \"body\", [2, 29]]]], [:in, [:aryptn, nil, [[:binary, [:var_ref, [:@const, \"Integer\", [3, 4]]], :\"=>\", [:var_field, [:@ident, \"code\", [3, 15]]]]], [:var_field, nil], nil], [[:var_ref, [:@ident, \"code\", [3, 29]]]], nil]]]]]\n",
+    "[\"start\", \"stop\"]\n",
+    "2\n",
+    "\"print\"\n",
+    "2\n",
+);
+
+#[test]
+fn test_stdlib_libraries_ripper_events_execution() {
+    let output = run_example("stdlib_libraries/ripper_events.rb");
+    assert_eq!(output, RIPPER_EVENTS_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_libraries_ripper_events_no_parens_execution() {
+    let output = run_example("stdlib_libraries/ripper_events_no_parens.rb");
+    assert_eq!(output, RIPPER_EVENTS_OUTPUT);
 }

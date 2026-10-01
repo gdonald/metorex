@@ -58,14 +58,22 @@ impl VirtualMachine {
         *held.refinements.borrow_mut() = self.snapshot_active_refinements();
         // The classes and modules open here, which a class opened by
         // code run through the binding is nested in.
+        // A class body opened inside the running method, `class << self`
+        // included, is open here too, innermost first.
+        let opened_in_method = self
+            .written_in_method()
+            .is_some_and(|(depth, _)| self.def_scope_stack.len() > depth);
         *held.nesting.borrow_mut() = match self.method_nesting_stack.last() {
+            _ if opened_in_method => self.def_scope_stack.iter().rev().cloned().collect(),
             Some(captured) => captured.clone(),
             None => self.snapshot_lexical_nesting(),
         };
+        *held.frame.borrow_mut() = self.call_stack().last().cloned();
+        *held.home_frame.borrow_mut() =
+            Some(self.lexical_home_frame.unwrap_or(self.current_method_frame));
         // Where the call sits, which `source_location` reports.
         *held.source.borrow_mut() = Some((
-            self.current_file
-                .as_ref()
+            self.reported_current_file()
                 .map(|file| file.display().to_string())
                 .unwrap_or_default(),
             position.line,

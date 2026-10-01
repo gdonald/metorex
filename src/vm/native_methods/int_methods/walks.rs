@@ -64,13 +64,11 @@ impl VirtualMachine {
                             exception,
                             position,
                         } => {
-                            return Err(MetorexError::runtime_error(
-                                format!(
-                                    "Uncaught exception: {}",
-                                    crate::vm::utils::format_exception(&exception)
-                                ),
-                                crate::vm::utils::position_to_location(position),
-                            ));
+                            return Err(MetorexError::UncaughtException {
+                                exception: exception.clone(),
+                                location: crate::vm::utils::position_to_location(position),
+                                message: crate::vm::utils::format_exception(&exception),
+                            });
                         }
                     }
                 }
@@ -275,13 +273,11 @@ impl VirtualMachine {
                             exception,
                             position,
                         } => {
-                            return Err(MetorexError::runtime_error(
-                                format!(
-                                    "Uncaught exception: {}",
-                                    crate::vm::utils::format_exception(&exception)
-                                ),
-                                crate::vm::utils::position_to_location(position),
-                            ));
+                            return Err(MetorexError::UncaughtException {
+                                exception: exception.clone(),
+                                location: crate::vm::utils::position_to_location(position),
+                                message: crate::vm::utils::format_exception(&exception),
+                            });
                         }
                     }
                 }

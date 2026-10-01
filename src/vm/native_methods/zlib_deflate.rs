@@ -201,6 +201,9 @@ struct BitWriter {
     out: Vec<u8>,
     bits: u32,
     count: u32,
+    /// The bits sent since the last time the writer was brought to a byte
+    /// boundary, which decides how many of them zlib has handed on.
+    since_align: u64,
 }
 
 impl BitWriter {
@@ -209,10 +212,12 @@ impl BitWriter {
             out: Vec::new(),
             bits: 0,
             count: 0,
+            since_align: 0,
         }
     }
 
     fn send(&mut self, value: u16, length: usize) {
+        self.since_align += length as u64;
         self.bits |= (value as u32) << self.count;
         self.count += length as u32;
         while self.count >= 8 {
@@ -230,6 +235,20 @@ impl BitWriter {
             self.bits = 0;
             self.count = 0;
         }
+        self.since_align = 0;
+    }
+
+    /// How many of the bytes written zlib would have handed on by now. zlib
+    /// keeps up to sixteen bits back and writes them two bytes at a time, so
+    /// it holds a byte or two more than this writer does.
+    fn handed_on(&self) -> usize {
+        let written_since_align = (self.since_align / 8) as usize;
+        let zlib_since_align = if self.since_align == 0 {
+            0
+        } else {
+            2 * ((self.since_align - 1) / 16) as usize
+        };
+        self.out.len() - written_since_align + zlib_since_align
     }
 }
 
@@ -520,6 +539,21 @@ impl<'a> TreeBuilder<'a> {
     }
 }
 
+/// How many bytes of the compressed stream zlib has handed on after reading
+/// `bytes` with no flush asked for. It stops while fewer bytes than its
+/// lookahead remain, since a later byte could still extend a match.
+pub(crate) fn deflate_handed_on(bytes: &[u8], dictionary: &[u8]) -> usize {
+    let mut window: Vec<u8> = Vec::with_capacity(dictionary.len() + bytes.len());
+    window.extend_from_slice(dictionary);
+    window.extend_from_slice(bytes);
+    let mut state = Deflater::new(window, dictionary.len());
+    let end = state.window.len();
+    while end - state.strstart >= MIN_LOOKAHEAD {
+        state.step(end);
+    }
+    state.writer.handed_on()
+}
+
 /// Compress `bytes` the way zlib does at its default level, with `dictionary`
 /// standing in front of the data where one was given.
 pub(crate) fn deflate(bytes: &[u8], dictionary: &[u8]) -> Vec<u8> {
@@ -642,6 +676,20 @@ impl Deflater {
     fn run(mut self) -> Vec<u8> {
         let end = self.window.len();
         while self.strstart < end {
+            self.step(end);
+        }
+        if self.match_available {
+            self.block.tally_literal(self.window[end - 1]);
+        }
+        self.flush_block(true);
+        self.writer.align();
+        self.writer.out
+    }
+
+    /// One turn of the loop: a position tried for a match, and the match or
+    /// literal before it written to the block once the lazy check settles.
+    fn step(&mut self, end: usize) {
+        {
             let mut hash_head = NIL;
             if self.strstart + MIN_MATCH <= end {
                 self.update_hash(self.strstart);
@@ -683,24 +731,23 @@ impl Deflater {
                 self.match_available = false;
                 self.match_length = MIN_MATCH - 1;
                 self.strstart += 1;
+                if self.block.is_full() {
+                    self.flush_block(false);
+                }
             } else if self.match_available {
                 self.block.tally_literal(self.window[self.strstart - 1]);
+                // zlib writes a full block out before it steps past the
+                // literal, so the block ends one byte sooner here than after
+                // a match.
+                if self.block.is_full() {
+                    self.flush_block(false);
+                }
                 self.strstart += 1;
             } else {
                 self.match_available = true;
                 self.strstart += 1;
             }
-
-            if self.block.is_full() {
-                self.flush_block(false);
-            }
         }
-        if self.match_available {
-            self.block.tally_literal(self.window[end - 1]);
-        }
-        self.flush_block(true);
-        self.writer.align();
-        self.writer.out
     }
 
     /// Write the block gathered so far, as whichever of a stored, a fixed, or

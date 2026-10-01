@@ -31,10 +31,23 @@ impl Parser {
         self.wrap_with_modifier(stmt)
     }
 
+    /// Apply the modifiers written after a statement, left to right, so
+    /// `p 1 if ready unless stopped` tests `ready` inside `stopped`.
     pub(crate) fn wrap_with_modifier(
         &mut self,
         stmt: Statement,
     ) -> Result<Statement, MetorexError> {
+        let mut wrapped = stmt;
+        loop {
+            let before = self.stream.current_position();
+            wrapped = self.wrap_with_one_modifier(wrapped)?;
+            if self.stream.current_position() == before {
+                return Ok(wrapped);
+            }
+        }
+    }
+
+    fn wrap_with_one_modifier(&mut self, stmt: Statement) -> Result<Statement, MetorexError> {
         // Don't consume newlines — modifier must be on the same line
         if matches!(self.peek().kind, TokenKind::Newline | TokenKind::Comment(_)) {
             return Ok(stmt);
@@ -77,7 +90,7 @@ impl Parser {
         if self.check(&[TokenKind::If]) {
             let position = self.advance().position; // consume 'if'
             self.skip_whitespace();
-            let condition = self.parse_condition_expression()?;
+            let condition = self.parse_modifier_condition()?;
             Ok(Statement::If {
                 condition,
                 then_branch: vec![stmt],
@@ -88,7 +101,7 @@ impl Parser {
         } else if self.check(&[TokenKind::Unless]) {
             let position = self.advance().position; // consume 'unless'
             self.skip_whitespace();
-            let condition = self.parse_condition_expression()?;
+            let condition = self.parse_modifier_condition()?;
             Ok(Statement::Unless {
                 condition,
                 then_branch: vec![stmt],
@@ -97,8 +110,11 @@ impl Parser {
             })
         } else if self.check(&[TokenKind::While]) {
             let position = self.advance().position; // consume 'while'
+            // The statement is a loop body now, which a `redo` in it restarts.
+            let body_start = stmt.position().offset;
+            self.unlooped_redos.retain(|at| at.offset < body_start);
             self.skip_whitespace();
-            let condition = self.parse_condition_expression()?;
+            let condition = self.parse_modifier_condition()?;
             // `begin ... end while cond` reads its condition after the body
             // has run, so the body runs at least once.
             if runs_before_the_test(&stmt) {
@@ -115,8 +131,11 @@ impl Parser {
             })
         } else if self.check(&[TokenKind::Until]) {
             let position = self.advance().position; // consume 'until'
+            // The statement is a loop body now, which a `redo` in it restarts.
+            let body_start = stmt.position().offset;
+            self.unlooped_redos.retain(|at| at.offset < body_start);
             self.skip_whitespace();
-            let condition = self.parse_condition_expression()?;
+            let condition = self.parse_modifier_condition()?;
             let condition = crate::ast::Expression::UnaryOp {
                 op: crate::ast::UnaryOp::Not,
                 operand: Box::new(condition),
@@ -158,6 +177,18 @@ impl Parser {
         } else {
             Ok(expr)
         }
+    }
+
+    /// The condition after a modifier `if`, `unless`, `while`, or `until`. A
+    /// `rescue` after it belongs to the whole statement, so the condition
+    /// leaves it alone.
+    fn parse_modifier_condition(
+        &mut self,
+    ) -> Result<crate::ast::Expression, crate::error::MetorexError> {
+        self.modifier_condition_depth += 1;
+        let condition = self.parse_condition_expression();
+        self.modifier_condition_depth -= 1;
+        condition
     }
 
     /// The condition a modifier reads, where `and` and `or` join the tests the

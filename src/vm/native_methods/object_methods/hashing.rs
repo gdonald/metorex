@@ -159,7 +159,7 @@ impl VirtualMachine {
                     digest = digest.wrapping_mul(31).wrapping_add(id);
                 }
             }
-            return Ok(digest);
+            return Ok(seeded_hash(digest));
         }
         // A collection is hashed from what it holds, asking each element for
         // its own `#hash`, and a collection that reaches itself is answered
@@ -167,24 +167,45 @@ impl VirtualMachine {
         // collection behind it, so the class it was made from makes no
         // difference to the number.
         if matches!(receiver, Object::Array(_) | Object::Dict(_)) {
-            return self.collection_hash_digest(receiver, position);
+            return self
+                .collection_hash_digest(receiver, position)
+                .map(seeded_hash);
         }
         if let Some(backing @ (Object::Array(_) | Object::Dict(_))) =
             crate::vm::native_methods::array_subclass_value(receiver)
                 .or_else(|| crate::vm::native_methods::hash_subclass_value(receiver))
         {
-            return self.collection_hash_digest(&backing, position);
+            return self
+                .collection_hash_digest(&backing, position)
+                .map(seeded_hash);
         }
         if let Some(hashable) = crate::object::ObjectHash::from_object(receiver) {
-            let mut digest: i64 = 0;
-            for byte in hashable.hash_value.bytes() {
-                digest = digest.wrapping_mul(31).wrapping_add(byte as i64);
-            }
-            return Ok(digest);
+            return Ok(seeded_text_hash(&hashable.hash_value));
         }
         match self.call_object_method(receiver, "object_id", &[], position)? {
             Some(Object::Int(id)) => Ok(id),
             _ => Ok(0),
         }
     }
+}
+
+/// A hash value mixed with a number this process drew when it started, so
+/// two processes answer different hashes for the same value. Ruby does this
+/// to keep a hash table from being filled with values chosen to collide.
+pub(crate) fn seeded_hash(digest: i64) -> i64 {
+    static SEED: std::sync::OnceLock<i64> = std::sync::OnceLock::new();
+    let seed = *SEED.get_or_init(|| {
+        use std::hash::{BuildHasher, Hasher};
+        std::collections::hash_map::RandomState::new()
+            .build_hasher()
+            .finish() as i64
+    });
+    (digest ^ seed).wrapping_mul(0x9E37_79B9_7F4A_7C15_u64 as i64)
+}
+
+/// A hash value for text, seeded for this process.
+pub(crate) fn seeded_text_hash(text: &str) -> i64 {
+    seeded_hash(text.bytes().fold(0_i64, |digest, byte| {
+        digest.wrapping_mul(31).wrapping_add(byte as i64)
+    }))
 }

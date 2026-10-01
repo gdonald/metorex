@@ -438,6 +438,19 @@ impl VirtualMachine {
                     &dictionary,
                 )))
             }
+            // How much of the stream zlib has handed on after reading what
+            // was given with no flush asked for, header included.
+            "deflate_handed_on" => {
+                let dictionary = match arguments.get(3) {
+                    Some(Object::String(held)) => {
+                        super::pack_format::string_to_bytes(&held.as_str().to_string())
+                    }
+                    _ => Vec::new(),
+                };
+                let header = if dictionary.is_empty() { 2 } else { 6 };
+                let body = super::zlib_deflate::deflate_handed_on(&bytes, &dictionary);
+                Ok(Object::Int((header + body) as i64))
+            }
             "inflate" => match zlib_unwrap(&bytes) {
                 Some(held) => Ok(super::pack_format::bytes_to_string(&held)),
                 None => Err(refuse("the text")),

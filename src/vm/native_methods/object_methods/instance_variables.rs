@@ -101,7 +101,13 @@ impl VirtualMachine {
                     Object::Exception(details) => {
                         details.borrow().instance_vars.contains_key(bare_name)
                     }
-                    _ => false,
+                    // A collection's variables are recorded against it by the
+                    // VM, which is where they are looked for.
+                    other => Self::collection_address(other).is_some_and(|address| {
+                        self.collection_variables
+                            .get(&address)
+                            .is_some_and(|held| held.contains_key(bare_name))
+                    }),
                 };
                 Ok(Some(Object::Bool(defined)))
             }

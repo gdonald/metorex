@@ -177,9 +177,6 @@ pub(crate) fn line_loop_from(cli: &Cli) -> LineLoop {
     }
 }
 
-/// A `-I` path as `$LOAD_PATH` holds it: written out from the working
-/// directory when it was named relative to it, with the symlinks along the
-/// way left alone.
 /// Where a library installed alongside metorex is looked for: the `lib`
 /// directory under the prefix the program was installed into, named by
 /// version and then by platform the way Ruby names its own.
@@ -201,6 +198,9 @@ pub(crate) fn installed_library_paths() -> Vec<String> {
     ]
 }
 
+/// A `-I` path as `$LOAD_PATH` holds it: written out from the working
+/// directory when it was named relative to it, with the symlinks along the
+/// way left alone.
 pub(crate) fn load_path_entry(written: &str) -> String {
     let path = Path::new(written);
     if path.is_absolute() {

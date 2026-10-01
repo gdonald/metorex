@@ -24,7 +24,10 @@ impl VirtualMachine {
         // the new class's constant binding.
         let parent_scope = if let Some(expr) = namespace_expr {
             match self.evaluate_expression(expr)? {
-                Object::Class(c) | Object::Module(c) => Some(c),
+                Object::Class(c) | Object::Module(c) => {
+                    self.refuse_private_reopening(&c, name, position)?;
+                    Some(c)
+                }
                 held => {
                     return Err(crate::vm::errors::simple_exception(
                         "TypeError",
@@ -291,6 +294,27 @@ impl VirtualMachine {
     /// usual class-method resolution paths (singleton class first, then the
     /// `__class__` fallback), and up the superclass chain so a hook inherited
     /// via `super` is reachable.
+    /// Refuse `class NS::Name` or `module NS::Name` naming a private
+    /// constant of NS from outside NS's own body, the same as reading it
+    /// there would be refused.
+    pub(crate) fn refuse_private_reopening(
+        &mut self,
+        scope: &Rc<Class>,
+        name: &str,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        if scope.is_private_constant(name)
+            && scope.get_class_var(name).is_some()
+            && !self
+                .def_scope_stack
+                .iter()
+                .any(|open| Rc::ptr_eq(open, scope))
+        {
+            self.private_constant_refused(scope, scope, name, position)?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn trigger_inherited_hook(
         &mut self,
         superclass: &Rc<Class>,

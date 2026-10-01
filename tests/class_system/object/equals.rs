@@ -202,9 +202,11 @@ fn test_equals_method() {
         lambda_body: false,
         captured_def_scope: Vec::new(),
         captured_refinements: Vec::new(),
+        alias_origin: None,
         captured_nesting: Vec::new(),
         reads_as_proc: false,
         ruby2_keywords: std::rc::Rc::new(std::cell::Cell::new(false)),
+        definee: None,
     });
     let method2 = Rc::clone(&method1);
     let method3 = Rc::new(Method {
@@ -229,9 +231,11 @@ fn test_equals_method() {
         lambda_body: false,
         captured_def_scope: Vec::new(),
         captured_refinements: Vec::new(),
+        alias_origin: None,
         captured_nesting: Vec::new(),
         reads_as_proc: false,
         ruby2_keywords: std::rc::Rc::new(std::cell::Cell::new(false)),
+        definee: None,
     });
 
     let obj1 = Object::Method(method1);
@@ -255,6 +259,7 @@ fn test_equals_block() {
         captured_def_scope: vec![],
         captured_nesting: vec![],
         defining_method: None,
+        defining_owner: None,
         is_lambda: false,
         source_file: None,
         home_frame: None,
@@ -264,6 +269,7 @@ fn test_equals_block() {
         written_depth: None,
         written_within: Rc::default(),
         ruby2_keywords: std::rc::Rc::new(std::cell::Cell::new(false)),
+        attached_call_running: Rc::new(std::cell::Cell::new(true)),
     });
     let block2 = Rc::clone(&block1);
     // A block written differently is a different block. Two written the same
@@ -277,6 +283,7 @@ fn test_equals_block() {
         captured_def_scope: vec![],
         captured_nesting: vec![],
         defining_method: None,
+        defining_owner: None,
         is_lambda: false,
         source_file: None,
         home_frame: None,
@@ -286,6 +293,7 @@ fn test_equals_block() {
         written_depth: None,
         written_within: Rc::default(),
         ruby2_keywords: std::rc::Rc::new(std::cell::Cell::new(false)),
+        attached_call_running: Rc::new(std::cell::Cell::new(true)),
     });
     let block4 = Rc::new((*block1).clone());
 

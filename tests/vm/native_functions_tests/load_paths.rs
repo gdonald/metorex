@@ -4,13 +4,18 @@ use super::*;
 
 #[test]
 fn require_with_invalid_load_path_raises_load_error() {
-    let err = run_err(
-        r#"
-$: = 42
-require "nonexistent_lib_xyz"
-"#,
-    );
+    // A program cannot assign `$:`, so the embedding code replaces it.
+    let tokens = Lexer::new(r#"require "nonexistent_lib_xyz""#).tokenize();
+    let stmts = Parser::new(tokens).parse().expect("parse failed");
+    let mut vm = VirtualMachine::new();
+    vm.globals_mut().set_variable(":", Object::Int(42));
+    let err = vm.execute_program(&stmts).unwrap_err().to_string();
     assert!(err.contains("load") || err.contains("cannot") || err.contains("file"));
+}
+
+#[test]
+fn assigning_the_load_path_is_refused() {
+    assert!(run_err("$: = []").contains("$: is a read-only variable"));
 }
 
 // ── load: execute_file error when file has syntax error (lines 539-541) ──────

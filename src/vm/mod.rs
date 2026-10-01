@@ -2,6 +2,7 @@
 //!
 //! This module contains the core virtual machine implementation and related support structures.
 
+pub(crate) mod allocation_sites;
 mod begin_rescue;
 mod block_execution;
 mod call_frame;
@@ -88,6 +89,18 @@ pub(crate) fn locale_charmap_name() -> String {
             }
         })
         .clone()
+}
+
+/// The encoding the locale names, spelled the way `Encoding.find` knows it,
+/// or `None` when the C library names none.
+pub fn locale_encoding_name() -> Option<String> {
+    let charmap = locale_charmap_name();
+    let named = if charmap == "ANSI_X3.4-1968" {
+        "US-ASCII".to_string()
+    } else {
+        charmap
+    };
+    (!named.is_empty()).then_some(named)
 }
 
 pub(crate) const KEY_ERROR_KEY: &str = "__key__";

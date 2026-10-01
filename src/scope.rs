@@ -350,7 +350,7 @@ impl Scope {
                 && self
                     .variables
                     .get(name)
-                    .is_some_and(|value| !names_a_definition(&value.borrow()))
+                    .is_some_and(|value| !names_a_definition_under(name, &value.borrow()))
         };
         // A scope's own locals come before the ones it can see through the
         // scopes enclosing it, which is the order Ruby reports them in.
@@ -443,6 +443,19 @@ impl Scope {
 impl Default for Scope {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Whether the value `name` holds is a definition rather than a local: a
+/// method, or a class or module bound under the constant a `class` or
+/// `module` statement names. A lowercase local may hold a class as any
+/// other value.
+pub fn names_a_definition_under(name: &str, value: &Object) -> bool {
+    match value {
+        Object::Class(_) | Object::Module(_) => {
+            name.starts_with(|first: char| !first.is_lowercase() && first != '_')
+        }
+        other => names_a_definition(other),
     }
 }
 

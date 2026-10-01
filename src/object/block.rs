@@ -70,6 +70,8 @@ pub struct BlockStatement {
     /// pair `__callee__` and `__method__` report. None for a block created
     /// outside any method.
     pub defining_method: Option<(String, String)>,
+    /// The class path of the module the enclosing method was defined in.
+    pub defining_owner: Option<String>,
     /// True for `-> {}` and `lambda {}`, false for `proc {}` and every
     /// ordinary block. Lambdas check arity strictly; procs pad missing
     /// arguments with nil and drop extras.
@@ -98,6 +100,10 @@ pub struct BlockStatement {
     /// trace aimed at a method or a block fires for the blocks written
     /// inside it by finding the target among these.
     pub written_within: CodePlaces,
+    /// Whether the call the block was attached to is still running. A
+    /// `break` returns from that call, so once it has returned a `break`
+    /// raises LocalJumpError. Shared by every copy of the block.
+    pub attached_call_running: Rc<std::cell::Cell<bool>>,
     /// Whether `ruby2_keywords` was called on the Proc this block stands for,
     /// so a trailing keyword hash gathered into its splat is marked. The flag
     /// is shared with every copy, which is what makes it reach a `dup`.
@@ -132,6 +138,7 @@ impl BlockStatement {
             captured_def_scope: Vec::new(),
             captured_nesting: Vec::new(),
             defining_method: None,
+            defining_owner: None,
             is_lambda: false,
             source_file: None,
             home_frame: None,
@@ -141,6 +148,7 @@ impl BlockStatement {
             written_depth: None,
             written_within: Rc::default(),
             ruby2_keywords: Rc::new(std::cell::Cell::new(false)),
+            attached_call_running: Rc::new(std::cell::Cell::new(true)),
         }
     }
 
@@ -164,6 +172,7 @@ impl BlockStatement {
             captured_def_scope,
             captured_nesting: Vec::new(),
             defining_method,
+            defining_owner: None,
             is_lambda,
             source_file: None,
             home_frame: None,
@@ -173,6 +182,7 @@ impl BlockStatement {
             written_depth: None,
             written_within: Rc::default(),
             ruby2_keywords: Rc::new(std::cell::Cell::new(false)),
+            attached_call_running: Rc::new(std::cell::Cell::new(true)),
         }
     }
 

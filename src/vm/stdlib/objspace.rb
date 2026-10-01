@@ -167,3 +167,51 @@ module ObjectSpace
     JSON.generate text
   end
 end
+
+module ObjectSpace
+  module_function
+
+  # Record where each object is made while the block runs, and answer what
+  # the block does. The records outlive the block.
+  def trace_object_allocations
+    trace_object_allocations_start
+    begin
+      yield
+    ensure
+      trace_object_allocations_stop
+    end
+  end
+
+  # Starts nest: tracing stays on until each start has had its stop.
+  def trace_object_allocations_start
+    ObjectSpace.__allocation_tracing__ :start
+  end
+
+  def trace_object_allocations_stop
+    ObjectSpace.__allocation_tracing__ :stop
+  end
+
+  def trace_object_allocations_clear
+    ObjectSpace.__allocation_tracing__ :clear
+  end
+
+  def allocation_sourcefile(object)
+    ObjectSpace.__allocation_tracing__(:site, object)&.at(0)
+  end
+
+  def allocation_sourceline(object)
+    ObjectSpace.__allocation_tracing__(:site, object)&.at(1)
+  end
+
+  def allocation_class_path(object)
+    ObjectSpace.__allocation_tracing__(:site, object)&.at(2)
+  end
+
+  def allocation_method_id(object)
+    ObjectSpace.__allocation_tracing__(:site, object)&.at(3)
+  end
+
+  def allocation_generation(object)
+    ObjectSpace.__allocation_tracing__(:site, object)&.at(4)
+  end
+end

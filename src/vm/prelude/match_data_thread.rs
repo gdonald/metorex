@@ -281,6 +281,14 @@ class IO
   EWOULDBLOCKWaitReadable = EAGAINWaitReadable
   EWOULDBLOCKWaitWritable = EAGAINWaitWritable
 
+  class EINPROGRESSWaitReadable < Errno::EINPROGRESS
+    include WaitReadable
+  end
+
+  class EINPROGRESSWaitWritable < Errno::EINPROGRESS
+    include WaitWritable
+  end
+
   # What a read or a write raises when the stream's own limit on how long it
   # may take runs out.
   class TimeoutError < IOError

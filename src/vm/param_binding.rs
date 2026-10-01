@@ -16,6 +16,10 @@ use super::VirtualMachine;
 /// apart from a Hash the caller passed positionally.
 pub(crate) const KWARGS_MARKER: &str = "__MX_KWARGS__";
 
+/// What a keyword hash key that is not a Symbol is marked with once the
+/// keywords are split from the arguments. No keyword name holds it.
+pub(crate) const NON_SYMBOL_KEY_MARK: char = '\0';
+
 /// Count the number of positional arguments, excluding a trailing kwargs dict.
 pub(crate) fn positional_arg_count(arguments: &[Object]) -> usize {
     positional_arg_count_for(arguments, true)
@@ -36,6 +40,18 @@ pub(crate) fn positional_arg_count_for(arguments: &[Object], takes_keywords: boo
 
 /// Bind one positional parameter. A `def f((a, b))` group spreads the value
 /// it is given across the names in the group, the same way a block's does.
+/// The local a positional parameter is bound to. A name written twice, as
+/// `def m(_, _)` does, is read back as its first, so each later one is kept
+/// under a name no program can spell, where a bare `super` finds it.
+pub(crate) fn parameter_local(params: &[String], index: usize) -> String {
+    let name = &params[index];
+    if params[..index].contains(name) {
+        format!("{name}#{index}")
+    } else {
+        name.clone()
+    }
+}
+
 fn define_positional_param(
     vm: &mut VirtualMachine,
     param: &str,
@@ -75,6 +91,13 @@ pub(crate) fn bind_params(
             }
         }
     }
+    // Every parameter is a local of the method before any default runs, so
+    // a default that reads its own parameter, `def f(a = a)`, reads nil.
+    if !default_parameters.is_empty() {
+        for param in params {
+            vm.environment_mut().define(param.clone(), Object::Nil);
+        }
+    }
     if let Some((vi, _)) = variadic_param {
         let vi = *vi;
         let params_after_splat = params.len() - vi - 1;
@@ -90,7 +113,7 @@ pub(crate) fn bind_params(
             .saturating_sub(required_before + params_after_splat);
         let mut cursor = 0;
 
-        for (i, param) in params.iter().enumerate() {
+        for i in 0..params.len() {
             let value = if i < vi {
                 // Before the splat, in the order they were written: an
                 // optional one takes a value only while any are left over.
@@ -132,7 +155,7 @@ pub(crate) fn bind_params(
                     .cloned()
                     .unwrap_or(Object::Nil)
             };
-            define_positional_param(vm, param, value)?;
+            define_positional_param(vm, &parameter_local(params, i), value)?;
         }
     } else if let (Some(first_optional), Some(last_optional)) = (
         default_parameters.iter().map(|(index, _)| *index).min(),
@@ -145,7 +168,7 @@ pub(crate) fn bind_params(
         let for_optionals = positional
             .len()
             .saturating_sub(first_optional + trailing_required);
-        for (i, param) in params.iter().enumerate() {
+        for i in 0..params.len() {
             let value = if i < first_optional {
                 positional.get(i).cloned().unwrap_or(Object::Nil)
             } else if i <= last_optional {
@@ -165,16 +188,16 @@ pub(crate) fn bind_params(
                 let index = positional.len().saturating_sub(offset_from_end);
                 positional.get(index).cloned().unwrap_or(Object::Nil)
             };
-            define_positional_param(vm, param, value)?;
+            define_positional_param(vm, &parameter_local(params, i), value)?;
         }
     } else {
-        for (i, param) in params.iter().enumerate() {
+        for i in 0..params.len() {
             let value = if i < positional.len() {
                 positional[i].clone()
             } else {
                 Object::Nil
             };
-            define_positional_param(vm, param, value)?;
+            define_positional_param(vm, &parameter_local(params, i), value)?;
         }
     }
     Ok(())
@@ -244,10 +267,13 @@ pub(crate) fn split_keyword_args_for(
                     )
                 })
                 .map(|(k, v)| {
+                    // A Symbol key names a keyword. Any other key stays
+                    // marked, so it names no keyword and a `**` parameter
+                    // takes it back as the key it was.
                     let name = if let Some(stripped) = k.strip_prefix(':') {
                         stripped.to_string()
                     } else {
-                        k.clone()
+                        format!("{NON_SYMBOL_KEY_MARK}{k}")
                     };
                     (name, v.clone())
                 })

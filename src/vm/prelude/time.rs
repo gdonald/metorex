@@ -222,6 +222,9 @@ class Time
     end
     offset = offset.to_str unless offset.is_a?(String)
     text = offset.to_s
+    # An offset in an encoding that spells ASCII in wider units carries the
+    # zero bytes between its characters, which Ruby refuses outright.
+    raise ArgumentError, "string contains null byte" unless text.encoding.ascii_compatible?
     return 0 if text == "UTC" || text == "Z"
     letter = military_offset text
     return letter unless letter.nil?

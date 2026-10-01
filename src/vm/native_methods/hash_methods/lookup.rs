@@ -52,7 +52,9 @@ impl VirtualMachine {
                     total =
                         total.wrapping_add(key_digest.wrapping_mul(31).wrapping_add(value_digest));
                 }
-                Ok(Some(Object::Int(total)))
+                Ok(Some(Object::Int(
+                    crate::vm::native_methods::object_methods::hashing::seeded_hash(total),
+                )))
             }
             "entries" | "to_a" => {
                 if !arguments.is_empty() {

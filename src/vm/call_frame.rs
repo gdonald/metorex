@@ -33,6 +33,10 @@ pub struct CallFrame {
     block_depth: u32,
     /// The scope the block this frame runs was written in, for a block frame.
     written_in: Option<String>,
+    /// The class path of the module the running method was defined in, for
+    /// a method frame or a block written in one. None for a singleton
+    /// method.
+    owner_path: Option<String>,
 }
 
 impl CallFrame {
@@ -45,6 +49,7 @@ impl CallFrame {
             kind: FrameKind::Block,
             block_depth: 1,
             written_in: None,
+            owner_path: None,
         }
     }
 
@@ -65,6 +70,7 @@ impl CallFrame {
             },
             block_depth: 0,
             written_in: None,
+            owner_path: None,
         }
     }
 
@@ -77,6 +83,7 @@ impl CallFrame {
             kind: FrameKind::Boundary,
             block_depth: 0,
             written_in: None,
+            owner_path: None,
         }
     }
 
@@ -134,5 +141,16 @@ impl CallFrame {
     /// The scope the block this frame runs was written in.
     pub fn written_in(&self) -> Option<&str> {
         self.written_in.as_deref()
+    }
+
+    /// Say which module the running method was defined in, by class path.
+    pub fn owned_by(mut self, owner_path: Option<String>) -> Self {
+        self.owner_path = owner_path;
+        self
+    }
+
+    /// The class path of the module the running method was defined in.
+    pub fn owner_path(&self) -> Option<&str> {
+        self.owner_path.as_deref()
     }
 }

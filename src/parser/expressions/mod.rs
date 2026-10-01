@@ -60,7 +60,14 @@ impl Parser {
 
     /// Parse an expression using operator precedence climbing
     pub(crate) fn parse_expression(&mut self) -> Result<Expression, MetorexError> {
+        let opens_the_statement = self.stream.current_position() == self.statement_start;
         let expr = self.parse_assignment()?;
+        if opens_the_statement && self.call_argument_depth == 0 {
+            self.statement_rescue_depth += 1;
+            let wrapped = self.wrap_with_rescue_modifier(expr);
+            self.statement_rescue_depth -= 1;
+            return wrapped;
+        }
         self.wrap_with_rescue_modifier(expr)
     }
 
@@ -101,7 +108,12 @@ impl Parser {
         // A modifier binds to the expression it follows, so nothing may come
         // between them. A `rescue` on its own line opens a clause, and so
         // does one after a semicolon, even though that shares the line.
-        if self.ternary_branch_depth > 0 {
+        // A `rescue` after an argument written without parentheses, or after
+        // a modifier's condition, belongs to the statement around it.
+        if self.ternary_branch_depth > 0
+            || self.paren_less_arg_depth > 0
+            || self.modifier_condition_depth > 0
+        {
             return Ok(expr);
         }
         if !self.check(&[TokenKind::Rescue])
@@ -125,14 +137,25 @@ impl Parser {
                 ),
             ));
         }
+        // After a command, or where the expression opened the statement, the
+        // fallback may be a command too. Anywhere else it is one expression,
+        // so a name followed by an argument written without parentheses is
+        // not one Ruby reads here.
+        let takes_a_command = self.statement_rescue_depth > 0
+            || self.stream.current_position() == self.command_arguments_end;
         let position = self.advance().position;
         self.skip_whitespace();
-        // The fallback is one expression, so a name followed by an argument
-        // written without parentheses is not one Ruby reads here.
-        self.refuse_paren_less_args += 1;
-        let fallback = self.parse_assignment();
-        self.refuse_paren_less_args -= 1;
-        let fallback = fallback?;
+        let fallback = if takes_a_command {
+            let enclosing = std::mem::take(&mut self.statement_rescue_depth);
+            let fallback = self.parse_assignment();
+            self.statement_rescue_depth = enclosing;
+            fallback?
+        } else {
+            self.refuse_paren_less_args += 1;
+            let fallback = self.parse_assignment();
+            self.refuse_paren_less_args -= 1;
+            fallback?
+        };
         if !self.check(&[
             TokenKind::Newline,
             TokenKind::Semicolon,
@@ -348,6 +371,30 @@ impl Parser {
             });
         }
 
+        // `case held[key] += 1` and `while (count += 1) < 3` take a compound
+        // assignment as the value, which reads the way a statement does.
+        if crate::parser::statements::is_assignable(&expr)
+            && let Some(operation) = self.compound_assignment_ahead()
+        {
+            let position = self.advance().position;
+            self.skip_whitespace();
+            self.condition_depth += 1;
+            let read = self.parse_expression();
+            self.condition_depth -= 1;
+            let value = read?;
+            return Ok(Expression::BinaryOp {
+                op: crate::ast::BinaryOp::Assign,
+                left: Box::new(expr.clone()),
+                right: Box::new(Expression::BinaryOp {
+                    op: operation,
+                    left: Box::new(expr),
+                    right: Box::new(value),
+                    position,
+                }),
+                position,
+            });
+        }
+
         Ok(expr)
     }
 
@@ -420,10 +467,10 @@ impl Parser {
             return Ok((params, defaults));
         }
         self.wrote_block_parameter_list = true;
-        self.skip_whitespace();
-        if !self.check(&[TokenKind::Pipe]) {
+        self.skip_line_breaks();
+        if !self.check(&[TokenKind::Pipe, TokenKind::Semicolon]) {
             loop {
-                self.skip_whitespace();
+                self.skip_line_breaks();
                 // `|**nil|` says the block takes no keyword arguments, which
                 // is a declaration rather than a parameter.
                 if self.check(&[TokenKind::StarStar])
@@ -432,7 +479,7 @@ impl Parser {
                     self.advance();
                     self.advance();
                     params.push(crate::object::NO_KEYWORDS_PARAM.to_string());
-                    self.skip_whitespace();
+                    self.skip_line_breaks();
                     if !self.match_token(&[TokenKind::Comma]) {
                         break;
                     }
@@ -447,7 +494,7 @@ impl Parser {
                 } else {
                     ""
                 };
-                self.skip_whitespace();
+                self.skip_line_breaks();
                 // `|(a, b)|` spreads one array argument across the names in
                 // the group, which the binder undoes by the marker.
                 if prefix.is_empty() && self.match_token(&[TokenKind::LParen]) {
@@ -479,7 +526,7 @@ impl Parser {
                                 ));
                                 // `|x: 1|` gives the keyword a default, which
                                 // follows the colon directly.
-                                self.skip_whitespace();
+                                self.skip_line_breaks();
                                 if !self.check(&[TokenKind::Comma, TokenKind::Pipe]) {
                                     let default = self.parse_bitwise_and()?;
                                     defaults.push((params.len() - 1, default));
@@ -494,17 +541,17 @@ impl Parser {
                 if self.check(&[TokenKind::Semicolon]) {
                     break;
                 }
-                self.skip_whitespace();
+                self.skip_line_breaks();
                 if self.match_token(&[TokenKind::Equal]) {
-                    self.skip_whitespace();
+                    self.skip_line_breaks();
                     let default = self.parse_bitwise_and()?;
                     defaults.push((params.len() - 1, default));
-                    self.skip_whitespace();
+                    self.skip_line_breaks();
                 }
                 if !self.match_token(&[TokenKind::Comma]) {
                     break;
                 }
-                self.skip_whitespace();
+                self.skip_line_breaks();
                 // `|a,|` — trailing comma before the closing pipe. Record it:
                 // it is what makes a lone array argument destructure.
                 if self.check(&[TokenKind::Pipe]) {
@@ -517,7 +564,7 @@ impl Parser {
         // never take an argument.
         if self.match_token(&[TokenKind::Semicolon]) {
             loop {
-                self.skip_whitespace();
+                self.skip_line_breaks();
                 if self.check(&[TokenKind::Pipe]) {
                     break;
                 }
@@ -527,15 +574,49 @@ impl Parser {
                     }
                     _ => return Err(self.error_at_previous("Expected a name after ';'")),
                 }
-                self.skip_whitespace();
+                self.skip_line_breaks();
                 if !self.match_token(&[TokenKind::Comma]) {
                     break;
                 }
             }
         }
-        self.skip_whitespace();
+        self.skip_line_breaks();
+        if self.check(&[TokenKind::Semicolon]) {
+            return Err(self.error_at_current("syntax error, unexpected ';'"));
+        }
         self.expect(TokenKind::Pipe, "Expected '|' after block parameters")?;
+        self.refuse_duplicate_parameters(&params)?;
         Ok((params, defaults))
+    }
+
+    /// Skip the line breaks and comments inside a parameter list, where a
+    /// `;` has a meaning of its own rather than ending a statement.
+    fn skip_line_breaks(&mut self) {
+        while matches!(self.peek().kind, TokenKind::Newline | TokenKind::Comment(_)) {
+            self.advance();
+        }
+    }
+
+    /// Refuse a parameter list that names one parameter twice. A name
+    /// starting with `_` may repeat, and the first one binds.
+    pub(crate) fn refuse_duplicate_parameters(
+        &self,
+        params: &[String],
+    ) -> Result<(), MetorexError> {
+        let mut seen = std::collections::HashSet::new();
+        let names = params.iter().flat_map(|param| {
+            param
+                .split(|letter: char| !(letter.is_alphanumeric() || letter == '_'))
+                .filter(|name| !name.is_empty() && name != &"nil")
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        });
+        for name in names {
+            if !name.starts_with('_') && !seen.insert(name) {
+                return Err(self.error_at_previous("duplicated argument name"));
+            }
+        }
+        Ok(())
     }
 
     /// Parse a block: `do |param1, param2| ... end`
@@ -550,6 +631,7 @@ impl Parser {
 
     pub(crate) fn parse_block_body(&mut self) -> Result<Expression, MetorexError> {
         let start_pos = self.peek().position;
+        let block_opened_at = self.stream.current_position();
 
         // Expect 'do' keyword
         self.expect(TokenKind::Do, "Expected 'do' to start block")?;
@@ -569,6 +651,8 @@ impl Parser {
         let body = body?;
         let body_closed_at = self.stream.current_position();
         self.expect(TokenKind::End, "Expected 'end' to close block")?;
+        self.closed_block_spans
+            .push((block_opened_at, self.stream.current_position()));
         let parameters = self.block_parameters_or_refuse(
             parameters,
             wrote_parameter_list,
@@ -912,6 +996,7 @@ impl Parser {
 
     pub(crate) fn parse_brace_block_body(&mut self) -> Result<Expression, MetorexError> {
         let start_pos = self.peek().position;
+        let block_opened_at = self.stream.current_position();
 
         // Expect '{' to start block
         self.expect(TokenKind::LBrace, "Expected '{' to start block")?;
@@ -942,6 +1027,8 @@ impl Parser {
         let body_closed_at = self.stream.current_position();
 
         self.expect(TokenKind::RBrace, "Expected '}' to close block")?;
+        self.closed_block_spans
+            .push((block_opened_at, self.stream.current_position()));
         let parameters = self.block_parameters_or_refuse(
             parameters,
             wrote_parameter_list,

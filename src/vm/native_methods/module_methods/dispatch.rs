@@ -254,6 +254,9 @@ impl VirtualMachine {
         if module_rc.name() == "Digest" && method_name == "__pbkdf2__" {
             return self.compute_pbkdf2(arguments, position).map(Some);
         }
+        if module_rc.name() == "Digest" && method_name == "__scrypt__" {
+            return self.compute_scrypt(arguments, position).map(Some);
+        }
 
         // The compressed stream formats are read and written here for the
         // same reason.
@@ -370,6 +373,21 @@ impl VirtualMachine {
         if module_rc.name() == "ObjectSpace" && method_name == "__trace_allocations__" {
             self.tracing_allocations = arguments.first().is_some_and(crate::vm::utils::is_truthy);
             return Ok(Some(Object::Bool(self.tracing_allocations)));
+        }
+
+        if module_rc.name() == "OpenSSL" && method_name == "__rsa_generate__" {
+            return self.rsa_generate(arguments, position).map(Some);
+        }
+        if module_rc.name() == "OpenSSL" && method_name == "__object__" {
+            return Ok(Some(self.openssl_object_command(arguments)));
+        }
+
+        if module_rc.name() == "Fiddle" && method_name == "__dynamic_library__" {
+            return self.dynamic_library_command(arguments, position).map(Some);
+        }
+
+        if module_rc.name() == "ObjectSpace" && method_name == "__allocation_tracing__" {
+            return Ok(Some(self.allocation_tracing_command(arguments)));
         }
 
         // Where an object was made, as the file and the line it was written

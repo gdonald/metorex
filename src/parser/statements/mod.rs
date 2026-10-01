@@ -25,9 +25,14 @@ pub(crate) fn is_assignable(expr: &Expression) -> bool {
             | Expression::GlobalVariable { .. }
             | Expression::ScopeResolution { .. }
             | Expression::Index { .. }
-            | Expression::MethodCall { .. }
             | Expression::Splat { .. }
-    )
+    ) || matches!(expr, Expression::MethodCall { method, arguments, .. }
+        // A call names a target when it is a subscript, or a setter written
+        // without arguments, `&.` included.
+        if method == "[]"
+            || arguments.is_empty()
+            || (method == crate::parser::SAFE_CALL
+                && matches!(arguments.as_slice(), [Expression::Symbol { .. }])))
 }
 
 mod assignment;

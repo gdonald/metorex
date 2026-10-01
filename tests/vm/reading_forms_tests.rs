@@ -223,7 +223,7 @@ fn shellwords_splits_and_escapes() {
 fn abbrev_answers_the_unambiguous_beginnings() {
     assert_eq!(
         run("require 'abbrev'\nAbbrev.abbrev([\"ruby\"]).keys.inspect"),
-        Some(Object::string("[\"r\", \"ru\", \"rub\", \"ruby\"]"))
+        Some(Object::string("[\"ruby\", \"rub\", \"ru\", \"r\"]"))
     );
 }
 

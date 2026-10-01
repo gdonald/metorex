@@ -461,6 +461,48 @@ impl VirtualMachine {
     }
 }
 
+impl VirtualMachine {
+    /// `Digest.__scrypt__(pass, salt, n, r, p, length)`, the parameters
+    /// already checked.
+    pub(crate) fn compute_scrypt(
+        &mut self,
+        arguments: &[Object],
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let (
+            Some(Object::String(pass)),
+            Some(Object::String(salt)),
+            Some(Object::Int(n)),
+            Some(Object::Int(r)),
+            Some(Object::Int(p)),
+            Some(Object::Int(length)),
+        ) = (
+            arguments.first(),
+            arguments.get(1),
+            arguments.get(2),
+            arguments.get(3),
+            arguments.get(4),
+            arguments.get(5),
+        )
+        else {
+            return Err(crate::vm::errors::argument_count_error(
+                crate::vm::errors::Arity::Exact(6),
+                arguments.len(),
+                position,
+            ));
+        };
+        let derived = scrypt(
+            &super::pack_format::string_to_bytes(&pass.as_str()),
+            &super::pack_format::string_to_bytes(&salt.as_str()),
+            *n as usize,
+            *r as usize,
+            *p as usize,
+            *length as usize,
+        );
+        Ok(super::pack_format::bytes_to_string(&derived))
+    }
+}
+
 /// The keyed digest: the key brought to one block, then the message digested
 /// once inside a padded block and once outside it.
 pub(crate) fn hmac(algorithm: &str, key: &[u8], message: &[u8]) -> Option<Vec<u8>> {
@@ -516,4 +558,97 @@ pub(crate) fn pbkdf2(
     }
     out.truncate(length);
     Some(out)
+}
+
+/// A key derived by scrypt (RFC 7914): PBKDF2-HMAC-SHA256 spread over `p`
+/// blocks, each mixed through a table of `n` earlier states so that working
+/// it out takes `128 * r * n` bytes of memory, and PBKDF2 again to draw the
+/// key from the mixed blocks.
+pub(crate) fn scrypt(
+    pass: &[u8],
+    salt: &[u8],
+    n: usize,
+    r: usize,
+    p: usize,
+    length: usize,
+) -> Vec<u8> {
+    let block = 128 * r;
+    let mut mixed = pbkdf2("SHA256", pass, salt, 1, p * block).unwrap_or_default();
+    for chunk in mixed.chunks_mut(block) {
+        mix_through_table(chunk, n, r);
+    }
+    pbkdf2("SHA256", pass, &mixed, 1, length).unwrap_or_default()
+}
+
+/// ROMix: the block's states are kept in a table of `n`, and then mixed with
+/// entries chosen by the state itself.
+fn mix_through_table(chunk: &mut [u8], n: usize, r: usize) {
+    let words = 32 * r;
+    let mut state: Vec<u32> = chunk
+        .chunks(4)
+        .map(|held| u32::from_le_bytes([held[0], held[1], held[2], held[3]]))
+        .collect();
+    let mut table = vec![0u32; words * n];
+    let mut spare = vec![0u32; words];
+    for entry in table.chunks_mut(words) {
+        entry.copy_from_slice(&state);
+        mix_block(&mut state, &mut spare, r);
+    }
+    for _ in 0..n {
+        let chosen = (state[words - 16] as usize) & (n - 1);
+        for (held, kept) in state
+            .iter_mut()
+            .zip(&table[chosen * words..(chosen + 1) * words])
+        {
+            *held ^= kept;
+        }
+        mix_block(&mut state, &mut spare, r);
+    }
+    for (bytes, held) in chunk.chunks_mut(4).zip(&state) {
+        bytes.copy_from_slice(&held.to_le_bytes());
+    }
+}
+
+/// BlockMix: each 64-byte piece is folded into a running Salsa20/8 state,
+/// and the results are laid out evens first, then odds.
+fn mix_block(state: &mut [u32], spare: &mut [u32], r: usize) {
+    let mut running = [0u32; 16];
+    running.copy_from_slice(&state[(2 * r - 1) * 16..2 * r * 16]);
+    for piece in 0..2 * r {
+        for (held, word) in running.iter_mut().zip(&state[piece * 16..(piece + 1) * 16]) {
+            *held ^= word;
+        }
+        salsa20_8(&mut running);
+        let landing = if piece % 2 == 0 {
+            piece / 2
+        } else {
+            r + piece / 2
+        };
+        spare[landing * 16..(landing + 1) * 16].copy_from_slice(&running);
+    }
+    state.copy_from_slice(spare);
+}
+
+/// The Salsa20 core cut to eight rounds.
+fn salsa20_8(block: &mut [u32; 16]) {
+    let mut x = *block;
+    for _ in 0..4 {
+        let mut quarter = |a: usize, b: usize, c: usize, d: usize| {
+            x[b] ^= x[a].wrapping_add(x[d]).rotate_left(7);
+            x[c] ^= x[b].wrapping_add(x[a]).rotate_left(9);
+            x[d] ^= x[c].wrapping_add(x[b]).rotate_left(13);
+            x[a] ^= x[d].wrapping_add(x[c]).rotate_left(18);
+        };
+        quarter(0, 4, 8, 12);
+        quarter(5, 9, 13, 1);
+        quarter(10, 14, 2, 6);
+        quarter(15, 3, 7, 11);
+        quarter(0, 1, 2, 3);
+        quarter(5, 6, 7, 4);
+        quarter(10, 11, 8, 9);
+        quarter(15, 12, 13, 14);
+    }
+    for (held, mixed) in block.iter_mut().zip(x) {
+        *held = held.wrapping_add(mixed);
+    }
 }

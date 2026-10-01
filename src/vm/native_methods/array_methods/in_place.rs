@@ -91,8 +91,7 @@ impl VirtualMachine {
                         self.execute_block_callable(&block, vec![element.clone()], position)?;
                     keyed.push((key, element));
                 }
-                keyed.sort_by(|left, right| compare_for_sort(&left.0, &right.0));
-                *array_rc.borrow_mut() = keyed.into_iter().map(|(_, element)| element).collect();
+                *array_rc.borrow_mut() = self.sort_by_keys(keyed, position)?;
                 Ok(Some(receiver.clone()))
             }
             "map!" | "collect!" => {

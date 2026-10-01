@@ -1,6 +1,6 @@
 // String literal tests
 
-use metorex::lexer::{Lexer, TokenKind};
+use metorex::lexer::{InterpolationPart, Lexer, TokenKind};
 
 // ===== String Literal Tests =====
 
@@ -190,7 +190,13 @@ fn test_lexer_interpolation_unterminated() {
 fn test_lexer_interpolation_newline_inside() {
     let mut lexer = Lexer::new("\"hello #{name\n}\"");
     let token = lexer.next_token();
-    assert_eq!(token.kind, TokenKind::EOF);
+    assert_eq!(
+        token.kind,
+        TokenKind::InterpolatedString(vec![
+            InterpolationPart::Text("hello ".to_string()),
+            InterpolationPart::Expression("name\n".to_string(), 1),
+        ])
+    );
 }
 
 #[test]

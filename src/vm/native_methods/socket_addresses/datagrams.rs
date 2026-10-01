@@ -55,19 +55,32 @@ impl VirtualMachine {
             .get(&handle)
             .ok_or_else(|| refused(position, "send on a closed socket".to_string()))?;
         let bytes = crate::vm::native_methods::pack_format::string_to_bytes(&text);
-        let sent = socket.send(&bytes).map_err(|problem| {
-            // A datagram larger than the network will carry is
-            // refused outright rather than split.
-            if problem.raw_os_error() == Some(libc::EMSGSIZE) {
-                crate::vm::errors::simple_exception(
-                    "Errno::EMSGSIZE",
-                    &format!("Message too long - send(2): {problem}"),
-                    position,
-                )
-            } else {
-                refused(position, format!("send: {problem}"))
-            }
-        })?;
+        let sent = socket
+            .send(&bytes)
+            .map_err(|problem| send_error(&problem, position))?;
+        Ok(Object::Int(sent as i64))
+    }
+
+    /// Send one datagram to the address and port named, without joining
+    /// the socket to them. `text` holds the address and the message with a
+    /// NUL between them.
+    pub(crate) fn socket_datagram_send_to(
+        &mut self,
+        handle: u64,
+        text: String,
+        port: i64,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let socket = self
+            .open_sockets
+            .datagrams
+            .get(&handle)
+            .ok_or_else(|| refused(position, "send on a closed socket".to_string()))?;
+        let (address, message) = text.split_once('\0').unwrap_or((&text, ""));
+        let bytes = crate::vm::native_methods::pack_format::string_to_bytes(message);
+        let sent = socket
+            .send_to(&bytes, (address, port as u16))
+            .map_err(|problem| send_error(&problem, position))?;
         Ok(Object::Int(sent as i64))
     }
 
@@ -172,4 +185,21 @@ impl VirtualMachine {
             },
         )
     }
+}
+
+/// The Errno a failed `send(2)` raises, worded the way Ruby words it. A
+/// datagram larger than the network carries is refused outright rather than
+/// split.
+fn send_error(problem: &std::io::Error, position: Position) -> MetorexError {
+    let described = problem.to_string();
+    let reason = described
+        .split(" (os error")
+        .next()
+        .unwrap_or(&described)
+        .to_string();
+    crate::vm::errors::simple_exception(
+        super::errno_class(problem),
+        &format!("{reason} - send(2)"),
+        position,
+    )
 }

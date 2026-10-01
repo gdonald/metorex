@@ -31,6 +31,13 @@ pub struct Binding {
     /// The classes and modules open where the binding was captured, innermost
     /// first. A class opened by code run through the binding is nested there.
     pub nesting: RefCell<Vec<Rc<crate::class::Class>>>,
+    /// The frame running where the binding was captured. Code run through
+    /// the binding runs in that frame, which is what its backtrace names.
+    pub frame: RefCell<Option<crate::vm::CallFrame>>,
+    /// The method invocation the binding was captured in, or `Some(None)`
+    /// for one captured outside every method. A `def` run through the
+    /// binding installs where a `def` written there would.
+    pub home_frame: RefCell<Option<Option<u64>>>,
 }
 
 impl PartialEq for Binding {
@@ -54,6 +61,8 @@ impl Binding {
             method: RefCell::new(None),
             refinements: RefCell::new(Vec::new()),
             nesting: RefCell::new(Vec::new()),
+            frame: RefCell::new(None),
+            home_frame: RefCell::new(None),
         }
     }
 
@@ -70,6 +79,8 @@ impl Binding {
             method: RefCell::new(None),
             refinements: RefCell::new(Vec::new()),
             nesting: RefCell::new(Vec::new()),
+            frame: RefCell::new(None),
+            home_frame: RefCell::new(None),
         }
     }
 
@@ -142,6 +153,8 @@ impl Binding {
             method: RefCell::new(self.method.borrow().clone()),
             refinements: RefCell::new(self.refinements.borrow().clone()),
             nesting: RefCell::new(self.nesting.borrow().clone()),
+            frame: RefCell::new(self.frame.borrow().clone()),
+            home_frame: RefCell::new(*self.home_frame.borrow()),
         }
     }
 }

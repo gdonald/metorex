@@ -19,10 +19,16 @@ impl Parser {
         // argument list, so a group resets that count.
         let held_arguments = std::mem::take(&mut self.call_argument_depth);
         let held_refusal = std::mem::take(&mut self.refuse_paren_less_args);
+        // A `rescue` inside the group belongs to it, even where the group is
+        // an argument written without parentheses or a modifier's condition.
+        let held_paren_less = std::mem::take(&mut self.paren_less_arg_depth);
+        let held_condition = std::mem::take(&mut self.modifier_condition_depth);
         let parsed = self.parse_paren_group_body(token_position);
         self.assignment_rhs_depth = held;
         self.call_argument_depth = held_arguments;
         self.refuse_paren_less_args = held_refusal;
+        self.paren_less_arg_depth = held_paren_less;
+        self.modifier_condition_depth = held_condition;
         parsed
     }
 
@@ -185,6 +191,22 @@ impl Parser {
                     position: operator_position,
                 }),
                 position: operator_position,
+            }
+        } else if let Some(named) = self.shift_assignment_ahead().filter(|_| assignable) {
+            let position = self.advance().position;
+            self.skip_whitespace();
+            let value = self.parse_expression_with_assignment()?;
+            Expression::BinaryOp {
+                op: crate::ast::BinaryOp::Assign,
+                left: Box::new(expr.clone()),
+                right: Box::new(Expression::MethodCall {
+                    receiver: Box::new(expr),
+                    method: named.to_string(),
+                    arguments: vec![value],
+                    trailing_block: None,
+                    position,
+                }),
+                position,
             }
         } else if assignable && self.check(&[TokenKind::Equal]) {
             let eq_pos = self.advance().position;

@@ -53,6 +53,12 @@ pub(crate) struct FiberContext {
     /// returns to itself once control comes back to it.
     pub(crate) current_method_frame: Option<u64>,
     pub(crate) lexical_home_frame: Option<Option<u64>>,
+    /// The running flags of the blocks attached to calls this fiber has in
+    /// progress, which a call on another fiber must not clear.
+    pub(crate) attached_block_flags: Vec<std::rc::Rc<std::cell::Cell<bool>>>,
+    /// The block bodies and loops this fiber is inside, which say what a
+    /// `break` written here returns from.
+    pub(crate) running_block_breaks: Vec<Option<std::rc::Rc<std::cell::Cell<bool>>>>,
 }
 
 /// One fiber the program made, and the coroutine it runs on.

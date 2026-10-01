@@ -73,32 +73,9 @@ pub(crate) fn bind_group_names(
     // spreads across the names. A value that answers none has nothing to
     // spread: the first name that is not a splat takes it, the splats take
     // nothing, and the rest are nil.
-    let value = match &value {
-        Object::Array(_) => value,
-        other if vm.responds_to(other, "to_ary") => {
-            let answered =
-                vm.send_to_object(other.clone(), "to_ary", Vec::new(), Position::new(0, 0, 0))?;
-            match answered {
-                Object::Array(_) => answered,
-                other_answer => {
-                    let named = vm.builtins().class_of(other).ruby_name();
-                    let gives = vm.builtins().class_of(&other_answer).ruby_name();
-                    return Err(crate::vm::errors::simple_exception(
-                        "TypeError",
-                        &format!(
-                            "can't convert {} to Array ({}#to_ary gives {})",
-                            named, named, gives
-                        ),
-                        Position::new(0, 0, 0),
-                    ));
-                }
-            }
-        }
-        _ => value,
-    };
-    let (spread, spreads) = match &value {
-        Object::Array(elements) => (elements.borrow().clone(), true),
-        other => (vec![other.clone()], false),
+    let (spread, spreads) = match vm.block_argument_spread(&value, Position::new(0, 0, 0))? {
+        Some(elements) => (elements, true),
+        None => (vec![value.clone()], false),
     };
     let parts = group_parts(names);
     let star_at = parts.iter().position(|part| part.starts_with('*'));
@@ -270,102 +247,8 @@ pub(crate) fn bind_block_params(
         .cloned()
         .collect();
     let params = params.as_slice();
-    // Find variadic param index (if any)
-    let variadic_idx = params.iter().position(|p| p.starts_with('*'));
     let block_idx = params.iter().position(|p| p.starts_with('&'));
-    let has_variadic = variadic_idx.is_some();
-
-    if has_variadic {
-        let vi = variadic_idx.unwrap();
-        // Count non-block positional params
-        let positional_params: Vec<&String> =
-            params.iter().filter(|p| !p.starts_with('&')).collect();
-        let params_after_splat = positional_params.len() - vi - 1;
-        // A parameter with a default takes an argument only once the ones
-        // that require one, on either side of the splat, have theirs.
-        let optional_before: Vec<usize> = (0..vi)
-            .filter(|i| {
-                params
-                    .iter()
-                    .position(|declared| Some(declared) == positional_params.get(*i).copied())
-                    .is_some_and(|at| defaults.iter().any(|(index, _)| *index == at))
-            })
-            .collect();
-        let required_before = vi - optional_before.len();
-        let min_positional = required_before + params_after_splat;
-        let mut for_optionals = arguments.len().saturating_sub(min_positional);
-        let mut cursor = 0usize;
-        let mut taken_before: Vec<Object> = Vec::with_capacity(vi);
-        for i in 0..vi {
-            let optional = optional_before.contains(&i);
-            if optional && for_optionals == 0 {
-                let at = params
-                    .iter()
-                    .position(|declared| Some(declared) == positional_params.get(i).copied())
-                    .unwrap_or(usize::MAX);
-                let value = match defaults.iter().find(|(index, _)| *index == at) {
-                    Some((_, default)) => vm.evaluate_expression(default).unwrap_or(Object::Nil),
-                    None => Object::Nil,
-                };
-                taken_before.push(value);
-                continue;
-            }
-            if optional {
-                for_optionals -= 1;
-            }
-            taken_before.push(arguments.get(cursor).cloned().unwrap_or(Object::Nil));
-            cursor += 1;
-        }
-        let splat_count = arguments.len().saturating_sub(cursor + params_after_splat);
-
-        for (i, param) in positional_params.iter().enumerate() {
-            if param.starts_with('*') && param.len() == 1 {
-                continue;
-            }
-            let value = if i < vi {
-                taken_before[i].clone()
-            } else if i == vi {
-                let rest: Vec<Object> = arguments
-                    .get(cursor..cursor + splat_count)
-                    .unwrap_or(&[])
-                    .to_vec();
-                Object::Array(std::rc::Rc::new(std::cell::RefCell::new(rest)))
-            } else {
-                let offset_from_end = positional_params.len() - i;
-                let idx = arguments.len().saturating_sub(offset_from_end);
-                arguments.get(idx).cloned().unwrap_or(Object::Nil)
-            };
-            if i == vi {
-                let name = param.trim_start_matches('*').to_string();
-                if name.is_empty() {
-                    continue;
-                }
-                vm.environment_mut().define(name, value);
-            } else {
-                // A group written among the parameters spreads its value the
-                // same way it does when no splat stands beside it.
-                define_block_param(vm, param, value)?;
-            }
-        }
-    } else {
-        let positional: Vec<(usize, &String)> = params
-            .iter()
-            .enumerate()
-            .filter(|(_, p)| !p.starts_with('&'))
-            .collect();
-        for (pos, (orig_idx, param)) in positional.iter().enumerate() {
-            let value = match arguments.get(pos) {
-                Some(v) => v.clone(),
-                None => match defaults.iter().find(|(di, _)| di == orig_idx) {
-                    Some((_, default_expr)) => {
-                        vm.evaluate_expression(default_expr).unwrap_or(Object::Nil)
-                    }
-                    None => Object::Nil,
-                },
-            };
-            define_block_param(vm, param, value)?;
-        }
-    }
+    bind_positional_params(vm, params, defaults, arguments)?;
 
     // A `&name` parameter takes the block the call was handed, which is nil
     // when it was handed none.
@@ -394,6 +277,178 @@ pub(crate) fn bind_block_params(
         ));
     }
     Ok(())
+}
+
+/// Bind the positional parameters the way a proc does. The required ones
+/// before any optional one or the splat take the first values, the required
+/// ones after take the next, the optional ones take what is left in order,
+/// and the splat takes the rest. With too few values the later required
+/// parameters are nil, and with too many and no splat the extra are dropped.
+fn bind_positional_params(
+    vm: &mut VirtualMachine,
+    params: &[String],
+    defaults: &[(usize, crate::ast::Expression)],
+    mut arguments: Vec<Object>,
+) -> Result<(), MetorexError> {
+    let has_default = |index: usize| defaults.iter().any(|(at, _)| *at == index);
+    let positional: Vec<(usize, &String)> = params
+        .iter()
+        .enumerate()
+        .filter(|(_, param)| !param.starts_with('&'))
+        .collect();
+    let splat_at = positional
+        .iter()
+        .position(|(_, param)| param.starts_with('*'));
+    let optional_count = positional
+        .iter()
+        .filter(|(index, _)| has_default(*index))
+        .count();
+    let first_optional = positional.iter().position(|(index, _)| has_default(*index));
+    let pre_count = [first_optional, splat_at]
+        .into_iter()
+        .flatten()
+        .min()
+        .unwrap_or(positional.len());
+    let post_count =
+        positional.len() - pre_count - optional_count - usize::from(splat_at.is_some());
+    if splat_at.is_none() {
+        arguments.truncate(pre_count + optional_count + post_count);
+    }
+    let beyond_required = arguments.len().saturating_sub(pre_count + post_count);
+    let mut for_optionals = beyond_required.min(optional_count);
+    let splat_count = beyond_required - for_optionals;
+    // Every parameter is a local of the block before any default runs, so a
+    // default that reads its own parameter reads nil.
+    if !defaults.is_empty() {
+        for (_, param) in &positional {
+            if is_plain_name(param) {
+                vm.environment_mut().define(param.to_string(), Object::Nil);
+            }
+        }
+    }
+    let mut cursor = 0usize;
+    let mut bound = std::collections::HashSet::new();
+    for (slot, (index, param)) in positional.iter().enumerate() {
+        let value = if Some(slot) == splat_at {
+            let rest = arguments
+                .get(cursor..cursor + splat_count)
+                .unwrap_or(&[])
+                .to_vec();
+            cursor += splat_count;
+            Object::array(rest)
+        } else if has_default(*index) && for_optionals == 0 {
+            let default = defaults
+                .iter()
+                .find(|(at, _)| at == index)
+                .map(|(_, default)| default)
+                .expect("the parameter has a default");
+            vm.evaluate_expression(default)?
+        } else {
+            if has_default(*index) {
+                for_optionals -= 1;
+            }
+            let value = arguments.get(cursor).cloned().unwrap_or(Object::Nil);
+            cursor += 1;
+            value
+        };
+        let name = param.trim_start_matches('*');
+        if name.is_empty() {
+            continue;
+        }
+        // `|_, _|` may repeat a name that starts with an underscore, and the
+        // first one binds.
+        if name.starts_with('_') && !bound.insert(name.to_string()) {
+            continue;
+        }
+        if Some(slot) == splat_at {
+            vm.environment_mut().define(name.to_string(), value);
+        } else {
+            define_block_param(vm, param, value)?;
+        }
+    }
+    Ok(())
+}
+
+/// Whether a block parameter is a plain name, rather than a group, a splat,
+/// or the name an implicit or numbered parameter binds.
+fn is_plain_name(param: &str) -> bool {
+    !param.is_empty()
+        && param
+            .chars()
+            .all(|letter| letter.is_alphanumeric() || letter == '_')
+        && !crate::parser::names_a_numbered_parameter(param)
+}
+
+impl VirtualMachine {
+    /// The values a lone argument spreads into across a block's parameters:
+    /// an Array's elements, or what `to_ary` answers for anything else that
+    /// answers it. `None` leaves the argument whole.
+    pub(crate) fn block_argument_spread(
+        &mut self,
+        value: &Object,
+        position: Position,
+    ) -> Result<Option<Vec<Object>>, MetorexError> {
+        if let Object::Array(elements) = value {
+            return Ok(Some(elements.borrow().clone()));
+        }
+        // An Array subclass is taken apart as the Array it is, without
+        // asking it to convert.
+        if let Some(Object::Array(elements)) =
+            crate::vm::native_methods::subclasses::array_subclass_value(value)
+        {
+            return Ok(Some(elements.borrow().clone()));
+        }
+        if !self.answers_conversion(value, "to_ary", position)? {
+            return Ok(None);
+        }
+        match self.send_to_object(value.clone(), "to_ary", Vec::new(), position)? {
+            Object::Array(elements) => Ok(Some(elements.borrow().clone())),
+            Object::Nil => Ok(None),
+            answered => {
+                let named = self.builtins().class_of(value).ruby_name();
+                let gives = self.builtins().class_of(&answered).ruby_name();
+                Err(crate::vm::errors::simple_exception(
+                    "TypeError",
+                    &format!("can't convert {named} to Array ({named}#to_ary gives {gives})"),
+                    position,
+                ))
+            }
+        }
+    }
+
+    /// Whether `value` answers a conversion method such as `to_ary`. An
+    /// object that defines its own `respond_to?` is asked, and one whose
+    /// `method_missing` stands in for the method says so through
+    /// `respond_to_missing?`.
+    pub(crate) fn answers_conversion(
+        &mut self,
+        value: &Object,
+        conversion: &str,
+        position: Position,
+    ) -> Result<bool, MetorexError> {
+        let asked = vec![Object::symbol(conversion.to_string()), Object::Bool(true)];
+        if self.defines_method(value, "respond_to?") {
+            return Ok(self
+                .send_to_object(value.clone(), "respond_to?", asked, position)?
+                .is_truthy());
+        }
+        if self.responds_to(value, conversion) {
+            return Ok(true);
+        }
+        if self.defines_method(value, "respond_to_missing?") {
+            return Ok(self
+                .send_to_object(value.clone(), "respond_to_missing?", asked, position)?
+                .is_truthy());
+        }
+        Ok(false)
+    }
+
+    /// Whether `value` has `name` written in Ruby, rather than answering it
+    /// natively or not at all.
+    fn defines_method(&self, value: &Object, name: &str) -> bool {
+        self.lookup_method(value, name)
+            .is_some_and(|(_, method)| !method.is_undefined)
+    }
 }
 
 /// `(**nil)` says the callable takes no keyword arguments at all, so a call

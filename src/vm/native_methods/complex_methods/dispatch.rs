@@ -37,7 +37,11 @@ impl VirtualMachine {
             "real?" => Ok(Some(Object::Bool(false))),
             "zero?" => Ok(Some(Object::Bool(is_zero(&real) && is_zero(&imaginary)))),
             "frozen?" => Ok(Some(Object::Bool(true))),
-            "hash" => Ok(Some(Object::string(format_complex(&real, &imaginary)))),
+            "hash" => Ok(Some(Object::Int(
+                crate::vm::native_methods::object_methods::hashing::seeded_text_hash(
+                    &format_complex(&real, &imaginary),
+                ),
+            ))),
             "==" | "!=" => {
                 let Some(other) = arguments.first() else {
                     return Err(method_argument_error(method_name, 1, 0, position));

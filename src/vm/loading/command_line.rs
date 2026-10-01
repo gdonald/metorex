@@ -288,7 +288,7 @@ impl VirtualMachine {
             let Some(cell) = scope.borrow().own_var_ref(&name) else {
                 continue;
             };
-            if crate::scope::names_a_definition(&cell.borrow()) {
+            if crate::scope::names_a_definition_under(&name, &cell.borrow()) {
                 continue;
             }
             held.set(&name, cell);

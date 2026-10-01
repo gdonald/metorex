@@ -168,11 +168,17 @@ fn test_lexer_string_unterminated_after_backslash() {
 // ── Newline inside string interpolation (lexer/mod.rs lines 381-384) ──────────
 
 #[test]
-fn test_lexer_interpolation_newline_in_expression_is_error() {
-    // Source: "#{\n}" — a newline inside #{...} triggers an unterminated-interpolation error
-    let mut lexer = Lexer::new("\"#{\n}\"");
+fn test_lexer_interpolation_reads_code_across_lines() {
+    let mut lexer = Lexer::new("\"a#{\n1\n}b\"");
     let token = lexer.next_token();
-    assert_eq!(token.kind, TokenKind::EOF);
+    assert_eq!(
+        token.kind,
+        TokenKind::InterpolatedString(vec![
+            InterpolationPart::Text("a".to_string()),
+            InterpolationPart::Expression("\n1\n".to_string(), 1),
+            InterpolationPart::Text("b".to_string()),
+        ])
+    );
 }
 
 // ── Nested braces inside interpolation (lexer/mod.rs lines 387-390, 399-400) ──

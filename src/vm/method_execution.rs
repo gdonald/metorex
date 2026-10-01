@@ -253,6 +253,18 @@ impl VirtualMachine {
         let expected = method.parameters.len();
         let takes_keywords =
             !method.keyword_parameters.is_empty() || method.keyword_rest_parameter.is_some();
+        // A method declaring `**nil` refuses keywords before it counts the
+        // rest of what it was given.
+        if method.keyword_rest_parameter.as_deref() == Some(crate::object::NO_KEYWORDS_PARAM)
+            && matches!(arguments.last(), Some(Object::Dict(entries))
+                if entries.borrow().contains_key(crate::vm::param_binding::KWARGS_MARKER))
+        {
+            return Err(crate::vm::errors::simple_exception(
+                "ArgumentError",
+                "no keywords accepted",
+                position,
+            ));
+        }
         let mut positional_count = positional_arg_count_for(&arguments, takes_keywords);
         // A trailing Proc argument stands in for the block only when the
         // method has no room for it as a positional, since `&` is what makes
@@ -360,12 +372,14 @@ impl VirtualMachine {
         // Snapshot the positional args so `super` (bare form, inside the
         // body) can forward them to the parent method.
         self.method_arg_stack.push(arguments_for_body.clone());
+        self.method_running_stack.push(Rc::clone(&method));
         // Where this method was defined, so a `super` in its body starts from
         // the right link even when the module has no name.
         self.method_owner_stack.push(
             method
-                .owner_class
+                .alias_origin
                 .clone()
+                .or_else(|| method.owner_class.clone())
                 .or_else(|| Some(Rc::clone(&class))),
         );
         // `Module.nesting` inside the body reports where the method was
@@ -382,12 +396,24 @@ impl VirtualMachine {
                 .or_else(|| method.captured_def_scope.last().cloned())
                 .or_else(|| Some(Rc::clone(&class))),
         );
+        // A method defined on one object, as `def self.name` in a class body
+        // defines one on the class, has no class path.
+        let allocation_owner = method
+            .owner_class
+            .as_ref()
+            .filter(|owner| {
+                !owner.is_singleton_class()
+                    && !matches!(&receiver, Object::Class(held) | Object::Module(held) if Rc::ptr_eq(held, owner))
+            })
+            .map(|owner| owner.ruby_name())
+            .filter(|path| !path.is_empty());
         let written = method
             .source_location
             .as_ref()
             .and_then(|written| Some((written.filename.clone()?, written.line)));
         let opened_on = written.as_ref().map_or(position.line, |(_, line)| *line);
         self.enter_running_code(Rc::new(written.into_iter().collect()), opened_on);
+        self.warn_block_the_method_ignores(&method, &class, position)?;
         let execution_result =
             match self.fire_method_event("call", &method_name, &method, &class, None, position) {
                 Ok(()) => self.with_call_frame(
@@ -397,6 +423,7 @@ impl VirtualMachine {
                         method_name.clone(),
                         defined_name.clone(),
                     )
+                    .owned_by(allocation_owner)
                     .with_source_file(self.current_source_file.clone()),
                     move |vm| {
                         vm.execute_method_body(
@@ -412,6 +439,7 @@ impl VirtualMachine {
         self.class_var_cref_stack.pop();
         self.method_owner_stack.pop();
         self.method_arg_stack.pop();
+        self.method_running_stack.pop();
         self.refinement_scopes = caller_scopes;
         self.user_def_nesting = self.user_def_nesting.saturating_sub(1);
 
@@ -453,6 +481,8 @@ impl VirtualMachine {
 
         // Restore the lexical nesting the Proc was written in, so a nested
         // `def` in the body lands where Ruby's default definee points.
+        // Restore the lexical nesting the Proc was written in, so a nested
+        // `def` in the body lands where Ruby's default definee points.
         let saved_def_scope = if method.captured_def_scope.is_empty() {
             None
         } else {
@@ -461,6 +491,12 @@ impl VirtualMachine {
                 method.captured_def_scope.clone(),
             ))
         };
+        // A `def` the body runs installs where the method itself was defined.
+        let definee = method
+            .captured_def_scope
+            .last()
+            .cloned()
+            .or_else(|| method.definee.clone());
 
         // A class variable written in this body belongs to this method's own
         // class, not to a block somewhere up the call stack.
@@ -503,6 +539,15 @@ impl VirtualMachine {
         // the call was made from.
         let saved_lexical_home = self.lexical_home_frame.take();
         self.live_frames.push(frame);
+        if let Some(definee) = definee {
+            self.method_definees.insert(
+                frame,
+                (
+                    self.def_scope_stack.len(),
+                    crate::vm::core::Definee::Class(definee),
+                ),
+            );
+        }
 
         let result = (|| -> Result<Object, MetorexError> {
             self.environment_mut()
@@ -527,6 +572,7 @@ impl VirtualMachine {
                 !method.keyword_parameters.is_empty() || method.keyword_rest_parameter.is_some(),
                 method.ruby2_keywords.get(),
             );
+            refuse_keywords_for_none_declared(method.keyword_rest_parameter.as_deref(), &kwargs)?;
             bind_params(
                 self,
                 &method.parameters,
@@ -586,7 +632,8 @@ impl VirtualMachine {
         self.class_var_home = saved_class_var_home;
         self.current_method_frame = saved_frame;
         self.lexical_home_frame = saved_lexical_home;
-        self.live_frames.pop();
+        self.method_definees.remove(&frame);
+        self.leave_live_frame(frame);
         // A trace reading `binding` off a `return` event sees the method's
         // own locals, which are gone once the scope is popped.
         if !self.tracepoints.is_empty() {
@@ -642,6 +689,7 @@ impl VirtualMachine {
                 !function.keyword_parameters.is_empty()
                     || function.keyword_rest_parameter.is_some(),
             );
+            refuse_keywords_for_none_declared(function.keyword_rest_parameter.as_deref(), &kwargs)?;
             bind_params(
                 self,
                 &function.parameters,
@@ -681,7 +729,7 @@ impl VirtualMachine {
 
         self.current_method_frame = saved_frame;
         self.lexical_home_frame = saved_lexical_home;
-        self.live_frames.pop();
+        self.leave_live_frame(frame);
         self.environment_mut().pop_scope();
         match result {
             Err(MetorexError::NonLocalReturn {
@@ -737,9 +785,7 @@ impl VirtualMachine {
         let value = match statement {
             Statement::Expression { expression, .. } => self.evaluate_expression(expression)?,
             Statement::Assignment { value, target, .. } => {
-                let evaluated = self.evaluate_expression(value)?;
-                self.assign_value(target, evaluated.clone())?;
-                evaluated
+                self.evaluate_assignment(target, value)?
             }
             Statement::If {
                 condition,
@@ -969,7 +1015,14 @@ impl VirtualMachine {
             let rest: IndexMap<String, Object> = kwargs
                 .iter()
                 .filter(|(name, _)| !declared.contains(name.as_str()))
-                .map(|(name, value)| (format!(":{}", name), value.clone()))
+                .map(|(name, value)| {
+                    let key = match name.strip_prefix(crate::vm::param_binding::NON_SYMBOL_KEY_MARK)
+                    {
+                        Some(key) => key.to_string(),
+                        None => format!(":{}", name),
+                    };
+                    (key, value.clone())
+                })
                 .collect();
             self.environment_mut().define(
                 rest_name.to_string(),
@@ -1015,4 +1068,31 @@ fn answers_its_own_value(statement: &Statement) -> bool {
             | Statement::Unless { .. }
             | Statement::Begin { .. }
     )
+}
+
+/// `**nil` says a method takes no keyword arguments, so a call that passes
+/// any is refused.
+fn refuse_keywords_for_none_declared(
+    keyword_rest_parameter: Option<&str>,
+    kwargs: &IndexMap<String, Object>,
+) -> Result<(), MetorexError> {
+    if keyword_rest_parameter == Some(crate::object::NO_KEYWORDS_PARAM) && !kwargs.is_empty() {
+        return Err(crate::vm::errors::simple_exception(
+            "ArgumentError",
+            "no keywords accepted",
+            crate::lexer::Position::new(0, 0, 0),
+        ));
+    }
+    Ok(())
+}
+
+impl VirtualMachine {
+    /// Take a method invocation off the live list. Threads interleave their
+    /// calls on one list, so the invocation ending is not always the last
+    /// one added, and it is removed by its number.
+    fn leave_live_frame(&mut self, frame: u64) {
+        if let Some(at) = self.live_frames.iter().rposition(|held| *held == frame) {
+            self.live_frames.remove(at);
+        }
+    }
 }

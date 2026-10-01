@@ -178,7 +178,7 @@ impl VirtualMachine {
         // If there's a trailing block, evaluate it and store as pending_block.
         // Native methods (each, map, etc.) will take it from self.pending_block.
         if let Some(block_expr) = trailing_block {
-            self.pending_block = Some(self.evaluate_expression(block_expr)?);
+            self.pending_block = Some(self.attach_trailing_block(block_expr)?);
             self.pending_block_from_ampersand = false;
         }
 
@@ -464,6 +464,39 @@ impl VirtualMachine {
     /// The class or module a receiverless declaration applies to: the current
     /// `self` when it is one, otherwise the innermost lexical class or module
     /// body, which is where an `eval`'d declaration lands.
+    /// The class or module a `def` run here installs in, when it is written
+    /// in a running method's body rather than in a class body opened since.
+    /// Inside a block, the method is the one the block was written in, and
+    /// inside a block `instance_exec` runs, it is the receiver's singleton
+    /// class.
+    pub(crate) fn running_method_def_scope(&mut self) -> Option<Rc<Class>> {
+        match self.written_in_method() {
+            Some((depth, definee)) if depth == self.def_scope_stack.len() => match definee {
+                crate::vm::core::Definee::Class(class) => Some(class),
+                crate::vm::core::Definee::SingletonOf(receiver) => {
+                    Some(self.singleton_class_of(&receiver))
+                }
+            },
+            _ => None,
+        }
+    }
+
+    /// Where a `def` written in the running method around the code here
+    /// installs, with the def scope depth the method started at.
+    pub(crate) fn written_in_method(&self) -> Option<(usize, crate::vm::core::Definee)> {
+        let frame = match self.lexical_home_frame {
+            Some(home) => home?,
+            None => self.current_method_frame?,
+        };
+        // A file loaded from inside a method runs its top level in that
+        // method's frame, and a block run by `class_exec` runs in the
+        // caller's. Neither is written in that method.
+        if self.borrowed_frames.contains(&Some(frame)) {
+            return None;
+        }
+        self.method_definees.get(&frame).cloned()
+    }
+
     pub(crate) fn current_definee(&self) -> Option<Rc<Class>> {
         if let Some(definee) = self.def_scope_stack.last() {
             return Some(Rc::clone(definee));

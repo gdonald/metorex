@@ -192,3 +192,15 @@ fn test_threads_signaling_a_child_a_thread_waits_on_no_parens_execution() {
     let output = run_example("threads/signaling_a_child_a_thread_waits_on_no_parens.rb");
     assert_eq!(output, "\"signaled\\n\"\n");
 }
+
+#[test]
+fn test_threads_return_while_another_thread_returns_execution() {
+    let output = run_example("threads/return_while_another_thread_returns.rb");
+    assert_eq!(output, ":done\n");
+}
+
+#[test]
+fn test_threads_return_while_another_thread_returns_no_parens_execution() {
+    let output = run_example("threads/return_while_another_thread_returns_no_parens.rb");
+    assert_eq!(output, ":done\n");
+}

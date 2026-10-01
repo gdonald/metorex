@@ -47,6 +47,39 @@ module Gem
     RbConfig.ruby
   end
 
+  # The settings a gem command reads. Metorex keeps no configuration file,
+  # so each setting starts at the default RubyGems gives it.
+  class ConfigFile
+    DEFAULT_BACKTRACE = true
+    DEFAULT_VERBOSITY = true
+
+    attr_accessor :verbose, :backtrace
+
+    def initialize(_arguments = [])
+      @verbose = DEFAULT_VERBOSITY
+      @backtrace = DEFAULT_BACKTRACE
+    end
+
+    # Whether every detail is wanted, which a verbosity other than true,
+    # false, or nil asks for.
+    def really_verbose
+      case verbose
+      when true, false, nil then
+        false
+      else
+        true
+      end
+    end
+  end
+
+  def self.configuration
+    @configuration ||= Gem::ConfigFile.new
+  end
+
+  def self.configuration=(config)
+    @configuration = config
+  end
+
   class Specification
     def self.default_specifications_dir
       Gem.default_specifications_dir

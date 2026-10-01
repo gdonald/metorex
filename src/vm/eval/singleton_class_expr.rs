@@ -198,6 +198,10 @@ impl VirtualMachine {
             self.assign_value(destination, target_obj.clone())?;
         }
         let singleton_cls = self.singleton_class_of(&target_obj);
+        // A frozen object's singleton class is frozen with it.
+        if self.object_is_frozen(&target_obj) {
+            singleton_cls.freeze();
+        }
         self.run_singleton_class_body(&singleton_cls, body, position)
     }
 

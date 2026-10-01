@@ -457,7 +457,11 @@ class Dir
     end
     @path = path.to_s
     unless File.directory?(@path)
-      raise Errno::ENOENT, "No such file or directory @ dir_initialize - #{@path}"
+      missing = Errno::ENOENT.new
+      # Ruby names the call and the path after the reason with no dash
+      # between them, which the message an Errno builds always puts there.
+      missing.__restore_message__ "No such file or directory @ dir_initialize - #{@path}"
+      raise missing
     end
     @names = options.key?(:encoding) ? Dir.entries(@path, encoding: options[:encoding]) : Dir.entries(@path)
     @position = 0

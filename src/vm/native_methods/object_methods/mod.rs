@@ -20,7 +20,7 @@ mod describing;
 mod dispatch;
 mod equality;
 mod evaluating;
-mod hashing;
+pub(crate) mod hashing;
 mod initializing;
 mod inspecting;
 mod instance_variables;

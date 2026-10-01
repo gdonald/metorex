@@ -37,7 +37,7 @@ impl Parser {
         // reaches Kernel#lambda or a method of the program's own.
         if arguments.is_empty()
             && trailing_block.is_none()
-            && (self.check(&[TokenKind::Equal]) || self.bound_names.contains("lambda"))
+            && (self.check(&[TokenKind::Equal]) || self.names_a_local("lambda"))
         {
             return Ok(Expression::Identifier {
                 name: "lambda".to_string(),
@@ -129,6 +129,7 @@ impl Parser {
                 self.skip_whitespace();
             }
             if !params.is_empty() && self.check(&[TokenKind::LBrace, TokenKind::Do]) {
+                self.refuse_duplicate_parameters(&params)?;
                 let block = if self.check(&[TokenKind::LBrace]) {
                     self.parse_brace_block()?
                 } else {
@@ -304,6 +305,7 @@ impl Parser {
             }
         }
         self.expect(TokenKind::RParen, "Expected ')'")?;
+        self.refuse_duplicate_parameters(&params)?;
         self.skip_whitespace();
 
         if self.check(&[TokenKind::LBrace, TokenKind::Do]) {

@@ -191,9 +191,9 @@ fn defined_call_to_undefined_function_returns_nil() {
 }
 
 #[test]
-fn defined_failing_expression_returns_nil() {
+fn defined_operator_on_a_defined_receiver_is_a_method_and_is_not_run() {
     let result = run(r#"defined?(1 / 0)"#);
-    assert_eq!(result, Some(Object::Nil));
+    assert_eq!(result, Some(Object::string("method")));
 }
 
 // ── multiple assignment ───────────────────────────────────────────────────────

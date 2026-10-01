@@ -3,6 +3,22 @@
 use super::*;
 
 impl VirtualMachine {
+    /// The values a lone argument spreads into when the block takes it apart
+    /// across several parameters. `None` when it stays one argument.
+    fn spread_lone_argument(
+        &mut self,
+        block: &BlockStatement,
+        arguments: &[Object],
+        position: Position,
+    ) -> Result<Option<Vec<Object>>, MetorexError> {
+        match arguments {
+            [single] if block.destructures_single_array() => {
+                self.block_argument_spread(single, position)
+            }
+            _ => Ok(None),
+        }
+    }
+
     /// Execute a block callable within the VM, handling scope capture and return semantics.
     pub(crate) fn execute_block_callable(
         &mut self,
@@ -13,12 +29,12 @@ impl VirtualMachine {
         // `{ |a,| }` destructures a lone array argument across its parameters,
         // discarding any elements it has no parameter for.
         let mut destructured = false;
-        let arguments = match (block.destructures_single_array(), arguments.first()) {
-            (true, Some(Object::Array(elements))) if arguments.len() == 1 => {
+        let arguments = match self.spread_lone_argument(block, &arguments, position)? {
+            Some(elements) => {
                 destructured = true;
-                elements.borrow().clone()
+                elements
             }
-            _ => arguments,
+            None => arguments,
         };
 
         let parameters = block.binding_parameters();
@@ -71,6 +87,7 @@ impl VirtualMachine {
         }
         .nested_in_a_block(depth)
         .written_in_scope(block.written_in.clone())
+        .owned_by(block.defining_owner.clone())
         .with_source_file(self.current_source_file.clone());
         // The body runs in the file the block was written in, which is what a
         // backtrace entry for a call made from here has to name.
@@ -160,6 +177,7 @@ impl VirtualMachine {
         if block.is_lambda {
             self.lambda_body_depth += 1;
         }
+        self.running_block_breaks.push(running_break_flag(block));
         let result = (|| -> Result<Object, MetorexError> {
             // Define captured variables using shared references
             for (name, value_ref) in block.captured_vars() {
@@ -210,11 +228,20 @@ impl VirtualMachine {
                         if !self.tracepoints.is_empty() {
                             self.fire_line_event(statement.position())?;
                         }
-                        last_value = self.evaluate_expression(expression)?;
+                        // A `redo` inside a `begin` that has an ensure clause
+                        // arrives as an unwinding signal once the clause ran.
+                        last_value = match self.evaluate_expression(expression) {
+                            Err(MetorexError::BlockRedo { .. }) => continue 'again,
+                            other => other?,
+                        };
                         continue;
                     }
 
-                    match self.execute_statement(statement)? {
+                    let flow = match self.execute_statement(statement) {
+                        Err(MetorexError::BlockRedo { .. }) => continue 'again,
+                        other => other?,
+                    };
+                    match flow {
                         ControlFlow::Next => {}
                         ControlFlow::Value(value) => {
                             last_value = value;
@@ -263,11 +290,7 @@ impl VirtualMachine {
                             // from that method call. Uses BlockBreak so the signal
                             // survives `execute_method_body` (which only swallows
                             // NonLocalReturn) and is caught at the invoke boundary.
-                            return Err(MetorexError::BlockBreak {
-                                value,
-                                location: position_to_location(position),
-                                home_frame: None,
-                            });
+                            return Err(self.break_signal(value, position_to_location(position)));
                         }
                         ControlFlow::Redo { .. } | ControlFlow::Retry { .. } => continue 'again,
                         // `next <value>` ends this run of the block with that
@@ -283,6 +306,7 @@ impl VirtualMachine {
 
             Ok(last_value)
         })();
+        self.running_block_breaks.pop();
         let result = match result {
             Ok(value) => self
                 .leave_block_body(block, block_position, declared, &value)
@@ -352,6 +376,13 @@ impl VirtualMachine {
             // `next` written inside an expression unwinds to here, and ends
             // this run of the block with the value it carried.
             Err(MetorexError::BlockNext { value, .. }) => Ok(value),
+            // A `break` returns from the call the block was attached to,
+            // which it cannot do once that call has returned.
+            Err(MetorexError::BlockBreak {
+                home_frame: None,
+                location,
+                ..
+            }) if !block.attached_call_running.get() => Err(break_from_proc_closure(location)),
             Err(MetorexError::BlockBreak {
                 value,
                 location,
@@ -375,12 +406,9 @@ impl VirtualMachine {
     ) -> Result<ControlFlow, MetorexError> {
         // `{ |x, y| }` handed a single array spreads it across the parameters,
         // which is how `[[1, 2]].each { |x, y| }` binds x and y.
-        let arguments = match (block.destructures_single_array(), arguments.first()) {
-            (true, Some(Object::Array(elements))) if arguments.len() == 1 => {
-                elements.borrow().clone()
-            }
-            _ => arguments,
-        };
+        let arguments = self
+            .spread_lone_argument(block, &arguments, position)?
+            .unwrap_or(arguments);
         // A lambda takes its arguments the way a method does, so a yield that
         // does not match its parameters is refused rather than padded.
         strict_arity_check(block, arguments.len(), Position::new(0, 0, 0))?;
@@ -401,6 +429,7 @@ impl VirtualMachine {
         }
         .nested_in_a_block(depth)
         .written_in_scope(block.written_in.clone())
+        .owned_by(block.defining_owner.clone())
         .with_source_file(self.current_source_file.clone());
         self.call_stack_push(frame);
         self.environment_mut().push_isolated_scope();
@@ -419,6 +448,7 @@ impl VirtualMachine {
                 .and_then(|named| self.file_encodings.get(named).cloned()),
         );
 
+        self.running_block_breaks.push(running_break_flag(block));
         let result = match self.enter_block_body(block) {
             Err(error) => Err(error),
             Ok((block_position, declared)) => {
@@ -439,6 +469,12 @@ impl VirtualMachine {
                         Position::new(0, 0, 0),
                     )?;
 
+                    // A name written after the `;` is a local of the block,
+                    // which starts as nil however the outer scope reads.
+                    for name in block.block_locals() {
+                        self.environment_mut().define(name, Object::Nil);
+                    }
+
                     // Pre-bind syntactically assigned locals to nil — see
                     // execute_block_body for the rationale.
                     for name in collect_assigned_locals(block.body()) {
@@ -452,7 +488,16 @@ impl VirtualMachine {
                     loop {
                         let mut again = false;
                         for statement in block.body() {
-                            match self.execute_statement(statement)? {
+                            let flow = match self.execute_statement(statement) {
+                                // A `redo` inside a `begin` that has an ensure
+                                // clause arrives as an unwinding signal.
+                                Err(MetorexError::BlockRedo { .. }) => {
+                                    again = true;
+                                    break;
+                                }
+                                other => other?,
+                            };
+                            match flow {
                                 ControlFlow::Next => {}
                                 ControlFlow::Value(value) => last_value = value,
                                 ControlFlow::Retry { .. } | ControlFlow::Redo { .. } => {
@@ -483,6 +528,7 @@ impl VirtualMachine {
                 }
             }
         };
+        self.running_block_breaks.pop();
 
         self.current_source_file = saved_source_file;
         self.current_source_encoding = saved_source_encoding;
@@ -552,4 +598,19 @@ fn block_method_names(block: &BlockStatement) -> Vec<(&'static str, Object)> {
         ],
         None => Vec::new(),
     }
+}
+
+/// The LocalJumpError a `break` raises from a block whose call has returned.
+fn break_from_proc_closure(location: crate::error::SourceLocation) -> MetorexError {
+    let message = "break from proc-closure".to_string();
+    MetorexError::UncaughtException {
+        exception: Object::exception("LocalJumpError", message.clone()),
+        location,
+        message,
+    }
+}
+
+/// The flag a `break` in this block consults, which a lambda has none of.
+fn running_break_flag(block: &BlockStatement) -> Option<std::rc::Rc<std::cell::Cell<bool>>> {
+    (!block.is_lambda).then(|| std::rc::Rc::clone(&block.attached_call_running))
 }

@@ -226,8 +226,8 @@ end
 // ── break / next outside loop ─────────────────────────────────────────────────
 
 #[test]
-fn break_inside_begin_body_errors() {
-    let err = run_err(
+fn break_inside_begin_body_is_refused_when_parsed() {
+    let tokens = Lexer::new(
         r#"
 class BrTest
   def test
@@ -238,28 +238,36 @@ class BrTest
 end
 BrTest.new.test
 "#,
-    );
+    )
+    .tokenize();
+    let refused = Parser::new(tokens).parse().unwrap_err();
     assert!(
-        err.contains("break") || err.contains("loop") || err.contains("outside"),
-        "Error was: {}",
-        err
+        refused
+            .iter()
+            .any(|problem| problem.to_string().contains("Invalid break")),
+        "Error was: {:?}",
+        refused
     );
 }
 
 #[test]
-fn break_inside_function_body_errors() {
-    let err = run_err(
+fn break_inside_function_body_is_refused_when_parsed() {
+    let tokens = Lexer::new(
         r#"
 def broken
   break
 end
 broken
 "#,
-    );
+    )
+    .tokenize();
+    let refused = Parser::new(tokens).parse().unwrap_err();
     assert!(
-        err.contains("break") || err.contains("loop") || err.contains("outside"),
-        "Error was: {}",
-        err
+        refused
+            .iter()
+            .any(|problem| problem.to_string().contains("Invalid break")),
+        "Error was: {:?}",
+        refused
     );
 }
 

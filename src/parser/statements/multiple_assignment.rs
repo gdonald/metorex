@@ -42,57 +42,20 @@ impl Parser {
             // A group of targets stands where a name may, as the `(y, z)`
             // of `x, (y, z) = held, pair` does.
             if matches!(tok.kind, TokenKind::LParen) {
-                let mut depth = 0;
-                loop {
-                    match &self.peek_ahead(offset).kind {
-                        TokenKind::LParen => depth += 1,
-                        TokenKind::RParen => {
-                            depth -= 1;
-                            if depth == 0 {
-                                break;
-                            }
-                        }
-                        // A target list may be written across lines, so a
-                        // newline inside the group is not the end of it.
-                        TokenKind::EOF => return false,
-                        _ => {}
-                    }
-                    offset += 1;
-                }
-                offset += 1;
+                // A target list may be written across lines, so a newline
+                // inside the group is not the end of it.
+                let Some(after) = self.past_balanced(offset, TokenKind::LParen, TokenKind::RParen)
+                else {
+                    return false;
+                };
+                offset = after;
                 // `(held; object).name` writes the receiver in parentheses,
                 // and `(held; object)[key]` subscripts it, so what follows
                 // the group names the target on it.
-                loop {
-                    match self.peek_ahead(offset).kind {
-                        TokenKind::Dot | TokenKind::SafeDot | TokenKind::ColonColon => {
-                            offset += 1;
-                            if !matches!(self.peek_ahead(offset).kind, TokenKind::Ident(_)) {
-                                return false;
-                            }
-                            offset += 1;
-                        }
-                        TokenKind::LBracket => {
-                            let mut depth = 0;
-                            loop {
-                                match &self.peek_ahead(offset).kind {
-                                    TokenKind::LBracket => depth += 1,
-                                    TokenKind::RBracket => {
-                                        depth -= 1;
-                                        if depth == 0 {
-                                            break;
-                                        }
-                                    }
-                                    TokenKind::EOF => return false,
-                                    _ => {}
-                                }
-                                offset += 1;
-                            }
-                            offset += 1;
-                        }
-                        _ => break,
-                    }
-                }
+                let Some(after) = self.skip_target_postfix(offset, false) else {
+                    return false;
+                };
+                offset = after;
                 match &self.peek_ahead(offset).kind {
                     TokenKind::Equal => return true,
                     TokenKind::Comma => {
@@ -116,42 +79,10 @@ impl Parser {
             ) {
                 return false;
             }
-            offset += 1;
-            // Skip bracket indexing (e.g., a[0])
-            if matches!(self.peek_ahead(offset).kind, TokenKind::LBracket) {
-                offset += 1; // skip [
-                let mut depth = 1;
-                while depth > 0 {
-                    let inner = &self.peek_ahead(offset).kind;
-                    if matches!(inner, TokenKind::LBracket) {
-                        depth += 1;
-                    } else if matches!(inner, TokenKind::RBracket) {
-                        depth -= 1;
-                    } else if matches!(inner, TokenKind::EOF) {
-                        return false;
-                    }
-                    offset += 1;
-                }
-            }
-            // `m::A, m::B = :a, :b` names constants under a module, which
-            // are targets the same way a name is.
-            while matches!(self.peek_ahead(offset).kind, TokenKind::ColonColon) {
-                offset += 1;
-                if matches!(self.peek_ahead(offset).kind, TokenKind::Ident(_)) {
-                    offset += 1;
-                } else {
-                    return false;
-                }
-            }
-            // Skip dot+method chains (e.g., obj.field)
-            while matches!(self.peek_ahead(offset).kind, TokenKind::Dot) {
-                offset += 1; // skip .
-                if matches!(self.peek_ahead(offset).kind, TokenKind::Ident(_)) {
-                    offset += 1; // skip method name
-                } else {
-                    return false;
-                }
-            }
+            let Some(after) = self.skip_target_postfix(offset + 1, true) else {
+                return false;
+            };
+            offset = after;
             // After the target, expect comma or =
             let next = self.peek_ahead(offset);
             if matches!(next.kind, TokenKind::Equal) {
@@ -163,6 +94,55 @@ impl Parser {
                 continue;
             }
             return false;
+        }
+    }
+
+    /// The offset past what follows the head of a target: `.name`,
+    /// `&.name`, `::Name`, a subscript, and the arguments of a call right
+    /// after a name, in any order, as `held.fetch(key)[0].name` writes.
+    /// `after_name` says whether the head just read was a name. `None` when
+    /// a bracket is never closed or a dot names nothing.
+    fn skip_target_postfix(&self, mut offset: usize, mut after_name: bool) -> Option<usize> {
+        loop {
+            match self.peek_ahead(offset).kind {
+                TokenKind::Dot | TokenKind::SafeDot | TokenKind::ColonColon => {
+                    offset += 1;
+                    if !matches!(self.peek_ahead(offset).kind, TokenKind::Ident(_)) {
+                        return None;
+                    }
+                    offset += 1;
+                    after_name = true;
+                }
+                TokenKind::LBracket => {
+                    offset =
+                        self.past_balanced(offset, TokenKind::LBracket, TokenKind::RBracket)?;
+                    after_name = false;
+                }
+                TokenKind::LParen if after_name => {
+                    offset = self.past_balanced(offset, TokenKind::LParen, TokenKind::RParen)?;
+                    after_name = false;
+                }
+                _ => return Some(offset),
+            }
+        }
+    }
+
+    /// The offset past the bracket that closes the one opening at `offset`.
+    fn past_balanced(&self, mut offset: usize, open: TokenKind, close: TokenKind) -> Option<usize> {
+        let mut depth = 0;
+        loop {
+            let kind = &self.peek_ahead(offset).kind;
+            if *kind == open {
+                depth += 1;
+            } else if *kind == close {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(offset + 1);
+                }
+            } else if matches!(kind, TokenKind::EOF) {
+                return None;
+            }
+            offset += 1;
         }
     }
 
@@ -295,6 +275,10 @@ impl Parser {
             && let Expression::Array { elements, .. } = &targets[0]
         {
             targets = elements.clone();
+        }
+        for target in &targets {
+            self.refuse_fixed_target(target)?;
+            self.refuse_dynamic_constant_assignment(target)?;
         }
         self.expect(TokenKind::Equal, "Expected '=' in multiple assignment")?;
         self.skip_whitespace();

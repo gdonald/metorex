@@ -241,3 +241,27 @@ fn test_oop_class_definition_rules_no_parens_execution() {
     let output = run_example("oop/class_definition_rules_no_parens.rb");
     assert_eq!(output, CLASS_DEFINITION_RULES_OUTPUT);
 }
+
+/// The expected output of both `oop/nested_class_names` variants.
+const NESTED_CLASS_NAMES_OUTPUT: &str = concat!(
+    "Parser\n",
+    "Parser\n",
+    "\"parser\"\n",
+    "true\n",
+    "false\n",
+    "false\n",
+    "false\n",
+    "[4, 3, 2, 1]\n",
+);
+
+#[test]
+fn test_oop_nested_class_names_execution() {
+    let output = run_example("oop/nested_class_names.rb");
+    assert_eq!(output, NESTED_CLASS_NAMES_OUTPUT);
+}
+
+#[test]
+fn test_oop_nested_class_names_no_parens_execution() {
+    let output = run_example("oop/nested_class_names_no_parens.rb");
+    assert_eq!(output, NESTED_CLASS_NAMES_OUTPUT);
+}

@@ -60,14 +60,15 @@ load("{}")
 
 #[test]
 fn load_with_non_array_load_path_errors() {
-    // Replace $LOAD_PATH with a non-array, then try load() on a name not
-    // present in cwd. The fallback should treat search_dirs as empty,
-    // producing a "cannot load" error.
-    let err = run_err(
-        r#"$: = "not-an-array"
-load("nonexistent_xyz_for_cov.rb")
-"#,
-    );
+    // A program cannot assign `$:`, so the embedding code replaces it with a
+    // non-array. load() on a name not present in cwd then searches no
+    // directories and reports "cannot load".
+    let tokens = Lexer::new(r#"load("nonexistent_xyz_for_cov.rb")"#).tokenize();
+    let stmts = Parser::new(tokens).parse().expect("parse failed");
+    let mut vm = VirtualMachine::new();
+    vm.globals_mut()
+        .set_variable(":", Object::string("not-an-array"));
+    let err = vm.execute_program(&stmts).unwrap_err().to_string();
     assert!(
         err.contains("cannot load") || err.contains("load") || err.contains("nonexistent"),
         "unexpected: {}",

@@ -280,8 +280,11 @@ module Zlib
 
   # Writes what it is given as a compressed stream.
   class Deflate < ZStream
-    def self.deflate(text, level = DEFAULT_COMPRESSION)
-      Zlib.deflate text, level
+    # With a block, the stream is handed over in pieces as it is made, and
+    # the answer is nil.
+    def self.deflate(text, level = DEFAULT_COMPRESSION, &block)
+      return Zlib.deflate(text, level) if block.nil?
+      new(level).deflate(text, FINISH, &block)
     end
 
     def initialize(level = DEFAULT_COMPRESSION, window_bits = MAX_WBITS,
@@ -291,22 +294,54 @@ module Zlib
       super()
     end
 
-    def deflate(text, flush = NO_FLUSH)
+    # The pieces a block is handed are this many bytes, which is the buffer
+    # zlib fills before Ruby hands it on.
+    CHUNK_BYTES = 16384
+
+    # What the stream holds past what was handed out already: everything
+    # zlib has written once FINISH is asked for, and otherwise what it has
+    # written while holding back the bytes a later one could still change.
+    # A block is handed full pieces as they fill, and once the stream is
+    # finished the piece left over too.
+    def deflate(text, flush = NO_FLUSH, &block)
       @input = @input + Zlib.coerce_text(text) unless text.nil?
-      return "".b unless flush == FINISH
-      finish
+      @handed_out ||= 0
+      if flush == FINISH
+        written = Zlib.__stream__ "deflate", @input, 0, @dictionary.to_s
+        @output = written
+        @finished = true
+      else
+        reached = Zlib.__stream__ "deflate_handed_on", @input, 0, @dictionary.to_s
+        written = Zlib.__stream__("deflate", @input, 0, @dictionary.to_s).byteslice(0, reached)
+      end
+      fresh = written.byteslice(@handed_out, written.bytesize - @handed_out) || "".b
+      return hand_over(fresh) if block.nil?
+      while fresh.bytesize >= CHUNK_BYTES
+        piece = fresh.byteslice(0, CHUNK_BYTES)
+        fresh = fresh.byteslice(CHUNK_BYTES, fresh.bytesize - CHUNK_BYTES)
+        @handed_out += CHUNK_BYTES
+        block.call piece
+      end
+      if @finished && !fresh.empty?
+        @handed_out += fresh.bytesize
+        block.call fresh
+      end
+      nil
     end
+
+    def hand_over(fresh)
+      @handed_out += fresh.bytesize
+      fresh
+    end
+    private :hand_over
 
     def <<(text)
       @input = @input + Zlib.coerce_text(text) unless text.nil?
       self
     end
 
-    def finish
-      answer = Zlib.__stream__ "deflate", @input, 0, @dictionary.to_s
-      @output = answer
-      @finished = true
-      answer
+    def finish(&block)
+      deflate nil, FINISH, &block
     end
 
     def flush(_kind = SYNC_FLUSH)

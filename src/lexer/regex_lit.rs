@@ -7,13 +7,25 @@ impl<'a> Lexer<'a> {
     /// significant token.  After value-producing tokens (identifiers, numbers,
     /// closing brackets, `end`, `true`, etc.) `/` is division; otherwise it
     /// starts a regex.
-    pub(super) fn slash_is_regex(&self) -> bool {
+    pub(super) fn slash_is_regex(&mut self) -> bool {
         // `:/` names the division method. A colon with anything between it and
         // the slash is a ternary or a label, where a regex can follow.
         if matches!(self.prev_significant, Some(TokenKind::Colon))
             && self.prev_significant_end == self.offset
         {
             return false;
+        }
+        // `p /x/` hands a pattern to a method called without parentheses:
+        // a space stands before the slash and none after it, and the name is
+        // not one a local variable was bound to.
+        if let Some(TokenKind::Ident(name)) = &self.prev_significant
+            && !self.local_names.contains(name)
+            && self.prev_significant_end < self.offset
+            && self
+                .peek_second()
+                .is_some_and(|after| !after.is_whitespace() && after != '=')
+        {
+            return true;
         }
         match &self.prev_significant {
             None => true, // start of file

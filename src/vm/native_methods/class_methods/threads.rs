@@ -27,13 +27,16 @@ impl VirtualMachine {
         // Mutex.new / ConditionVariable.new — single-threaded stubs (no shared
         // state needed; the synchronize/wait/broadcast methods are no-ops).
         if method_name == "new"
-            && (class_rc.name() == "Mutex" || class_rc.name() == "ConditionVariable")
+            && (class_rc.name() == "Thread::Mutex"
+                || class_rc.name() == "Thread::ConditionVariable")
         {
             use crate::object::Instance;
             let inst_rc = Instance::new(Rc::clone(class_rc));
             return Ok(Answered(Object::Instance(inst_rc)));
         }
-        if method_name == "new" && (class_rc.name() == "Queue" || class_rc.name() == "SizedQueue") {
+        if method_name == "new"
+            && (class_rc.name() == "Thread::Queue" || class_rc.name() == "Thread::SizedQueue")
+        {
             use crate::object::Instance;
             let inst_rc = Instance::new(Rc::clone(class_rc));
             inst_rc.borrow_mut().set_var(
@@ -42,7 +45,7 @@ impl VirtualMachine {
             );
             // `Queue.new(enumerable)` starts the queue off with what the
             // enumerable holds, in the order it holds them.
-            if class_rc.name() == "Queue"
+            if class_rc.name() == "Thread::Queue"
                 && let Some(held) = arguments.first()
             {
                 let seeded = self.queue_seed_argument(held, position)?;
@@ -52,7 +55,7 @@ impl VirtualMachine {
             }
             // `SizedQueue.new(n)` says how many the queue holds, which it
             // reports whether or not anything ever waits on it.
-            if class_rc.name() == "SizedQueue" {
+            if class_rc.name() == "Thread::SizedQueue" {
                 let counted = match arguments.first() {
                     Some(held) => self.queue_capacity_argument(held, position)?,
                     None => {

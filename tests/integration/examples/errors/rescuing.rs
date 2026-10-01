@@ -4,7 +4,7 @@ use super::super::run_example;
 use super::*;
 #[test]
 fn test_errors_simple_rescue_execution() {
-    let expected = "Before exception\nCaught an exception\nAfter rescue block\nCaught exception with message: RuntimeError: An error message\nIn try block\nIn rescue block\nIn ensure block\n";
+    let expected = "Before exception\nCaught an exception\nAfter rescue block\nCaught exception with message: An error message\nIn try block\nIn rescue block\nIn ensure block\n";
     let output = run_example("errors/simple_rescue.rb");
     assert_eq!(output, expected);
 }

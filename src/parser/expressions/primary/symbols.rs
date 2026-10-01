@@ -57,6 +57,15 @@ pub(crate) fn starts_symbol_literal(kind: &TokenKind) -> bool {
             | TokenKind::Until
             | TokenKind::Then
             | TokenKind::Elsif
+            | TokenKind::In
+            | TokenKind::KeywordAnd
+            | TokenKind::KeywordOr
+            | TokenKind::NotKeyword
+            | TokenKind::Defined
+            | TokenKind::MagicFile
+            | TokenKind::MagicLine
+            | TokenKind::MagicDir
+            | TokenKind::SourceEncoding(_)
     )
 }
 
@@ -95,7 +104,7 @@ pub(crate) fn starts_operator_symbol(kind: &TokenKind) -> bool {
 
 impl Parser {
     /// Parse a symbol literal after a leading `:` token has been consumed.
-    pub(super) fn parse_symbol_literal(
+    pub(crate) fn parse_symbol_literal(
         &mut self,
         symbol_position: Position,
     ) -> Result<Expression, MetorexError> {
@@ -160,6 +169,12 @@ impl Parser {
             TokenKind::In => Ok(symbol("in", symbol_position)),
             TokenKind::KeywordAnd => Ok(symbol("and", symbol_position)),
             TokenKind::KeywordOr => Ok(symbol("or", symbol_position)),
+            TokenKind::NotKeyword => Ok(symbol("not", symbol_position)),
+            TokenKind::Defined => Ok(symbol("defined?", symbol_position)),
+            TokenKind::MagicFile => Ok(symbol("__FILE__", symbol_position)),
+            TokenKind::MagicLine => Ok(symbol("__LINE__", symbol_position)),
+            TokenKind::MagicDir => Ok(symbol("__dir__", symbol_position)),
+            TokenKind::SourceEncoding(_) => Ok(symbol("__ENCODING__", symbol_position)),
 
             // :[] and :[]= operator symbols
             TokenKind::LBracket => {
@@ -235,7 +250,7 @@ impl Parser {
                         InterpolationPart::Expression(expr_str, _) => {
                             let expr_lexer = Lexer::new(&expr_str);
                             let expr_tokens = expr_lexer.tokenize();
-                            let mut expr_parser = Parser::new(expr_tokens);
+                            let mut expr_parser = self.nested_parser(expr_tokens);
                             let expr = expr_parser.parse_expression()?;
                             ast_parts.push(crate::ast::node::InterpolationPart::Expression(
                                 Box::new(expr),

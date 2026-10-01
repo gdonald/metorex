@@ -200,8 +200,11 @@ impl VirtualMachine {
                 }
                 Err(problem) => {
                     return Err(crate::vm::errors::simple_exception(
-                        "Errno::ECONNREFUSED",
-                        &format!("accept: {problem}"),
+                        errno_class(&problem),
+                        &format!(
+                            "{} - accept(2)",
+                            crate::vm::init::errno_description(problem.raw_os_error().unwrap_or(0))
+                        ),
                         position,
                     ));
                 }
@@ -238,7 +241,14 @@ impl VirtualMachine {
                 Ok(Object::Int(named as i64))
             }
             Err(problem) if problem.kind() == std::io::ErrorKind::WouldBlock => Ok(Object::Nil),
-            Err(problem) => Err(refused(position, format!("accept: {problem}"))),
+            Err(problem) => Err(crate::vm::errors::simple_exception(
+                errno_class(&problem),
+                &format!(
+                    "{} - accept(2)",
+                    crate::vm::init::errno_description(problem.raw_os_error().unwrap_or(0))
+                ),
+                position,
+            )),
         }
     }
 }

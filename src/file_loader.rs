@@ -340,7 +340,11 @@ pub fn parse_file(source: &str, filename: &str) -> Result<Vec<Statement>, Metore
 /// The text a file holds. A file whose bytes do not spell UTF-8 is read in
 /// the encoding its magic comment names, so a literal written with a byte of
 /// its own reaches the program as the character that byte stands for.
-fn source_text(bytes: &[u8]) -> Option<String> {
+/// The text of a source file. One that is not UTF-8 has to name its
+/// encoding in a magic comment, and where metorex has no table for that
+/// encoding a byte that is not UTF-8 is held as an escaped character, which
+/// a literal in the file turns back into the byte.
+pub fn source_text(bytes: &[u8]) -> Option<String> {
     if let Ok(text) = std::str::from_utf8(bytes) {
         return Some(text.to_string());
     }
@@ -349,5 +353,62 @@ fn source_text(bytes: &[u8]) -> Option<String> {
     let opening = String::from_utf8_lossy(&bytes[..bytes.len().min(256)]).to_string();
     let named = crate::lexer::named_source_encoding(&opening)?;
     let named = crate::vm::native_methods::string_methods::canonical_encoding_name(&named);
+    if named == "UTF-8" {
+        return None;
+    }
     crate::vm::native_methods::string_methods::latin_text(bytes, &named)
+        .or_else(|| Some(escaped_source_text(bytes)))
+}
+
+/// Where the characters standing for bytes that are not UTF-8 start. They
+/// sit in the private use area, which source text has no other use for.
+const ESCAPED_BYTE_BASE: u32 = 0xF700;
+
+/// The character standing for a byte past ASCII that spells no text.
+pub(crate) fn escaped_byte(byte: u8) -> char {
+    char::from_u32(ESCAPED_BYTE_BASE + u32::from(byte)).unwrap_or(char::REPLACEMENT_CHARACTER)
+}
+
+/// Source text read from bytes that are not all UTF-8: each run that is
+/// stays as written, and each byte that is not becomes an escaped character.
+pub fn escaped_source_text(bytes: &[u8]) -> String {
+    let mut text = String::new();
+    let mut rest = bytes;
+    loop {
+        match std::str::from_utf8(rest) {
+            Ok(valid) => {
+                text.push_str(valid);
+                return text;
+            }
+            Err(error) => {
+                let (valid, after) = rest.split_at(error.valid_up_to());
+                text.push_str(&String::from_utf8_lossy(valid));
+                let escaped = char::from_u32(ESCAPED_BYTE_BASE + u32::from(after[0]));
+                text.extend(escaped);
+                rest = &after[1..];
+            }
+        }
+    }
+}
+
+/// The bytes a literal holding escaped characters was written with: each
+/// escaped character is its byte, and the rest are their UTF-8. `None`
+/// when the literal holds no escaped character.
+pub fn escaped_source_bytes(text: &str) -> Option<Vec<u8>> {
+    let escaped = |letter: char| {
+        (ESCAPED_BYTE_BASE + 0x80..=ESCAPED_BYTE_BASE + 0xFF).contains(&(letter as u32))
+    };
+    if !text.chars().any(escaped) {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    for letter in text.chars() {
+        if escaped(letter) {
+            bytes.push((letter as u32 - ESCAPED_BYTE_BASE) as u8);
+        } else {
+            let mut spelled = [0; 4];
+            bytes.extend_from_slice(letter.encode_utf8(&mut spelled).as_bytes());
+        }
+    }
+    Some(bytes)
 }

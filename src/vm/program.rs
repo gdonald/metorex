@@ -112,12 +112,24 @@ impl VirtualMachine {
         &mut self,
         statements: &[Statement],
     ) -> Result<Option<Object>, MetorexError> {
+        // Each file's top level starts with its methods private.
+        let caller_toplevel_public = std::mem::replace(&mut self.toplevel_public, false);
+        let caller_toplevel_frame =
+            std::mem::replace(&mut self.toplevel_frame, self.current_method_frame);
+        self.borrowed_frames.push(self.current_method_frame);
+        // A file's top level sits in no block, whatever block loaded it.
+        let caller_lexical_home = self.lexical_home_frame.take();
         // A `return` written at the top level ends the program, carrying its
         // value out however deep in blocks it was written.
-        match self.run_program_statements(statements) {
+        let result = match self.run_program_statements(statements) {
             Err(MetorexError::NonLocalReturn { value, .. }) => Ok(Some(value)),
             other => other,
-        }
+        };
+        self.toplevel_public = caller_toplevel_public;
+        self.toplevel_frame = caller_toplevel_frame;
+        self.borrowed_frames.pop();
+        self.lexical_home_frame = caller_lexical_home;
+        result
     }
 
     /// Run a unit whose `return` belongs to the scope around it rather than
@@ -349,6 +361,21 @@ impl VirtualMachine {
                         Object::Nil => {}
                         Object::Dict(entries) if entries.borrow().is_empty() => {}
                         Object::Dict(entries) => {
+                            // Keywords spread after other keywords join them,
+                            // a later key taking the place of an earlier one.
+                            if let Some(Object::Dict(gathered)) = args.last()
+                                && gathered.borrow().contains_key("__MX_KWARGS__")
+                            {
+                                let mut joined = gathered.borrow().clone();
+                                for (key, value) in entries.borrow().iter() {
+                                    joined.insert(key.clone(), value.clone());
+                                }
+                                args.pop();
+                                args.push(Object::Dict(std::rc::Rc::new(std::cell::RefCell::new(
+                                    joined,
+                                ))));
+                                continue;
+                            }
                             let mut keywords = entries.borrow().clone();
                             keywords.insert("__MX_KWARGS__".to_string(), Object::Bool(true));
                             args.push(Object::Dict(std::rc::Rc::new(std::cell::RefCell::new(

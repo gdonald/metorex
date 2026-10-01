@@ -3,6 +3,68 @@
 use super::*;
 
 impl VirtualMachine {
+    /// What `$LOAD_PATH.resolve_feature_path` answers: the kind of file a
+    /// `require` of the name would load, `:rb` or `:so`, and its path, or nil
+    /// when nothing would be found.
+    pub(crate) fn resolve_feature_path(
+        &mut self,
+        arguments: Vec<Object>,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        // The prelude's `resolve_feature_path` hands over its one argument.
+        let feature = arguments.first().cloned().unwrap_or(Object::Nil);
+        let named = self.coerce_load_path(&feature, position)?;
+        let named = self.expand_home_path(&named);
+        let named_outright = std::path::Path::new(&named).is_absolute()
+            || named.starts_with("./")
+            || named.starts_with("../");
+        let bases: Vec<std::path::PathBuf> = if named_outright {
+            vec![std::path::PathBuf::new()]
+        } else {
+            self.load_path_directories()
+                .into_iter()
+                .map(|directory| {
+                    let base = std::path::PathBuf::from(directory);
+                    base.canonicalize().unwrap_or(base)
+                })
+                .collect()
+        };
+        let mut candidates = require_candidates(&named);
+        if std::path::Path::new(&named).extension().is_none() {
+            candidates.extend(
+                NATIVE_EXTENSIONS
+                    .iter()
+                    .map(|extension| std::path::PathBuf::from(format!("{named}.{extension}"))),
+            );
+        }
+        let answer = |kind: &str, path: String| {
+            Object::array(vec![Object::symbol(kind.to_string()), Object::string(path)])
+        };
+        for base in &bases {
+            for candidate in &candidates {
+                let path = base.join(candidate);
+                if path.is_file() {
+                    let kind = if names_a_native_extension(&path) {
+                        "so"
+                    } else {
+                        "rb"
+                    };
+                    let expanded = expanded_feature_path(&path);
+                    return Ok(answer(kind, expanded.to_string_lossy().into_owned()));
+                }
+            }
+        }
+        // A library metorex carries is what a require of it loads when the
+        // load path holds no file of that name.
+        let plainly = named.strip_suffix(".rb").unwrap_or(&named);
+        if BUILT_IN_FEATURES.contains(&plainly)
+            || crate::vm::stdlib::embedded_library(plainly).is_some()
+        {
+            return Ok(answer("rb", format!("<metorex>/{plainly}.rb")));
+        }
+        Ok(Object::Nil)
+    }
+
     pub(crate) fn require_feature(
         &mut self,
         arguments: Vec<Object>,
@@ -110,7 +172,7 @@ impl VirtualMachine {
         // A path with no extension of its own may still name one of
         // those files, and naming it is refused the same way.
         if found_path.is_none() && !named_a_native_extension {
-            named_a_native_extension = ["so", "bundle", "dylib", "dll"].iter().any(|held| {
+            named_a_native_extension = NATIVE_EXTENSIONS.iter().any(|held| {
                 std::path::PathBuf::from(format!("{}.{}", require_name, held)).is_file()
             });
         }

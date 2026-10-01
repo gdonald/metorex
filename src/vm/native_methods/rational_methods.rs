@@ -462,7 +462,11 @@ impl VirtualMachine {
                 "({}/{})",
                 numerator, denominator
             )))),
-            "hash" => Ok(Some(Object::integer(numerator * 31 + denominator))),
+            "hash" => Ok(Some(Object::Int(
+                crate::vm::native_methods::object_methods::hashing::seeded_text_hash(&format!(
+                    "{numerator}/{denominator}"
+                )),
+            ))),
             "frozen?" => Ok(Some(Object::Bool(true))),
             "==" | "eql?" | "!=" => {
                 let Some(other) = arguments.first() else {

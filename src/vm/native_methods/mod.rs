@@ -68,7 +68,7 @@ mod fibers;
 mod mutexes;
 mod names;
 mod queues;
-mod subclasses;
+pub(crate) mod subclasses;
 mod threads;
 mod warnings;
 

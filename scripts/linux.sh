@@ -39,6 +39,17 @@ esac
 
 IMAGE="metorex-linux-$ARCH"
 
+# An architecture that is not this machine's runs under emulation, which the
+# spec runner is told so it can leave out what only a native run can show.
+case "$(uname -m)" in
+  x86_64 | amd64) HOST_ARCH=amd64 ;;
+  *) HOST_ARCH=arm64 ;;
+esac
+EMULATED=0
+if [ "$ARCH" != "$HOST_ARCH" ]; then
+  EMULATED=1
+fi
+
 # The build context holds the Dockerfile alone, since the repository itself is
 # mounted rather than copied.
 docker build \
@@ -69,4 +80,5 @@ exec docker run --rm "${terminal[@]}" \
   --volume "metorex-linux-target-$ARCH:/work/target" \
   --volume "metorex-cargo-registry-$ARCH:/usr/local/cargo/registry" \
   --workdir /work \
+  --env "METOREX_EMULATED=$EMULATED" \
   "$IMAGE" "$@"

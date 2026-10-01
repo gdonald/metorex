@@ -27,6 +27,10 @@ impl VirtualMachine {
         parts: &[InterpolationPart],
     ) -> Result<Object, MetorexError> {
         let (text, carried, raw) = self.interpolate(parts)?;
+        let escaped_bytes_written = parts.iter().any(|part| {
+            matches!(part, InterpolationPart::Text(written)
+                if crate::file_loader::escaped_source_bytes(written).is_some())
+        });
         let ascii_literal = parts.iter().all(|part| match part {
             InterpolationPart::Text(written) => written.is_ascii(),
             InterpolationPart::Expression(_) => true,
@@ -38,8 +42,16 @@ impl VirtualMachine {
             let spelled = crate::object::StringValue::from_bytes(
                 crate::vm::native_methods::pack_format::bytes_to_string(&raw).to_string(),
             );
-            if let Some((encoding, _)) = &carried {
-                spelled.set_encoding(encoding.clone());
+            match &carried {
+                Some((encoding, _)) => spelled.set_encoding(encoding.clone()),
+                // Bytes the literal itself escaped are written in the
+                // encoding its source is written in.
+                None if escaped_bytes_written => {
+                    spelled.set_encoding(self.source_literal_encoding().unwrap_or_else(|| {
+                        crate::object::string_value::DEFAULT_ENCODING.to_string()
+                    }))
+                }
+                None => {}
             }
             return Ok(Object::String(std::rc::Rc::new(spelled)));
         }
@@ -81,7 +93,16 @@ impl VirtualMachine {
         for part in parts {
             let wrote = buffer.len();
             match part {
-                InterpolationPart::Text(text) => buffer.push_str(text),
+                // Bytes the literal escaped stand for themselves.
+                InterpolationPart::Text(text) => {
+                    if let Some(bytes) = crate::file_loader::escaped_source_bytes(text) {
+                        any_bytes = true;
+                        buffer.extend(bytes.iter().map(|byte| *byte as char));
+                        raw.extend(bytes);
+                        continue;
+                    }
+                    buffer.push_str(text)
+                }
                 InterpolationPart::Expression(expr) => {
                     let value = self.evaluate_expression(expr)?;
                     // Interpolation uses #to_s semantics: a Symbol renders
@@ -111,8 +132,9 @@ impl VirtualMachine {
                         // nothing rather than the `nil` inspect form.
                         Object::Nil => {}
                         // An object of the program's own is asked for its own
-                        // `to_s`, which is the text Ruby puts in the hole.
-                        Object::Instance(_) => {
+                        // `to_s`, which is the text Ruby puts in the hole, and
+                        // so is an exception, whose `to_s` is its message.
+                        Object::Instance(_) | Object::Exception(_) => {
                             let written = self.send_to_object(
                                 value.clone(),
                                 "to_s",
@@ -198,23 +220,36 @@ impl VirtualMachine {
                 position: splat_at,
             } = element
             {
-                match self.evaluate_expression(expression)? {
-                    Object::Array(items) => evaluated.extend(items.borrow().iter().cloned()),
-                    Object::Nil => {}
-                    other => {
-                        // Anything else that answers `to_a` spreads into what
-                        // that gives, which is what `[*"a".."z"]` names.
-                        match self.splat_through_to_a(other, *splat_at)? {
-                            Ok(items) => evaluated.extend(items),
-                            Err(held) => evaluated.push(held),
-                        }
-                    }
-                }
+                let spread = self.evaluate_expression(expression)?;
+                evaluated.extend(self.splat_elements(spread, *splat_at)?);
                 continue;
             }
             evaluated.push(self.evaluate_expression(element)?);
         }
         Ok(Object::Array(Rc::new(RefCell::new(evaluated))))
+    }
+
+    /// The values `*value` spreads into: an Array's elements, nothing for
+    /// nil, an Array subclass's elements, what `to_a` answers, or the value
+    /// alone.
+    pub(crate) fn splat_elements(
+        &mut self,
+        value: Object,
+        position: crate::lexer::Position,
+    ) -> Result<Vec<Object>, MetorexError> {
+        match value {
+            Object::Array(items) => Ok(items.borrow().clone()),
+            Object::Nil => Ok(Vec::new()),
+            held => match crate::vm::native_methods::subclasses::array_subclass_value(&held) {
+                Some(Object::Array(items)) => Ok(items.borrow().clone()),
+                // Anything else that answers `to_a` spreads into what that
+                // gives, which is what `[*"a".."z"]` names.
+                _ => Ok(match self.splat_through_to_a(held, position)? {
+                    Ok(items) => items,
+                    Err(held) => vec![held],
+                }),
+            },
+        }
     }
 
     /// What a splat spreads a value into. A value answering `to_a` spreads
@@ -225,12 +260,23 @@ impl VirtualMachine {
         value: Object,
         position: crate::lexer::Position,
     ) -> Result<Result<Vec<Object>, Object>, MetorexError> {
-        if !self.responds_to(&value, "to_a") {
+        if !self.answers_conversion(&value, "to_a", position)? {
             return Ok(Err(value));
         }
+        // `to_a` answering nil leaves the value whole, and answering anything
+        // else but an Array is refused.
         match self.send_to_object(value.clone(), "to_a", vec![], position)? {
             Object::Array(items) => Ok(Ok(items.borrow().clone())),
-            _ => Ok(Err(value)),
+            Object::Nil => Ok(Err(value)),
+            answered => {
+                let named = self.builtins().class_of(&value).ruby_name();
+                let gives = self.builtins().class_of(&answered).ruby_name();
+                Err(crate::vm::errors::simple_exception(
+                    "TypeError",
+                    &format!("can't convert {named} to Array ({named}#to_a gives {gives})"),
+                    position,
+                ))
+            }
         }
     }
 
@@ -584,13 +630,13 @@ impl VirtualMachine {
                 };
                 let made = match key {
                     Object::Int(i) => {
-                        let chars: Vec<char> = s.as_str().chars().collect();
+                        let chars = crate::vm::native_methods::string_methods::character_units(&s);
                         let len = chars.len() as i64;
                         let idx = if i < 0 { len + i } else { i };
                         if idx < 0 || idx >= len {
                             Ok(Object::Nil)
                         } else {
-                            Ok(Object::string(chars[idx as usize].to_string()))
+                            Ok(Object::string(chars[idx as usize].clone()))
                         }
                     }
                     Object::Range {
@@ -599,7 +645,7 @@ impl VirtualMachine {
                         exclusive,
                         ..
                     } => {
-                        let chars: Vec<char> = s.as_str().chars().collect();
+                        let chars = crate::vm::native_methods::string_methods::character_units(&s);
                         let len = chars.len() as i64;
                         let from = match self.span_end_index(start.as_ref(), position)? {
                             Some(number) => {
@@ -620,7 +666,7 @@ impl VirtualMachine {
                         };
                         let count = (last - from + 1).max(0);
                         let stop = (from + count).min(len);
-                        let sliced: String = chars[from as usize..stop as usize].iter().collect();
+                        let sliced: String = chars[from as usize..stop as usize].concat();
                         Ok(Object::string(sliced))
                     }
                     // `text[other]` answers the other string when it appears,

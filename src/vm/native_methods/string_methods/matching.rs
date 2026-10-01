@@ -61,7 +61,10 @@ impl VirtualMachine {
                         ));
                     }
                 };
-                let subject = string_value.as_str().to_string();
+                if let Object::Regex(written, _) = &arguments[0] {
+                    self.prepare_match_subject(written, &flags, receiver, position)?;
+                }
+                let subject = crate::vm::native_methods::regexp_methods::match_text(string_value);
                 let start = match arguments.get(1) {
                     Some(Object::Int(offset)) => {
                         let length = subject.chars().count() as i64;
@@ -124,6 +127,9 @@ impl VirtualMachine {
                         ));
                     }
                 };
+                if let Object::Regex(written, _) = &arguments[0] {
+                    self.prepare_match_subject(written, &flags, receiver, position)?;
+                }
                 // A second argument names the character offset to start at,
                 // counting from the end when negative.
                 let subject = string_value.as_ref();

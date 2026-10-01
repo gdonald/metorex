@@ -152,10 +152,15 @@ impl Parser {
                     _ => return Err(self.error_at_previous("Expected method name after '.'")),
                 };
 
-                // Check if there are arguments (with or without parens)
-                let arguments = if self.match_token(&[TokenKind::LParen]) {
+                // Check if there are arguments (with or without parens). A
+                // space before the parenthesis makes it the first of the
+                // arguments rather than the list, so `held.log (x), 30`
+                // passes two.
+                let spaced_paren =
+                    self.check(&[TokenKind::LParen]) && self.peek().had_leading_space;
+                let arguments = if !spaced_paren && self.match_token(&[TokenKind::LParen]) {
                     self.parse_arguments()?
-                } else if self.can_start_argument_for_method_call(&method_name) {
+                } else if spaced_paren || self.can_start_argument_for_method_call(&method_name) {
                     self.parse_arguments_without_parens()?
                 } else {
                     Vec::new()
@@ -278,6 +283,7 @@ impl Parser {
                                 args.push(argument);
                             }
                         }
+                        let carries_keywords = opens_hash || !pairs.is_empty();
                         if !pairs.is_empty() {
                             let position = self.peek().position;
                             args.push(Expression::Dictionary {
@@ -286,6 +292,23 @@ impl Parser {
                             });
                         }
                         self.expect(TokenKind::RBracket, "Expected ']'")?;
+                        // Ruby refuses a block or keywords among the
+                        // subscripts of an index assignment.
+                        if self.assignment_ahead() {
+                            if args
+                                .iter()
+                                .any(|argument| matches!(argument, Expression::BlockArg { .. }))
+                            {
+                                return Err(
+                                    self.error_at_previous("block arg given in index assignment")
+                                );
+                            }
+                            if carries_keywords {
+                                return Err(
+                                    self.error_at_previous("keyword arg given in index assignment")
+                                );
+                            }
+                        }
                         let position = expr.position();
                         expr = Expression::MethodCall {
                             receiver: Box::new(expr),
@@ -306,7 +329,7 @@ impl Parser {
                 }
             } else if self.check(&[TokenKind::ColonColon])
                 && !(self.peek().had_leading_space
-                    && matches!(&expr, Expression::Identifier { name, .. } if !self.bound_names.contains(name)))
+                    && matches!(&expr, Expression::Identifier { name, .. } if !self.names_a_local(name)))
             {
                 // `Foo::Bar` reads a name out of Foo, and `take ::Bar` passes
                 // the top-level Bar to `take`. The space before `::` is what

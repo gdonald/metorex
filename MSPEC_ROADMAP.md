@@ -2222,7 +2222,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.53.64. core/time/yday_spec - 1 file, 3 examples, 368 expectations, 0 failures, 0 errors
   - [x] 4.53.65. core/time/year_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
   - [x] 4.53.66. core/time/zone_spec - 1 file, 8 examples, 31 expectations, 0 failures, 0 errors
-- [ ] 4.54. core/process - 90 pass, 3 files have no examples on this platform at ruby 4.0.1, and set_proctitle_spec fails under amd64 emulation
+- [x] 4.54. core/process - 91 pass, and 3 files have no examples on this platform at ruby 4.0.1
   - [x] 4.54.1. core/process/_fork_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
   - [x] 4.54.2. core/process/abort_spec - 1 file, 6 examples, 10 expectations, 0 failures, 0 errors
   - [x] 4.54.3. core/process/argv0_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
@@ -2256,7 +2256,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.54.31. core/process/maxgroups_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
   - [x] 4.54.32. core/process/pid_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
   - [x] 4.54.33. core/process/ppid_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
-  - [ ] 4.54.34. core/process/set_proctitle_spec - passes on macOS and native Linux, and fails under amd64 emulation, where ps reads the emulator's copy of the arguments
+  - [x] 4.54.34. core/process/set_proctitle_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors. Left out of the emulated Linux run, where ps reads the emulator's copy of the arguments
   - [x] 4.54.35. core/process/setpgid_spec - 1 file, 1 example, 3 expectations, 0 failures, 0 errors
   - [x] 4.54.36. core/process/setpgrp_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [x] 4.54.37. core/process/setpriority_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
@@ -2373,7 +2373,7 @@ different reported release would open, without committing metorex to it.
 
 ## Phase 5: Specs outside `core/`
 
-- [ ] 5.1. language - 66 pass, and the rest are enabled in the runner one file at a time
+- [x] 5.1. language - 80 pass
   - [x] 5.1.1. language/comment_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [x] 5.1.2. language/line_spec - 1 file, 6 examples, 10 expectations, 0 failures, 0 errors
   - [x] 5.1.3. language/range_spec - 1 file, 5 examples, 7 expectations, 0 failures, 0 errors
@@ -2440,7 +2440,21 @@ different reported release would open, without committing metorex to it.
   - [x] 5.1.64. language/class_spec - 1 file, 45 examples, 75 expectations, 0 failures, 0 errors
   - [x] 5.1.65. language/singleton_class_spec - 1 file, 53 examples, 57 expectations, 0 failures, 0 errors
   - [x] 5.1.66. language/hash_spec - 1 file, 40 examples, 100 expectations, 0 failures, 0 errors
-- [ ] 5.2. library - 1478 pass, 180 of them have no examples on this platform at ruby 4.0.1 (cgi 80, win32ole 74, readline 25, rubygems 1), and the rest are enabled in the runner one file at a time
+  - [x] 5.1.67. language/assignments_spec - 1 file, 38 examples, 63 expectations, 0 failures, 0 errors
+  - [x] 5.1.68. language/block_spec - 1 file, 165 examples, 257 expectations, 0 failures, 0 errors
+  - [x] 5.1.69. language/break_spec - 1 file, 39 examples, 57 expectations, 0 failures, 0 errors
+  - [x] 5.1.70. language/constants_spec - 1 file, 100 examples, 156 expectations, 0 failures, 0 errors
+  - [x] 5.1.71. language/def_spec - 1 file, 73 examples, 145 expectations, 0 failures, 0 errors
+  - [x] 5.1.72. language/defined_spec - 1 file, 255 examples, 324 expectations, 0 failures, 0 errors
+  - [x] 5.1.73. language/magic_comment_spec - 1 file, 54 examples, 54 expectations, 0 failures, 0 errors
+  - [x] 5.1.74. language/method_spec - 1 file, 168 examples, 351 expectations, 0 failures, 0 errors
+  - [x] 5.1.75. language/optional_assignments_spec - 1 file, 74 examples, 114 expectations, 0 failures, 0 errors
+  - [x] 5.1.76. language/predefined_spec - 1 file, 172 examples, 407 expectations, 0 failures, 0 errors
+  - [x] 5.1.77. language/redo_spec - 1 file, 5 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 5.1.78. language/regexp/encoding_spec - 1 file, 32 examples, 35 expectations, 0 failures, 0 errors
+  - [x] 5.1.79. language/super_spec - 1 file, 61 examples, 130 expectations, 0 failures, 0 errors
+  - [x] 5.1.80. language/variables_spec - 1 file, 119 examples, 237 expectations, 0 failures, 0 errors
+- [ ] 5.2. library - 1517 pass, 180 of them have no examples on this platform at ruby 4.0.1 (cgi 80, win32ole 74, readline 25, rubygems 1), and the rest are enabled in the runner one file at a time
   - [x] 5.2.1. library/abbrev/abbrev_spec - 1 file, 4 examples, 6 expectations, 0 failures, 0 errors
   - [x] 5.2.2. library/base64/urlsafe_decode64_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
   - [x] 5.2.3. library/base64/urlsafe_encode64_spec - 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
@@ -3927,6 +3941,38 @@ different reported release would open, without committing metorex to it.
   - [x] 5.2.1483. library/coverage/start_spec - 1 file, 14 examples, 28 expectations, 0 failures, 0 errors
   - [x] 5.2.1484. library/coverage/peek_result_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
   - [x] 5.2.1485. library/coverage/result_spec - 1 file, 29 examples, 67 expectations, 0 failures, 0 errors
+  - [x] 5.2.1486. library/socket/socket/tcp_server_loop_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.1487. library/socket/socket/unix_server_loop_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.1488. library/socket/tcpserver/accept_spec - 1 file, 13 examples, 16 expectations, 0 failures, 0 errors
+  - [x] 5.2.1489. library/weakref/__getobj___spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.1490. library/weakref/weakref_alive_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.1491. library/prime/each_spec - 1 file, 44 examples, 913 expectations, 0 failures, 0 errors
+  - [x] 5.2.1492. library/bigdecimal/BigDecimal_spec - 1 file, 29 examples, 137 expectations, 0 failures, 0 errors
+  - [x] 5.2.1493. library/bigdecimal/core_spec - 1 file, 8 examples, 16 expectations, 0 failures, 0 errors
+  - [x] 5.2.1494. library/bigdecimal/divmod_spec - 1 file, 9 examples, 1062 expectations, 0 failures, 0 errors
+  - [x] 5.2.1495. library/zlib/deflate/deflate_spec - 1 file, 12 examples, 13 expectations, 0 failures, 0 errors
+  - [x] 5.2.1496. library/matrix/eigenvalue_decomposition/initialize_spec - 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.1497. library/objectspace/trace_object_allocations_spec - 1 file, 14 examples, 35 expectations, 0 failures, 0 errors
+  - [x] 5.2.1498. library/io-wait/wait_spec - 1 file, 20 examples, 31 expectations, 0 failures, 0 errors
+  - [x] 5.2.1499. library/irb/irb_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1500. library/drb/start_service_spec - 1 file, 2 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 5.2.1501. library/fiddle/handle/initialize_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1503. library/socket/basicsocket/sendmsg_spec - 1 file, 12 examples, 16 expectations, 0 failures, 0 errors
+  - [x] 5.2.1504. library/socket/basicsocket/sendmsg_nonblock_spec - 1 file, 14 examples, 20 expectations, 0 failures, 0 errors
+  - [x] 5.2.1505. library/socket/basicsocket/send_spec - 1 file, 19 examples, 38 expectations, 0 failures, 0 errors
+  - [x] 5.2.1506. library/socket/udpsocket/send_spec - 1 file, 16 examples, 29 expectations, 0 failures, 0 errors
+  - [x] 5.2.1507. library/socket/basicsocket/getsockopt_spec - 1 file, 21 examples, 51 expectations, 0 failures, 0 errors
+  - [x] 5.2.1508. library/socket/basicsocket/setsockopt_spec - 1 file, 23 examples, 81 expectations, 0 failures, 0 errors
+  - [x] 5.2.1509. library/socket/socket/connect_nonblock_spec - 1 file, 16 examples, 20 expectations, 0 failures, 0 errors
+  - [x] 5.2.1510. library/socket/basicsocket/recvmsg_spec - 1 file, 49 examples, 52 expectations, 0 failures, 0 errors
+  - [x] 5.2.1511. library/socket/basicsocket/recvmsg_nonblock_spec - 1 file, 51 examples, 54 expectations, 0 failures, 0 errors
+  - [x] 5.2.1512. library/socket/addrinfo/initialize_spec - 1 file, 195 examples, 202 expectations, 0 failures, 0 errors
+  - [x] 5.2.1513. library/openssl/kdf/scrypt_spec - 1 file, 29 examples, 40 expectations, 0 failures, 0 errors
+  - [x] 5.2.1514. library/openssl/x509/name/parse_spec - 1 file, 4 examples, 16 expectations, 0 failures, 0 errors
+  - [x] 5.2.1515. library/openssl/x509/store/verify_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.1516. library/ripper/lex_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1517. library/ripper/sexp_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [ ] 5.2.1502. library/mkmf/mkmf_spec - mkmf aborts on a Ruby without its C headers (`ruby.h` under `rubyhdrdir`), and metorex has no C extension API for those headers to describe
 - [x] 5.3. command_line - 32 files, all passing
   - [x] 5.3.1. command_line/dash_r_spec - 1 file, 3 examples, 8 expectations, 0 failures, 0 errors
   - [x] 5.3.2. command_line/error_message_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
@@ -3960,7 +4006,7 @@ different reported release would open, without committing metorex to it.
   - [x] 5.3.30. command_line/frozen_strings_spec - 1 file, 13 examples, 17 expectations, 0 failures, 0 errors
   - [x] 5.3.31. command_line/feature_spec - 1 file, 7 examples, 26 expectations, 0 failures, 0 errors
   - [x] 5.3.32. command_line/rubyopt_spec - 1 file, 33 examples, 33 expectations, 0 failures, 0 errors
-- [ ] 5.4. security - 8 pass, and the rest are enabled in the runner one file at a time
+- [ ] 5.4. security - 13 pass, and the rest are enabled in the runner one file at a time
   - [x] 5.4.1. security/cve_2018_16396_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
   - [x] 5.4.2. security/cve_2020_10663_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
   - [x] 5.4.3. security/cve_2024_49761_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
@@ -3969,6 +4015,12 @@ different reported release would open, without committing metorex to it.
   - [x] 5.4.6. security/cve_2018_8779_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
   - [x] 5.4.7. security/cve_2018_6914_spec - 1 file, 5 examples, 5 expectations, 0 failures, 0 errors
   - [x] 5.4.8. security/cve_2013_4164_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.4.9. security/cve_2011_4815_spec - 1 file, 10 examples, 10 expectations, 0 failures, 0 errors
+  - [x] 5.4.10. security/cve_2018_8780_spec - 1 file, 6 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 5.4.11. security/cve_2019_8321_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.4.12. security/cve_2019_8323_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.4.13. security/cve_2019_8325_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
+  - [ ] 5.4.14. security/cve_2019_8322_spec - fails under Ruby 4.0.6 as well: RubyGems now writes each owner with the role in parentheses after it, and the spec expects the name alone
 
 ## Phase 6: What the remaining specs need
 

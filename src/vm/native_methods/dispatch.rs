@@ -396,6 +396,17 @@ impl VirtualMachine {
             }
         }
 
+        // A Regexp allocated and never given a pattern matches in no
+        // encoding, which Ruby reports as BINARY.
+        if method_name == "encoding"
+            && arguments.is_empty()
+            && let Object::Instance(instance) = receiver
+            && regexp_subclass_value(receiver).is_none()
+            && super::class_methods::class_named_in_chain(&instance.borrow().class, "Regexp")
+        {
+            return Ok(Some(self.encoding_object("ASCII-8BIT")));
+        }
+
         // Instances of a generated struct class get Struct's instance methods.
         if let Object::Instance(instance) = receiver {
             let instance_class = Rc::clone(&instance.borrow().class);
@@ -547,11 +558,11 @@ impl VirtualMachine {
             "Exception" => self.call_exception_method(receiver, method_name, arguments, position),
             "Thread" => self.call_thread_method(receiver, method_name, arguments, position),
             "Fiber" => self.call_fiber_method(receiver, method_name, arguments, position),
-            "Queue" | "SizedQueue" => {
+            "Thread::Queue" | "Thread::SizedQueue" => {
                 self.call_queue_method(receiver, method_name, arguments, position)
             }
-            "Mutex" => self.call_mutex_method(receiver, method_name, arguments, position),
-            "ConditionVariable" => {
+            "Thread::Mutex" => self.call_mutex_method(receiver, method_name, arguments, position),
+            "Thread::ConditionVariable" => {
                 self.call_condition_variable_method(receiver, method_name, arguments, position)
             }
             "Process::Status" => {

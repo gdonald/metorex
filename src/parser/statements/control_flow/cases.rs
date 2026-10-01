@@ -85,6 +85,15 @@ impl Parser {
 
     pub(crate) fn parse_case_statement(&mut self) -> Result<Statement, MetorexError> {
         let start_pos = self.expect(TokenKind::Case, "Expected 'case'")?.position;
+        self.parse_case_after_keyword(start_pos)
+    }
+
+    /// A `case` statement from just after its keyword: the subject, if
+    /// any, then its `when` or `in` clauses.
+    pub(crate) fn parse_case_after_keyword(
+        &mut self,
+        start_pos: Position,
+    ) -> Result<Statement, MetorexError> {
         self.skip_whitespace();
 
         // `case` with nothing to match against tests each `when` for truth,

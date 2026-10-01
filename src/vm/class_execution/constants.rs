@@ -61,7 +61,7 @@ impl VirtualMachine {
             // inside `module ModuleSpecs; class Allonym; include ... end; end`
             // before ModuleSpecs has been bound in globals).
             if enclosing.name() == name {
-                return Some(Object::Module(Rc::clone(enclosing)));
+                return Some(scope_object(enclosing));
             }
         }
         // Inside a method body the lexical chain is the nesting captured
@@ -132,5 +132,14 @@ impl VirtualMachine {
             current = class_rc.get_class_var(part)?;
         }
         Some(current)
+    }
+}
+
+/// A class or module body's scope as the value its name stands for.
+pub(crate) fn scope_object(scope: &Rc<Class>) -> Object {
+    if scope.is_module() {
+        Object::Module(Rc::clone(scope))
+    } else {
+        Object::Class(Rc::clone(scope))
     }
 }

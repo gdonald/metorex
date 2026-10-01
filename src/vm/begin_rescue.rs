@@ -118,8 +118,14 @@ impl VirtualMachine {
                     break;
                 }
             }
-            if handled {
-                self.restore_current_exception(standing);
+            // A clause that raised leaves `$!` naming what it raised, which
+            // an ensure clause and an enclosing rescue see.
+            match &final_value {
+                Err(MetorexError::UncaughtException {
+                    exception: raised, ..
+                }) if handled => self.set_current_exception(raised.clone()),
+                _ if handled => self.restore_current_exception(standing),
+                _ => {}
             }
         } else if body_result.is_ok()
             && let Some(else_stmts) = else_clause
@@ -185,11 +191,7 @@ impl VirtualMachine {
                     // rescue/ensure body would either become a hard error
                     // or be silently swallowed by the begin-as-expression
                     // wrapper.
-                    return Err(MetorexError::BlockBreak {
-                        value,
-                        location: position_to_location(position),
-                        home_frame: None,
-                    });
+                    return Err(self.break_signal(value, position_to_location(position)));
                 }
                 // `retry` unwinds to the `begin` whose rescue body it sits
                 // in, which runs that body again.

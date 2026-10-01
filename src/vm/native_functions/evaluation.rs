@@ -138,29 +138,42 @@ impl VirtualMachine {
                 crate::lexer::named_source_encoding(&code).unwrap_or_else(|| code_encoding.clone()),
             ))
             .tokenize();
-        let statements = crate::parser::Parser::new(tokens)
-            .parse()
-            .map_err(|errors| {
-                // Ruby names the file in front of the message, so
-                // code eval'd on behalf of a template points at the
-                // template rather than at the eval.
-                let reported = errors
-                    .iter()
-                    .map(|e| e.to_string())
-                    .collect::<Vec<_>>()
-                    .join("; ");
-                let at = errors
-                    .first()
-                    .and_then(|held| held.location())
-                    .map_or(0, |held| held.line.max(1).saturating_sub(lineno))
-                    as i64
-                    + named_lineno;
-                let message = match &filename {
-                    Some(named) => format!("{named}:{at}: {reported}"),
-                    None => format!("eval: parse error: {reported}"),
-                };
-                crate::vm::errors::syntax_error(message, filename.as_deref(), position)
-            })?;
+        let mut parser = crate::parser::Parser::new(tokens).inside_eval();
+        let parsed = parser.parse();
+        let source_warnings = parser.warnings().to_vec();
+        let statements = parsed.map_err(|errors| {
+            // Ruby names the file in front of the message, so
+            // code eval'd on behalf of a template points at the
+            // template rather than at the eval.
+            let reported = errors
+                .iter()
+                .map(|e| e.to_string())
+                .collect::<Vec<_>>()
+                .join("; ");
+            let at = errors
+                .first()
+                .and_then(|held| held.location())
+                .map_or(0, |held| held.line.max(1).saturating_sub(lineno))
+                as i64
+                + named_lineno;
+            let message = match &filename {
+                Some(named) => format!("{named}:{at}: {reported}"),
+                None => format!("eval: parse error: {reported}"),
+            };
+            crate::vm::errors::syntax_error(message, filename.as_deref(), position)
+        })?;
+        // What reading the code found to warn about, which a verbose run
+        // reports under the name the code runs as.
+        if matches!(self.globals().get("VERBOSE"), Some(Object::Bool(true))) {
+            let named = filename.clone().unwrap_or_else(|| "(eval)".to_string());
+            for (at, warning) in &source_warnings {
+                let line = (at.line as i64) - (lineno as i64) + named_lineno;
+                self.emit_warning_to_stderr(
+                    &format!("{named}:{line}: warning: {warning}"),
+                    position,
+                );
+            }
+        }
         // A `frozen_string_literal` comment written after code names
         // nothing, and a verbose run says so.
         if crate::lexer::frozen_string_literal_after_a_token(&code)
@@ -206,6 +219,15 @@ impl VirtualMachine {
         let captured_nesting: Option<Vec<Rc<crate::class::Class>>> = match &binding {
             Some(held) if !held.nesting.borrow().is_empty() => {
                 Some(held.nesting.borrow().iter().rev().map(Rc::clone).collect())
+            }
+            // One taken outside every class opens nothing, wherever the
+            // code is run from.
+            Some(held)
+                if held.home_frame.borrow().is_some_and(|home| {
+                    home.is_none_or(|frame| frame == crate::vm::core::TOP_LEVEL_FRAME)
+                }) =>
+            {
+                Some(Vec::new())
             }
             Some(_) => None,
             None if !self.def_scope_stack.is_empty() => None,
@@ -300,7 +322,7 @@ impl VirtualMachine {
             None => {
                 let written_in = prev_file
                     .as_ref()
-                    .map(|file| file.display().to_string())
+                    .map(|file| self.reported_spelling(file).display().to_string())
                     .unwrap_or_default();
                 self.current_file = Some(std::path::PathBuf::from(format!(
                     "{}{}:{})",
@@ -341,11 +363,16 @@ impl VirtualMachine {
         // The frame reads as the one that ran the eval, which is the
         // name Ruby gives code inside one and what keeps `__method__`
         // there naming the method around it.
-        let written_in = self
-            .call_stack()
-            .last()
-            .cloned()
-            .unwrap_or_else(|| crate::vm::CallFrame::boundary("<main>"));
+        let taken_in = match &binding {
+            Some(held) => Some(
+                held.frame
+                    .borrow()
+                    .clone()
+                    .unwrap_or_else(|| crate::vm::CallFrame::boundary("<main>")),
+            ),
+            None => self.call_stack().last().cloned(),
+        };
+        let written_in = taken_in.unwrap_or_else(|| crate::vm::CallFrame::boundary("<main>"));
         self.call_stack_push(
             written_in
                 .with_location(Some(format!("{}:{}", position.line, position.column)))
@@ -353,8 +380,10 @@ impl VirtualMachine {
         );
         // Code run through a binding runs where the binding was
         // taken, so `__method__` names the method it was taken in.
+        // A binding that carries its frame already runs in it.
         let named_method = binding
             .as_ref()
+            .filter(|held| held.frame.borrow().is_none())
             .and_then(|held| held.method.borrow().clone());
         if let Some((callee, defined)) = &named_method {
             self.call_stack_push(crate::vm::CallFrame::method(
@@ -368,10 +397,18 @@ impl VirtualMachine {
         // method the code calls is not handed it and a `yield` there
         // has nothing to run.
         let held_block = self.pending_block.take();
+        let carried_home = binding.as_ref().and_then(|held| *held.home_frame.borrow());
+        let saved_lexical_home = match carried_home {
+            Some(home) => Some(self.lexical_home_frame.replace(home)),
+            None => None,
+        };
         // A `return` written in the code returns from the scope the
         // eval was written in rather than ending the eval, so it
         // carries on out rather than being answered here.
         let result = self.run_eval_statements(&statements);
+        if let Some(held) = saved_lexical_home {
+            self.lexical_home_frame = held;
+        }
         self.pending_block = held_block;
         if named_method.is_some() {
             self.call_stack_pop();

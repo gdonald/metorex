@@ -9,7 +9,7 @@ impl Parser {
         // carries on the arithmetic rather than opening an argument.
         let names_a_variable = matches!(
             _callee,
-            Expression::Identifier { name, .. } if self.bound_names.contains(name)
+            Expression::Identifier { name, .. } if self.names_a_local(name)
         );
         // Where arguments written without parentheses are not read at all,
         // as in the value of a `rescue` modifier, a name stands alone.
@@ -341,6 +341,7 @@ impl Parser {
         self.paren_less_arg_depth += 1;
         let result = self.parse_arguments_without_parens_inner();
         self.paren_less_arg_depth -= 1;
+        self.command_arguments_end = self.stream.current_position();
         result
     }
 
@@ -370,10 +371,9 @@ impl Parser {
                 crate::parser::expressions::primary::groups::keyword_symbol_key(&self.peek().kind)
                     .expect("the name was checked")
                     .to_string();
-            self.advance();
+            let named_at = self.advance().position;
             self.advance(); // consume ':'
-            self.skip_whitespace();
-            let value = self.parse_expression()?;
+            let value = self.shorthand_keyword_value(&name, named_at)?;
             keyword_pairs.push((name, value));
         } else if self.match_token(&[TokenKind::Star]) {
             let position = self.previous().position;
@@ -447,10 +447,9 @@ impl Parser {
                 )
                 .expect("the name was checked")
                 .to_string();
-                self.advance();
+                let named_at = self.advance().position;
                 self.advance(); // consume ':'
-                self.skip_whitespace();
-                let value = self.parse_expression()?;
+                let value = self.shorthand_keyword_value(&name, named_at)?;
                 keyword_pairs.push((name, value));
             } else if self.match_token(&[TokenKind::Star]) {
                 let position = self.previous().position;
@@ -554,5 +553,34 @@ impl Parser {
             trailing_block,
             position,
         })
+    }
+}
+
+impl Parser {
+    /// The value of a `name:` argument written without parentheses: what
+    /// follows it, or the local or method `name` when nothing does, which is
+    /// the shorthand `call bar:, val:`.
+    fn shorthand_keyword_value(
+        &mut self,
+        name: &str,
+        named_at: crate::lexer::Position,
+    ) -> Result<Expression, MetorexError> {
+        if self.is_at_end()
+            || self.check(&[
+                TokenKind::Comma,
+                TokenKind::Newline,
+                TokenKind::Semicolon,
+                TokenKind::End,
+                TokenKind::RParen,
+                TokenKind::RBrace,
+            ])
+        {
+            return Ok(Expression::Identifier {
+                name: name.to_string(),
+                position: named_at,
+            });
+        }
+        self.skip_whitespace();
+        self.parse_expression()
     }
 }

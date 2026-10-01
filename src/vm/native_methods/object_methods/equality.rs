@@ -132,7 +132,23 @@ impl VirtualMachine {
                 match (matchable_text(receiver), matchable_text(&arguments[0])) {
                     (Some(MatchSide::Pattern(pattern, flags)), Some(MatchSide::Text(text)))
                     | (Some(MatchSide::Text(text)), Some(MatchSide::Pattern(pattern, flags))) => {
-                        match self.regexp_match_data(&pattern, &flags, &text, 0, position)? {
+                        let (pattern_side, subject_side) = match receiver {
+                            Object::Regex(_, _) => (receiver, &arguments[0]),
+                            _ => (&arguments[0], receiver),
+                        };
+                        if let Object::Regex(written, _) = pattern_side {
+                            self.prepare_match_subject(written, &flags, subject_side, position)?;
+                        }
+                        let encoding =
+                            crate::vm::native_methods::regexp_methods::subject_encoding(receiver)
+                                .or_else(|| {
+                                    crate::vm::native_methods::regexp_methods::subject_encoding(
+                                        &arguments[0],
+                                    )
+                                });
+                        match self
+                            .regexp_match_data_in(&pattern, &flags, &text, 0, encoding, position)?
+                        {
                             Some(data) => self
                                 .send_to_object(data, "begin", vec![Object::Int(0)], position)
                                 .map(Some),

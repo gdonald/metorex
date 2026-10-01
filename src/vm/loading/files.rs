@@ -7,14 +7,18 @@ impl VirtualMachine {
     /// main script was named by, and the current file for anything else.
     pub(crate) fn reported_current_file(&self) -> Option<PathBuf> {
         let current = self.current_file.as_ref()?;
+        Some(self.reported_spelling(current))
+    }
+
+    /// The path `__FILE__` reports for `current`.
+    pub(crate) fn reported_spelling(&self, current: &PathBuf) -> PathBuf {
         match &self.script_path {
-            Some((canonical, as_given)) if canonical == current => Some(as_given.clone()),
-            _ => Some(
-                self.reported_files
-                    .get(current)
-                    .cloned()
-                    .unwrap_or_else(|| current.clone()),
-            ),
+            Some((canonical, as_given)) if canonical == current => as_given.clone(),
+            _ => self
+                .reported_files
+                .get(current)
+                .cloned()
+                .unwrap_or_else(|| current.clone()),
         }
     }
 
@@ -62,7 +66,27 @@ impl VirtualMachine {
         }
     }
 
-    /// Require a library by name, searching `$LOAD_PATH` just like the `require` builtin.
+    /// Add one of the directories metorex's own libraries are installed in.
+    /// Ruby marks each of these with `@gem_prelude_index`, naming itself,
+    /// which is what tells them apart from a directory the program added.
+    pub fn append_installed_load_path(&mut self, path: String) {
+        let entry = Object::string(path.clone());
+        if let Object::String(held) = &entry {
+            held.freeze();
+        }
+        if let Some(address) = Self::collection_address(&entry) {
+            self.collection_variables
+                .entry(address)
+                .or_default()
+                .insert("gem_prelude_index".to_string(), Object::string(path));
+            self.collection_variable_owners
+                .insert(address, entry.clone());
+        }
+        if let Some(Object::Array(arr)) = self.globals.get(":") {
+            arr.borrow_mut().push(entry);
+        }
+    }
+
     /// Define an empty module under `name`, which is what a feature the
     /// command line turned on leaves behind for `defined?` to find.
     pub fn define_feature_module(&mut self, name: &str) {

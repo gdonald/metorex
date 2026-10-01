@@ -20,7 +20,7 @@ class StringIO
     if held.frozen?
       # A frozen buffer can only be read: a mode asking to write it is
       # refused, and one asking to empty it says so as a frozen string would.
-      raise Errno::EACCES, "Permission denied" if @writable && !asked.nil?
+      raise Errno::EACCES if @writable && !asked.nil?
       if @truncates
         raise FrozenError, "can\'t modify frozen String: #{held.inspect}"
       end
@@ -185,7 +185,7 @@ class StringIO
   end
 
   def pos=(offset)
-    raise Errno::EINVAL, "Invalid argument" if offset < 0
+    raise Errno::EINVAL if offset < 0
     @position = characters_before offset
     # An offset that lands inside a character leaves the cursor between
     # two of them, which only a reader of code points minds.
@@ -235,10 +235,10 @@ class StringIO
     elsif whence == 2
       @string.bytesize
     else
-      raise Errno::EINVAL, "Invalid argument"
+      raise Errno::EINVAL
     end
     landing = base + amount
-    raise Errno::EINVAL, "Invalid argument" if landing < 0
+    raise Errno::EINVAL if landing < 0
     self.pos = landing
     0
   end
@@ -257,7 +257,7 @@ class StringIO
       raise TypeError, "no implicit conversion of #{length.class} into Integer"
     end
     wanted = length.is_a?(Integer) ? length : length.to_int
-    raise Errno::EINVAL, "Invalid argument" if wanted < 0
+    raise Errno::EINVAL, "negative length" if wanted < 0
     # The buffer itself is cut or padded, so whoever handed it over sees the
     # change.
     if wanted <= @string.length
@@ -300,7 +300,7 @@ class StringIO
   def __reopen_buffer__(held, mode)
     read_mode(mode)
     if held.frozen?
-      raise Errno::EACCES, "Permission denied" if @writable && !mode.nil?
+      raise Errno::EACCES if @writable && !mode.nil?
       if @truncates
         raise FrozenError, "can\'t modify frozen String: #{held.inspect}"
       end

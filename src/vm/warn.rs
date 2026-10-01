@@ -408,3 +408,132 @@ fn disables_optimization(class_name: &str, method_name: &str) -> bool {
     };
     optimized.contains(&method_name)
 }
+
+impl VirtualMachine {
+    /// Warn that a block written at the call is passed to a method whose body
+    /// never uses it: no `yield`, no block parameter, no `super` to hand it
+    /// on. A verbose run warns, unless `Warning[:strict_unused_block]` was
+    /// set false, and setting it true warns in any run. Each method warns
+    /// once, and defining it again makes a new one.
+    pub(crate) fn warn_block_the_method_ignores(
+        &mut self,
+        method: &crate::object::Method,
+        owner: &Rc<crate::class::Class>,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        if !matches!(self.pending_block, Some(Object::Block(_)))
+            || self.pending_block_from_ampersand
+        {
+            return Ok(());
+        }
+        let wanted = match self.warning_category_setting("strict_unused_block") {
+            Some(Object::Bool(set)) => set,
+            _ => matches!(self.globals().get("VERBOSE"), Some(Object::Bool(true))),
+        };
+        if !wanted
+            || method.name == "initialize"
+            || method.block_parameter.is_some()
+            || method.captured_vars.is_some()
+            || body_takes_a_block(&method.body)
+        {
+            return Ok(());
+        }
+        let called_in = self
+            .reported_current_file()
+            .map(|file| file.display().to_string())
+            .unwrap_or_default();
+        let written_at = method.source_location.as_ref().map(|location| {
+            (
+                location.filename.clone().unwrap_or_default(),
+                location.line,
+                location.column,
+            )
+        });
+        if !self
+            .unused_block_methods
+            .insert((written_at, method.name.clone()))
+        {
+            return Ok(());
+        }
+        // The core library's own methods are written in Ruby, and Ruby's
+        // are not, so they never warn.
+        let written_by_metorex = method.source_location.as_ref().is_some_and(|location| {
+            location
+                .filename
+                .as_deref()
+                .is_some_and(|file| file.starts_with("<internal:") || file.starts_with("<metorex>"))
+        });
+        if written_by_metorex {
+            return Ok(());
+        }
+        let (defined_in, defined_on) = match &method.source_location {
+            Some(location) => (
+                location
+                    .filename
+                    .clone()
+                    .unwrap_or_else(|| called_in.clone()),
+                location.line,
+            ),
+            None => (called_in.clone(), 0),
+        };
+        let holder = method
+            .owner_class
+            .clone()
+            .or_else(|| method.definee.clone())
+            .unwrap_or_else(|| Rc::clone(owner));
+        // A `def self.name` is kept on the class under a prefix of its own,
+        // and is named the way a singleton method is.
+        let on_the_class = holder
+            .find_own_method(&format!("__class__{}", method.name))
+            .is_some_and(|found| std::ptr::eq(&*found, method));
+        let named = if on_the_class && !holder.ruby_name().is_empty() {
+            format!("{}.{}", holder.ruby_name(), method.name)
+        } else {
+            qualified_method_name(&holder, &method.name)
+        };
+        // Writing the warning calls methods of its own, which the block
+        // waiting for this call must not reach.
+        let waiting = self.pending_block.take();
+        let from_ampersand = self.pending_block_from_ampersand;
+        self.emit_warning_to_stderr(
+            &format!(
+                "{called_in}:{}: warning: the block passed to '{named}' defined at {defined_in}:{defined_on} may be ignored",
+                position.line
+            ),
+            position,
+        );
+        self.pending_block = waiting;
+        self.pending_block_from_ampersand = from_ampersand;
+        Ok(())
+    }
+}
+
+/// Whether a method body reaches the block it was given, through `yield` or
+/// through `super`, which hands the block on. `block_given?` alone asks about
+/// the block without using it.
+fn body_takes_a_block(body: &[crate::ast::Statement]) -> bool {
+    let written = format!("{:?}", body);
+    written.contains("Yield { arguments") || written.contains("Super { arguments")
+}
+
+/// How a warning names a method: with the class it belongs to when that has
+/// a name, `Class#name` for an instance method and `Class.name` for one on a
+/// class itself, and alone otherwise.
+fn qualified_method_name(owner: &Rc<crate::class::Class>, name: &str) -> String {
+    if owner.is_singleton_class() {
+        return match owner.get_class_var("__attached__") {
+            Some(Object::Class(attached) | Object::Module(attached))
+                if !attached.ruby_name().is_empty() && !attached.ruby_name().starts_with("#<") =>
+            {
+                format!("{}.{}", attached.ruby_name(), name)
+            }
+            _ => name.to_string(),
+        };
+    }
+    let owner_name = owner.ruby_name();
+    if owner_name.is_empty() || owner_name.starts_with("#<") {
+        name.to_string()
+    } else {
+        format!("{owner_name}#{name}")
+    }
+}

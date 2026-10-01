@@ -129,6 +129,13 @@ thread_local! {
     static CATCHER: usize = NEXT_CATCHER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 }
 
+/// Whether any signal has arrived that no thread has taken yet.
+fn any_signal_waiting() -> bool {
+    PENDING
+        .iter()
+        .any(|slot| slot.load(std::sync::atomic::Ordering::SeqCst))
+}
+
 /// What the operating system runs when a caught signal arrives. It only notes
 /// the signal, since nothing else is safe to do inside a signal handler.
 extern "C" fn note_signal(number: libc::c_int) {
@@ -160,6 +167,11 @@ fn set_disposition(number: i32, command: &Object) {
         libc::SIG_DFL
     };
     caught.store(catching, std::sync::atomic::Ordering::SeqCst);
+    // A signal that arrived while it was caught has no handler to run once
+    // it no longer is.
+    if !catching {
+        PENDING[number as usize].store(false, std::sync::atomic::Ordering::SeqCst);
+    }
     CAUGHT_BY[number as usize].store(
         if catching {
             CATCHER.with(|own| *own)
@@ -186,25 +198,28 @@ impl crate::vm::VirtualMachine {
         &mut self,
         position: crate::lexer::Position,
     ) -> Result<(), crate::error::MetorexError> {
-        if !ANY_PENDING.swap(false, std::sync::atomic::Ordering::SeqCst) {
+        if !ANY_PENDING.load(std::sync::atomic::Ordering::SeqCst) {
             return Ok(());
         }
         let own = CATCHER.with(|own| *own);
         let mut mine = Vec::new();
-        let mut left_for_others = false;
         for (number, slot) in PENDING.iter().enumerate() {
-            if !slot.load(std::sync::atomic::Ordering::SeqCst) {
-                continue;
+            if CAUGHT_BY[number].load(std::sync::atomic::Ordering::SeqCst) == own
+                && slot.swap(false, std::sync::atomic::Ordering::SeqCst)
+            {
+                mine.push(number as i32);
             }
-            if CAUGHT_BY[number].load(std::sync::atomic::Ordering::SeqCst) != own {
-                left_for_others = true;
-                continue;
-            }
-            slot.store(false, std::sync::atomic::Ordering::SeqCst);
-            mine.push(number as i32);
         }
-        if left_for_others {
-            ANY_PENDING.store(true, std::sync::atomic::Ordering::SeqCst);
+        // Only a thread that took a signal clears the flag, and only once no
+        // slot is left. A thread clearing it while a signal waits for its own
+        // catcher would leave that catcher reading nothing pending. A slot
+        // set while the flag is being cleared is caught by reading the slots
+        // once more.
+        if !mine.is_empty() && !any_signal_waiting() {
+            ANY_PENDING.store(false, std::sync::atomic::Ordering::SeqCst);
+            if any_signal_waiting() {
+                ANY_PENDING.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
         }
         for number in mine {
             if let Some(name) = name_for_number(number) {

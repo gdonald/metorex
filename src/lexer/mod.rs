@@ -63,6 +63,11 @@ pub struct Lexer<'a> {
     /// The encoding the source says it is written in, which is what
     /// `__ENCODING__` answers where it is written.
     pub(super) source_encoding: String,
+    /// Names written where a local variable is bound or read back: before
+    /// `=`, a compound assignment, `,`, `|`, `)` or `in`. A `/` after one of
+    /// these divides, where after any other name it may open a pattern
+    /// handed to a method called without parentheses.
+    pub(super) local_names: std::collections::HashSet<String>,
 }
 
 impl<'a> Lexer<'a> {
@@ -133,6 +138,7 @@ impl<'a> Lexer<'a> {
             offset: 0,
             prev_significant: None,
             prev_significant_end: 0,
+            local_names: std::collections::HashSet::new(),
             restore_line: None,
             prelude: false,
             binary_source,
@@ -197,6 +203,11 @@ impl<'a> Lexer<'a> {
             // Comments and EOF leave the previous significant token alone.
             TokenKind::Comment(_) | TokenKind::EOF => {}
             other => {
+                if let Some(TokenKind::Ident(name)) = &self.prev_significant
+                    && binds_the_name_before_it(other)
+                {
+                    self.local_names.insert(name.clone());
+                }
                 self.prev_significant = Some(other.clone());
                 self.prev_significant_end = self.offset;
             }
@@ -416,4 +427,29 @@ fn magic_comment_line(source: &str) -> Option<&str> {
         first
     };
     line.starts_with('#').then_some(line)
+}
+
+/// Whether a token after a name marks the name as a local variable.
+fn binds_the_name_before_it(kind: &TokenKind) -> bool {
+    matches!(
+        kind,
+        TokenKind::Equal
+            | TokenKind::PlusEqual
+            | TokenKind::MinusEqual
+            | TokenKind::StarEqual
+            | TokenKind::SlashEqual
+            | TokenKind::PercentEqual
+            | TokenKind::StarStarEqual
+            | TokenKind::PipeEqual
+            | TokenKind::AmpersandEqual
+            | TokenKind::CaretEqual
+            | TokenKind::ShovelEqual
+            | TokenKind::RightShiftEqual
+            | TokenKind::LogicalOrAssign
+            | TokenKind::LogicalAndAssign
+            | TokenKind::Comma
+            | TokenKind::Pipe
+            | TokenKind::RParen
+            | TokenKind::In
+    )
 }

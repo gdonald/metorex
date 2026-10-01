@@ -413,7 +413,7 @@ fn test_introspection_public_method_no_parens() {
 fn test_introspection_public_methods() {
     let expected = concat!(
         "[:child_open]\n",
-        "[:child_open, :mixed_in_open, :opens, :parent_open]\n",
+        "[:child_open, :mixed_in_open, :parent_open]\n",
         "[:child_class_open, :parent_class_open]\n",
         "[:child_open]\nfalse\nfalse\n",
         "[3, 1]\n[-4, -3]\n[-4, 3]\ntrue\n",
@@ -427,7 +427,7 @@ fn test_introspection_public_methods() {
 fn test_introspection_public_methods_no_parens() {
     let expected = concat!(
         "[:child_open]\n",
-        "[:child_open, :mixed_in_open, :opens, :parent_open]\n",
+        "[:child_open, :mixed_in_open, :parent_open]\n",
         "[:child_class_open, :parent_class_open]\n",
         "[:child_open]\nfalse\nfalse\n",
         "[3, 1]\n[-4, -3]\n[-4, 3]\ntrue\n",
@@ -830,4 +830,20 @@ fn test_introspection_tracepoint_targets() {
 fn test_introspection_tracepoint_targets_no_parens() {
     let output = run_example("introspection/tracepoint_targets_no_parens.rb");
     assert_eq!(output, TRACEPOINT_TARGETS_OUTPUT);
+}
+
+/// The expected output of both `introspection/tracepoint_call_in_block`
+/// variants.
+const TRACEPOINT_CALL_IN_BLOCK_OUTPUT: &str = "[[:defined_in_block, 17]]\n[\"#<TracePoint:call 'defined_in_instance_exec' FILE:29>\"]\n[[:defined_again, true]]\nfalse\n";
+
+#[test]
+fn test_introspection_tracepoint_call_in_block_execution() {
+    let output = run_example("introspection/tracepoint_call_in_block.rb");
+    assert_eq!(output, TRACEPOINT_CALL_IN_BLOCK_OUTPUT);
+}
+
+#[test]
+fn test_introspection_tracepoint_call_in_block_no_parens_execution() {
+    let output = run_example("introspection/tracepoint_call_in_block_no_parens.rb");
+    assert_eq!(output, TRACEPOINT_CALL_IN_BLOCK_OUTPUT);
 }

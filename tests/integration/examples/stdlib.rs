@@ -1233,3 +1233,109 @@ fn test_stdlib_marshal_load_handler_no_parens_execution() {
     let output = run_example("stdlib/marshal_load_handler_no_parens.rb");
     assert_eq!(output, MARSHAL_LOAD_HANDLER_OUTPUT);
 }
+
+/// The expected output of both `stdlib/weakref_lifetime` variants.
+const WEAKREF_LIFETIME_OUTPUT: &str =
+    "true\ntrue\nfalse\n\"Invalid Reference - probably recycled\"\ntrue\n";
+
+#[test]
+fn test_stdlib_weakref_lifetime_execution() {
+    let output = run_example("stdlib/weakref_lifetime.rb");
+    assert_eq!(output, WEAKREF_LIFETIME_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_weakref_lifetime_no_parens_execution() {
+    let output = run_example("stdlib/weakref_lifetime_no_parens.rb");
+    assert_eq!(output, WEAKREF_LIFETIME_OUTPUT);
+}
+
+/// The expected output of both `stdlib/rubygems_interaction` variants.
+const RUBYGEMS_INTERACTION_OUTPUT: &str = "\".]2;title. and . text\"\n[[:say, \"plain\"], [:say, \".[31mshown\"]]\n[[:say, \".]2;ok.\"], [:say, \"push: gone.\"], [:exit, 1]]\n[[:error, \"Invalid option: --.]2;x.. See 'gem --help'.\"], [:exit, 1], [:error, \"While executing gem ... (RuntimeError)\\n    bad.\"], [:exit, 1]]\nnil\n";
+
+#[test]
+fn test_stdlib_rubygems_interaction_execution() {
+    let output = run_example("stdlib/rubygems_interaction.rb");
+    assert_eq!(output, RUBYGEMS_INTERACTION_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_rubygems_interaction_no_parens_execution() {
+    let output = run_example("stdlib/rubygems_interaction_no_parens.rb");
+    assert_eq!(output, RUBYGEMS_INTERACTION_OUTPUT);
+}
+
+/// The expected output of both `stdlib/prime_generators` variants.
+const PRIME_GENERATORS_OUTPUT: &str = "[2, 3, 5, 7, 11, 13, 17, 19]\n19\n[2, 3, 5, 7, 11, 13]\n[2, 3, 5]\n2\n2\n[2, 3, 5, 7, 11, 13, 17, 19, 23, 29]\n[2, 3, 5, 7, 11, 13, 17, 19]\n[[2, 1], [3, 2], [5, 3]]\ntrue\nfalse\n[[2, 3], [3, 2], [5, 1]]\n360\ntrue\n[true, true, false]\n[1, 2]\n[2, 3, 4, 5]\n[20, 30]\n";
+
+#[test]
+fn test_stdlib_prime_generators_execution() {
+    let output = run_example("stdlib/prime_generators.rb");
+    assert_eq!(output, PRIME_GENERATORS_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_prime_generators_no_parens_execution() {
+    let output = run_example("stdlib/prime_generators_no_parens.rb");
+    assert_eq!(output, PRIME_GENERATORS_OUTPUT);
+}
+
+/// The expected output of both `stdlib/bigdecimal_arithmetic` variants.
+const BIGDECIMAL_ARITHMETIC_OUTPUT: &str = "0.33333333333333333333333333333333e0\n0.162000001474200013415220122078503110914378309320842614819667794858976933e46\n56\n3\n[4, Integer, 0.6e1]\n[-1, Infinity]\nFloatDomainError\n0.1234567e94\n0.1e1\n\"invalid value for BigDecimal(): \\\"1__2\\\"\"\nnil\n0.1e0\n0.33333e0\n-1\n0.15e1\n[\"loud\", \"0.4444e2\"]\n0.693147180559945309417232121458e0\n0.271828182845904523536028747135e1\n0.22314354220170971436e0\n[1.5, 0.75]\n[(10/1), (3/4)]\n0.25\n";
+
+#[test]
+fn test_stdlib_bigdecimal_arithmetic_execution() {
+    let output = run_example("stdlib/bigdecimal_arithmetic.rb");
+    assert_eq!(output, BIGDECIMAL_ARITHMETIC_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_bigdecimal_arithmetic_no_parens_execution() {
+    let output = run_example("stdlib/bigdecimal_arithmetic_no_parens.rb");
+    assert_eq!(output, BIGDECIMAL_ARITHMETIC_OUTPUT);
+}
+
+/// The expected output of both `stdlib/zlib_streaming` variants.
+const ZLIB_STREAMING_OUTPUT: &str = "[16396, 16392, 7233]\n[16384, 16384, 7253]\n[nil, [16384, 16384, 7253], true]\n[[16384], 3632, true]\n[43759, 52790]\n";
+
+#[test]
+fn test_stdlib_zlib_streaming_execution() {
+    let output = run_example("stdlib/zlib_streaming.rb");
+    assert_eq!(output, ZLIB_STREAMING_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_zlib_streaming_no_parens_execution() {
+    let output = run_example("stdlib/zlib_streaming_no_parens.rb");
+    assert_eq!(output, ZLIB_STREAMING_OUTPUT);
+}
+
+/// The expected output of both `stdlib/matrix_eigen` variants.
+const MATRIX_EIGEN_OUTPUT: &str = "[1.8548973088, 3.4760236029, 6.6690790883]\n3\ntrue\n[(0.0+1.0i), (0.0-1.0i)]\n[[(-1.0+0.0i), (0.0+1.0i)], [(-1.0-0.0i), (0.0-1.0i)]]\n5\nExceptionForMatrix::ErrDimensionMismatch\n\"Expected Matrix but got Integer\"\n";
+
+#[test]
+fn test_stdlib_matrix_eigen_execution() {
+    let output = run_example("stdlib/matrix_eigen.rb");
+    assert_eq!(output, MATRIX_EIGEN_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_matrix_eigen_no_parens_execution() {
+    let output = run_example("stdlib/matrix_eigen_no_parens.rb");
+    assert_eq!(output, MATRIX_EIGEN_OUTPUT);
+}
+
+/// The expected output of both `stdlib/allocation_tracing` variants.
+const ALLOCATION_TRACING_OUTPUT: &str = "[true, 14, \"Shelf\", :stock]\n[true, 14, \"Shelf\", :stock]\n[true, 14, \"Shelf\", :stock]\n[true, 14, \"Shelf\", :stock]\n[true, 18, nil, :build]\n[true, 24, \"Labeled\", :label]\n[true, 36, nil, nil]\ntrue\n[false, nil, nil, nil]\n[false, nil, nil, nil]\n[false, nil, nil, nil]\n[false, nil, nil, nil]\n:finished\n50\nnil\n";
+
+#[test]
+fn test_stdlib_allocation_tracing_execution() {
+    let output = run_example("stdlib/allocation_tracing.rb");
+    assert_eq!(output, ALLOCATION_TRACING_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_allocation_tracing_no_parens_execution() {
+    let output = run_example("stdlib/allocation_tracing_no_parens.rb");
+    assert_eq!(output, ALLOCATION_TRACING_OUTPUT);
+}

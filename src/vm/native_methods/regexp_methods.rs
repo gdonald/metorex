@@ -89,17 +89,116 @@ pub(crate) fn compile(pattern: &str, flags: &str) -> Option<crate::regexp::Patte
 /// name the way Ruby's does.
 pub(crate) fn subject_text(object: &Object) -> Option<String> {
     match object {
-        Object::String(text) | Object::Symbol(text) => Some(text.as_str().to_string()),
+        Object::String(text) => Some(match_text(text)),
+        Object::Symbol(text) => Some(text.as_str().to_string()),
         // An instance of a String subclass carries its characters in an
         // instance variable, and matches the same as a plain String.
         other => match super::string_subclass_value(other) {
-            Some(Object::String(text)) => Some(text.as_str().to_string()),
+            Some(Object::String(text)) => Some(match_text(&text)),
+            _ => None,
+        },
+    }
+}
+
+/// The text a pattern searches in a string. A string in EUC-JP or the
+/// Shift_JIS family is searched through its bytes, one character to each,
+/// which is how a match reads the runs its characters take.
+pub(crate) fn match_text(string_value: &crate::object::StringValue) -> String {
+    let named = string_value.encoding_name();
+    if (named == "EUC-JP" || super::string_methods::spells_shift_jis(&named))
+        && !string_value.holds_bytes()
+    {
+        return super::string_methods::binary_bytes(string_value)
+            .iter()
+            .map(|byte| *byte as char)
+            .collect();
+    }
+    string_value.as_str().to_string()
+}
+
+/// The encoding a `=~` operand's String is tagged with, which the pieces a
+/// match cuts out of it carry too.
+pub(crate) fn subject_encoding(object: &Object) -> Option<String> {
+    match object {
+        Object::String(text) => Some(text.encoding_name()),
+        other => match super::string_subclass_value(other) {
+            Some(Object::String(text)) => Some(text.encoding_name()),
             _ => None,
         },
     }
 }
 
 impl VirtualMachine {
+    /// Check that a pattern can match the string it is handed, the way Ruby
+    /// settles the encoding a match runs in: a string its encoding cannot
+    /// read is refused, a pattern and a string whose encodings do not meet
+    /// are refused, and a `/.../n` pattern matched against text past ASCII
+    /// in another encoding is warned about.
+    pub(crate) fn prepare_match_subject(
+        &mut self,
+        pattern: &Rc<String>,
+        flags: &str,
+        subject: &Object,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        let text = match subject {
+            Object::String(text) => Rc::clone(text),
+            other => match super::string_subclass_value(other) {
+                Some(Object::String(text)) => text,
+                _ => return Ok(()),
+            },
+        };
+        let string_encoding = text.encoding_name();
+        if !super::string_methods::holds_valid_text(&text) {
+            return Err(crate::vm::errors::simple_exception(
+                "ArgumentError",
+                &format!("invalid byte sequence in {string_encoding}"),
+                position,
+            ));
+        }
+        let pattern_encoding = self.pattern_encoding_name(pattern, flags);
+        if pattern_encoding == string_encoding {
+            return Ok(());
+        }
+        let ascii_compatible =
+            super::class_methods::encoding_reads_alongside_ascii(&string_encoding);
+        let only_ascii = ascii_compatible
+            && super::string_methods::binary_bytes(&text)
+                .iter()
+                .all(u8::is_ascii);
+        if only_ascii && pattern_encoding == "US-ASCII" {
+            return Ok(());
+        }
+        let incompatible = || {
+            crate::vm::errors::simple_exception(
+                "Encoding::CompatibilityError",
+                &format!(
+                    "incompatible encoding regexp match ({pattern_encoding} regexp with {string_encoding} string)"
+                ),
+                position,
+            )
+        };
+        if !ascii_compatible {
+            return Err(incompatible());
+        }
+        if self.pattern_fixes_encoding(pattern, flags) {
+            if !super::class_methods::encoding_reads_alongside_ascii(&pattern_encoding)
+                || !only_ascii
+            {
+                return Err(incompatible());
+            }
+            return Ok(());
+        }
+        if flags.contains('n') && string_encoding != "ASCII-8BIT" && !only_ascii {
+            let message = format!(
+                "{}historical binary regexp match /.../n against {string_encoding} string\n",
+                self.warning_prefix(0, position)
+            );
+            self.warn_through_warning_module(message, position)?;
+        }
+        Ok(())
+    }
+
     /// Match `pattern` against `text` from `start`, building the MatchData and
     /// recording it as the last match. Answers None when nothing matched, and
     /// clears the last match in that case the way Ruby does.
@@ -133,10 +232,27 @@ impl VirtualMachine {
             self.globals_mut().set(LAST_MATCH, Object::Nil);
             return Ok(None);
         }
+        // A subject whose characters are runs of bytes is searched one
+        // character at a time, and the offsets a match reports count those.
+        let reading = subject_encoding
+            .as_deref()
+            .and_then(|named| multibyte_reading(text, named));
+        let (searched, start) = match &reading {
+            Some((wide, unit_starts)) => {
+                let raw_start = text[..start].chars().count();
+                let unit = unit_starts.partition_point(|held| *held < raw_start);
+                let wide_start = wide
+                    .char_indices()
+                    .nth(unit)
+                    .map_or(wide.len(), |(at, _)| at);
+                (wide.as_str(), wide_start)
+            }
+            None => (text, start),
+        };
         // A pattern written with a time limit, or one matched while the
         // class names a limit, is given up on once that long has passed.
         let limit = self.pattern_time_limit(pattern, flags);
-        let taken = compiled.captures_within(text, start, limit);
+        let taken = compiled.captures_within(searched, start, limit);
         let found = match taken {
             Ok(Some(found)) => found,
             Ok(None) => {
@@ -171,8 +287,8 @@ impl VirtualMachine {
         for index in &kept {
             match found.get(*index) {
                 Some(group) => {
-                    begins.push(Object::Int(char_offset(text, group.start())));
-                    ends.push(Object::Int(char_offset(text, group.end())));
+                    begins.push(Object::Int(char_offset(searched, group.start())));
+                    ends.push(Object::Int(char_offset(searched, group.end())));
                 }
                 None => {
                     begins.push(Object::Nil);
@@ -198,10 +314,14 @@ impl VirtualMachine {
             return Ok(None);
         };
         let subject = match &subject_encoding {
-            Some(named) => Object::String(Rc::new(crate::object::StringValue::with_encoding(
-                text.to_string(),
-                named.clone(),
-            ))),
+            Some(named) => {
+                let held =
+                    crate::object::StringValue::with_encoding(text.to_string(), named.clone());
+                if reading.is_some() {
+                    held.mark_bytes();
+                }
+                Object::String(Rc::new(held))
+            }
             None => Object::string(text.to_string()),
         };
         let arguments = vec![
@@ -239,7 +359,7 @@ impl VirtualMachine {
     /// instance, so its methods are dispatched from here.
     pub(crate) fn call_regexp_method(
         &mut self,
-        pattern: &str,
+        pattern: &Rc<String>,
         flags: &str,
         method_name: &str,
         arguments: &[Object],
@@ -249,7 +369,12 @@ impl VirtualMachine {
             // The limit a pattern was built with, which is nil for one built
             // without one however long the class lets a match run.
             "timeout" => Ok(Some(
-                match self.pattern_timeouts.get(pattern).copied().flatten() {
+                match self
+                    .pattern_timeouts
+                    .get(pattern.as_str())
+                    .copied()
+                    .flatten()
+                {
                     Some(held) => Object::Float(held.as_secs_f64()),
                     None => Object::Nil,
                 },
@@ -336,7 +461,7 @@ impl VirtualMachine {
                         position,
                     ));
                 };
-                refuse_invalid_subject(&arguments[0], position)?;
+                self.prepare_match_subject(pattern, flags, &arguments[0], position)?;
                 let start = match arguments.get(1) {
                     Some(Object::Int(offset)) => resolve_offset(&text, *offset),
                     _ => Some(0),
@@ -352,7 +477,14 @@ impl VirtualMachine {
                     Some(Object::Block(block)) => Some(block),
                     _ => None,
                 };
-                let found = self.regexp_match_data(pattern, flags, &text, start, position)?;
+                let found = self.regexp_match_data_in(
+                    pattern,
+                    flags,
+                    &text,
+                    start,
+                    subject_encoding(&arguments[0]),
+                    position,
+                )?;
                 match (found, block) {
                     (Some(data), Some(block)) => self
                         .execute_block_callable(&block, vec![data], position)
@@ -370,7 +502,7 @@ impl VirtualMachine {
                 let Some(text) = subject_text(&arguments[0]) else {
                     return Ok(Some(Object::Bool(false)));
                 };
-                refuse_invalid_subject(&arguments[0], position)?;
+                self.prepare_match_subject(pattern, flags, &arguments[0], position)?;
                 let start = match arguments.get(1) {
                     Some(Object::Int(offset)) => resolve_offset(&text, *offset),
                     _ => Some(0),
@@ -421,7 +553,9 @@ impl VirtualMachine {
                     self.globals_mut().set(LAST_MATCH, Object::Nil);
                     return Ok(Some(Object::Nil));
                 };
-                match self.regexp_match_data(pattern, flags, &text, 0, position)? {
+                self.prepare_match_subject(pattern, flags, &arguments[0], position)?;
+                let encoding = subject_encoding(&arguments[0]);
+                match self.regexp_match_data_in(pattern, flags, &text, 0, encoding, position)? {
                     Some(data) => self
                         .send_to_object(data, "begin", vec![Object::Int(0)], position)
                         .map(Some),
@@ -462,7 +596,7 @@ impl VirtualMachine {
                         .unwrap_or_else(|| held.clone())
                 });
                 let same = matches!(other, Some(Object::Regex(other, other_flags))
-                    if *other.as_str() == *pattern
+                    if *other.as_str() == ***pattern
                         && comparable_flags(&other_flags) == comparable_flags(flags));
                 Ok(Some(Object::Bool(same)))
             }
@@ -510,6 +644,56 @@ fn group_names(pattern: &str) -> Vec<String> {
 
 /// The byte offset `index` counted in characters, which is what a Ruby offset
 /// into a String means.
+/// Where the supplementary private-use plane starts.
+const PRIVATE_USE_PLANE: u32 = 0xf0000;
+
+/// A subject held as bytes in EUC-JP or the Shift_JIS family, read with one
+/// character standing for each run of bytes a character takes: the one the
+/// run decodes to, or a private-use character when the tables name none.
+/// Alongside it, where each run starts among the bytes. None for any other
+/// subject, whose characters are already its own.
+fn multibyte_reading(text: &str, encoding: &str) -> Option<(String, Vec<usize>)> {
+    let euc_jp = encoding == "EUC-JP";
+    if !(euc_jp || super::string_methods::spells_shift_jis(encoding))
+        || text.chars().any(|held| u32::from(held) > 0xff)
+    {
+        return None;
+    }
+    let bytes: Vec<u8> = text.chars().map(|held| held as u8).collect();
+    let groups = if euc_jp {
+        super::string_methods::euc_jp_characters(&bytes)
+    } else {
+        super::string_methods::shift_jis_characters(&bytes)
+    };
+    let mut wide = String::with_capacity(bytes.len());
+    let mut unit_starts = Vec::with_capacity(groups.len());
+    let mut at = 0;
+    for group in &groups {
+        unit_starts.push(at);
+        at += group.len();
+        let decoded = if euc_jp {
+            super::euc_jp_table::euc_jp_character(group)
+        } else {
+            super::shift_jis_table::shift_jis_character(group)
+        };
+        let character = match (group.as_slice(), decoded) {
+            ([single], _) => *single as char,
+            (_, Some((held, used))) if used == group.len() => held,
+            // The last two bytes name the private-use character, which is
+            // enough to tell two runs apart where the tables name neither.
+            _ => {
+                let low_bytes = group
+                    .iter()
+                    .fold(0_u32, |code, byte| (code << 8) | u32::from(*byte))
+                    & 0xffff;
+                char::from_u32(PRIVATE_USE_PLANE + low_bytes).unwrap_or(char::REPLACEMENT_CHARACTER)
+            }
+        };
+        wide.push(character);
+    }
+    Some((wide, unit_starts))
+}
+
 fn char_offset(text: &str, index: usize) -> i64 {
     text[..index].chars().count() as i64
 }
@@ -731,20 +915,4 @@ fn named_groups(pattern: &str, flags: &str) -> Vec<(usize, String)> {
         .enumerate()
         .map(|(slot, name)| (slot + 1, original_group_name(name).to_string()))
         .collect()
-}
-
-/// Refuse a subject whose bytes do not spell characters in the encoding it
-/// carries, which Ruby reports before looking for a match at all.
-fn refuse_invalid_subject(subject: &Object, position: Position) -> Result<(), MetorexError> {
-    let Object::String(text) = subject else {
-        return Ok(());
-    };
-    if super::string_methods::holds_valid_text(text) {
-        return Ok(());
-    }
-    Err(crate::vm::errors::simple_exception(
-        "ArgumentError",
-        &format!("invalid byte sequence in {}", text.encoding_name()),
-        position,
-    ))
 }

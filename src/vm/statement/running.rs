@@ -8,6 +8,32 @@ impl VirtualMachine {
         &mut self,
         statement: &Statement,
     ) -> Result<ControlFlow, MetorexError> {
+        let flow = self.execute_statement_body(statement)?;
+        // A local assigned inside a branch or a loop is a local from there
+        // on whether or not the assignment ran, so a block written later
+        // closes over it.
+        if matches!(
+            statement,
+            Statement::If { .. }
+                | Statement::Unless { .. }
+                | Statement::While { .. }
+                | Statement::DoWhile { .. }
+                | Statement::For { .. }
+                | Statement::Match { .. }
+                | Statement::CaseIn { .. }
+                | Statement::Begin { .. }
+        ) {
+            for name in crate::ast::collect_assigned_locals(std::slice::from_ref(statement)) {
+                self.environment_mut().unhoist(&name);
+            }
+        }
+        Ok(flow)
+    }
+
+    fn execute_statement_body(
+        &mut self,
+        statement: &Statement,
+    ) -> Result<ControlFlow, MetorexError> {
         // Every statement is a `:line` event for whatever is tracing, which
         // costs a check on an empty list when nothing is.
         if !self.tracepoints.is_empty() {
@@ -50,14 +76,7 @@ impl VirtualMachine {
                 if let crate::ast::Expression::Identifier { name, .. } = target {
                     self.environment_mut().unhoist(name);
                 }
-                let evaluated = match self.conditional_assignment_to_new_constant(target, value) {
-                    // `CONST ||= value` where CONST is not defined yet: Ruby
-                    // reads the undefined constant as nil rather than raising,
-                    // so only the right-hand side is evaluated.
-                    Some(right) => self.evaluate_expression(right)?,
-                    None => self.evaluate_expression(value)?,
-                };
-                self.assign_value(target, evaluated.clone())?;
+                let evaluated = self.evaluate_assignment(target, value)?;
                 // An assignment answers the value it assigned, so a block or
                 // an `if` branch ending in one has that as its value.
                 Ok(ControlFlow::Value(evaluated))
@@ -65,25 +84,37 @@ impl VirtualMachine {
             Statement::MultipleAssignment {
                 targets,
                 values,
-                position: _,
+                position,
             } => {
+                // Ruby evaluates the receivers and subscripts the targets
+                // name, left to right, before anything on the right.
+                let prepared = self.prepare_targets(targets)?;
                 // One value on the right is spread across the targets when it
-                // is an Array, and otherwise reaches the first target alone.
-                let (answer, source): (Object, Vec<Object>) = if values.len() == 1 {
-                    let single = self.evaluate_expression(&values[0])?;
-                    let spread = match &single {
-                        Object::Array(elements) => elements.borrow().clone(),
-                        held => vec![held.clone()],
-                    };
-                    (single, spread)
-                } else {
-                    let each = values
-                        .iter()
-                        .map(|value| self.evaluate_expression(value))
-                        .collect::<Result<Vec<_>, _>>()?;
-                    (Object::array(each.clone()), each)
+                // is an Array or converts to one with `to_ary`, and otherwise
+                // reaches the first target alone. Several values, or a
+                // splat, are gathered the way an Array literal gathers them.
+                let lone_value = match values.as_slice() {
+                    [single] if !matches!(single, Expression::Splat { .. }) => Some(single),
+                    _ => None,
                 };
-                self.spread_into_targets(targets, &source)?;
+                let (answer, source): (Object, Vec<Object>) = match lone_value {
+                    Some(single) => {
+                        let single = self.evaluate_expression(single)?;
+                        let spread = self
+                            .block_argument_spread(&single, *position)?
+                            .unwrap_or_else(|| vec![single.clone()]);
+                        (single, spread)
+                    }
+                    None => {
+                        let gathered = self.evaluate_array_literal(values)?;
+                        let each = match &gathered {
+                            Object::Array(elements) => elements.borrow().clone(),
+                            held => vec![held.clone()],
+                        };
+                        (gathered, each)
+                    }
+                };
+                self.spread_into_prepared(&prepared, &source)?;
                 // The assignment answers the right-hand side as it was
                 // written, which is what `(a, b = 1, 2)` reads back as.
                 Ok(ControlFlow::Value(answer))
@@ -164,18 +195,18 @@ impl VirtualMachine {
                 condition,
                 body,
                 position: _,
-            } => self.execute_while(condition, body),
+            } => self.inside_loop(|vm| vm.execute_while(condition, body)),
             Statement::DoWhile {
                 condition,
                 body,
                 position: _,
-            } => self.execute_do_while(condition, body),
+            } => self.inside_loop(|vm| vm.execute_do_while(condition, body)),
             Statement::For {
                 variable,
                 iterable,
                 body,
                 position,
-            } => self.execute_for(variable, iterable, body, *position),
+            } => self.inside_loop(|vm| vm.execute_for(variable, iterable, body, *position)),
             // A `BEGIN` body already ran before the rest of its code unit,
             // so reaching it where it was written does nothing.
             Statement::BeginBlock { .. } => Ok(ControlFlow::Next),
@@ -218,15 +249,31 @@ impl VirtualMachine {
                 position,
                 ..
             } => {
-                let Some(target) = self.def_scope_stack.last().cloned() else {
+                // Run from a method, such as in a default value, it installs
+                // on the class the method was written in.
+                let from_method_body = self.running_method_def_scope();
+                let Some(target) = from_method_body
+                    .clone()
+                    .or_else(|| self.def_scope_stack.last().cloned())
+                    .or_else(|| {
+                        self.method_nesting_stack
+                            .last()
+                            .and_then(|nesting| nesting.first().cloned())
+                    })
+                else {
                     return Err(unimplemented_statement_error(statement));
                 };
-                let _ = (parameters, body, is_class_method);
+                let _ = (parameters, body);
                 self.apply_class_body_statements(
                     &target,
                     std::slice::from_ref(statement),
                     *position,
                 )?;
+                // Run from a method body, it is public whatever visibility
+                // the class body left in force.
+                if from_method_body.is_some() && !is_class_method {
+                    target.clear_method_visibility(name);
+                }
                 Ok(ControlFlow::Value(Object::symbol(name.clone())))
             }
             Statement::Begin {
@@ -292,6 +339,18 @@ impl VirtualMachine {
                 position,
             } => self.execute_alias(new_name, old_name, *position),
         }
+    }
+
+    /// Run a loop, during which a `break` ends the loop rather than
+    /// returning from the call a surrounding block was attached to.
+    fn inside_loop(
+        &mut self,
+        run: impl FnOnce(&mut Self) -> Result<ControlFlow, MetorexError>,
+    ) -> Result<ControlFlow, MetorexError> {
+        self.running_block_breaks.push(None);
+        let result = run(self);
+        self.running_block_breaks.pop();
+        result
     }
 
     /// Execute statements within a new lexical scope.

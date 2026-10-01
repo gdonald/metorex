@@ -69,8 +69,10 @@ impl VirtualMachine {
                     " ".to_string()
                 };
                 let current_len = string_value.as_str().chars().count() as i64;
+                // Already as wide, the answer is a copy, written as the
+                // receiver is.
                 if width <= current_len {
-                    return Ok(Some(Object::string(string_value.to_string())));
+                    return Ok(Some(Object::String(Rc::new((**string_value).clone()))));
                 }
                 let pad_chars: Vec<char> = pad.chars().collect();
                 let needed = (width - current_len) as usize;

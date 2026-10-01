@@ -61,10 +61,15 @@ impl VirtualMachine {
                         }
                         Ok(Some(Object::Array(Rc::new(RefCell::new(results)))))
                     }
-                    _ => Err(MetorexError::runtime_error(
-                        "Range.map only supports integer ranges".to_string(),
-                        position_to_location(position),
-                    )),
+                    // Any other range maps over the values it walks.
+                    _ => {
+                        let elements = self.range_elements(start, end, *exclusive, position)?;
+                        let mut results = Vec::with_capacity(elements.len());
+                        for element in elements {
+                            results.push(self.execute_block_body(&block, vec![element])?);
+                        }
+                        Ok(Some(Object::Array(Rc::new(RefCell::new(results)))))
+                    }
                 }
             }
             // `first` and `last` answer the endpoint, or that many values from

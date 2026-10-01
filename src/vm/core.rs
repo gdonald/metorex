@@ -25,6 +25,20 @@ use crate::object::Object;
 /// from one whose home frame was never recorded.
 pub(crate) const TOP_LEVEL_FRAME: u64 = 0;
 
+/// A method known by the file, line, and column it was defined at, and its
+/// name.
+pub(crate) type MethodDefinitionKey = (Option<(String, usize, usize)>, String);
+
+/// Where a `def` written in a running method's body installs.
+#[derive(Clone)]
+pub(crate) enum Definee {
+    /// The class or module the method was defined in.
+    Class(Rc<crate::class::Class>),
+    /// The singleton class of the object `instance_exec` is running a block
+    /// against, made when a `def` first needs it.
+    SingletonOf(Object),
+}
+
 pub struct VirtualMachine {
     pub(crate) environment: Environment,
     pub(crate) call_stack: Vec<CallFrame>,
@@ -44,9 +58,9 @@ pub struct VirtualMachine {
     /// over is not counted twice.
     pub(crate) coverage_skip_line: Option<usize>,
 
-    /// The last match each suspended fiber left behind, which it sees again
-    /// when it is resumed.
-    pub(crate) fiber_last_matches: HashMap<usize, Object>,
+    /// The last match and the last line read that each suspended fiber left
+    /// behind, which it sees again when it is resumed.
+    pub(crate) fiber_last_match_and_line: HashMap<usize, (Object, Object)>,
     /// The exception each suspended fiber is handling, with its backtrace,
     /// which `$!` and `$@` read while that fiber runs.
     pub(crate) fiber_errors: HashMap<usize, (Object, Object)>,
@@ -243,6 +257,33 @@ pub struct VirtualMachine {
     /// Whether `pending_block` arrived as `&expr` rather than as a literal
     /// block. `Kernel#lambda` rejects a non-lambda proc passed that way.
     pub(crate) pending_block_from_ampersand: bool,
+    /// The running flags of the blocks attached to the calls now in
+    /// progress, innermost last. Each is cleared when its call returns.
+    pub(crate) attached_block_flags: Vec<Rc<std::cell::Cell<bool>>>,
+    /// Whether a method defined in top-level code is public, which a bare
+    /// `public` or `private` there sets. Each file starts private.
+    pub(crate) toplevel_public: bool,
+    /// The method frame the running file's top level runs in, which is
+    /// the frame of whatever loaded it.
+    pub(crate) toplevel_frame: Option<u64>,
+    /// For each method invocation running, keyed by its frame, the class or
+    /// module the method was defined in and the depth of the def scope
+    /// stack when it started. A `def` written in the method's body installs
+    /// there, unless a class body opened since is deeper.
+    pub(crate) method_definees: HashMap<u64, (usize, Definee)>,
+    /// Frames running code their method did not write: a file's top level,
+    /// which runs in the frame of the method that loaded it, and a block
+    /// `instance_exec` or `class_exec` runs. A `def` there is written in no
+    /// method.
+    pub(crate) borrowed_frames: Vec<Option<u64>>,
+    /// The methods already warned about being passed a block they never
+    /// use, known by where each was defined and its name, which warn once
+    /// each.
+    pub(crate) unused_block_methods: HashSet<MethodDefinitionKey>,
+    /// For each block body now running, innermost last, the flag saying
+    /// whether its call is still running. None for a lambda, where `break`
+    /// ends the lambda itself.
+    pub(crate) running_block_breaks: Vec<Option<Rc<std::cell::Cell<bool>>>>,
     /// The object a `&` handed over as the block, where it was already a
     /// callable. `Proc.new(&callable)` answers that same callable.
     pub(crate) pending_block_source: Option<Object>,
@@ -286,6 +327,11 @@ pub struct VirtualMachine {
     /// Whether the program asked for the place each object was made to be
     /// recorded, which `objspace/trace` and `trace_object_allocations` do.
     pub(crate) tracing_allocations: bool,
+    /// How many `trace_object_allocations_start` calls are still open.
+    pub(crate) allocation_tracing_depth: usize,
+    /// Where each object made while tracing was on was made, by address.
+    pub(crate) allocation_sites:
+        HashMap<usize, (WeakTarget, crate::vm::allocation_sites::AllocationSite)>,
     /// Whether `--debug-frozen-string-literal` was written, which has every
     /// string literal remember where it was written so a refused change can
     /// name the place.
@@ -389,6 +435,14 @@ pub struct VirtualMachine {
     /// invocation. `super` (bare form) reads the top entry to forward args
     /// to the parent method; pushed by invoke_method, popped on return.
     pub(crate) method_arg_stack: Vec<Vec<crate::object::Object>>,
+    /// The methods whose bodies are running, innermost last. A bare `super`
+    /// reads the parameters of the one on top as they stand.
+    pub(crate) method_running_stack: Vec<Rc<crate::object::Method>>,
+    /// What each WeakRef handle points at, indexed by the handle.
+    pub(crate) weak_references: Vec<WeakTarget>,
+    /// The libraries metorex carries that have run, each named by where its
+    /// text sits, so a second name for one does not run it again.
+    pub(crate) embedded_sources_run: std::collections::HashSet<usize>,
     /// The module each running method was defined in, innermost last. A
     /// `super` starts its walk from here, which is the only way to place a
     /// method defined in an anonymous module.
@@ -440,7 +494,18 @@ impl VirtualMachine {
         let seeded_global_names = environment.current_scope_vars().into_keys().collect();
 
         let mut vm = Self {
-            global_aliases: std::collections::HashMap::new(),
+            // `$-0` is `$/` under the flag's name, and so on for the others
+            // the command line spells with a dash.
+            global_aliases: [
+                ("-0", "/"),
+                ("-v", "VERBOSE"),
+                ("-w", "VERBOSE"),
+                ("-d", "DEBUG"),
+                ("-I", ":"),
+            ]
+            .into_iter()
+            .map(|(alias, original)| (alias.to_string(), original.to_string()))
+            .collect(),
             environment,
             call_stack: Vec::new(),
             globals,
@@ -449,7 +514,7 @@ impl VirtualMachine {
             current_file: None,
             coverage: None,
             coverage_skip_line: None,
-            fiber_last_matches: HashMap::new(),
+            fiber_last_match_and_line: HashMap::new(),
             fiber_errors: HashMap::new(),
             fiber_source_files: HashMap::new(),
             reported_big_number_variables: std::collections::HashSet::new(),
@@ -504,6 +569,13 @@ impl VirtualMachine {
             autoload_loading: Vec::new(),
             pending_block: None,
             pending_block_from_ampersand: false,
+            attached_block_flags: Vec::new(),
+            toplevel_public: false,
+            toplevel_frame: Some(TOP_LEVEL_FRAME),
+            method_definees: HashMap::new(),
+            borrowed_frames: Vec::new(),
+            unused_block_methods: HashSet::new(),
+            running_block_breaks: Vec::new(),
             pending_block_source: None,
             random_words: Vec::new(),
             random_at: 0,
@@ -517,6 +589,8 @@ impl VirtualMachine {
             kernel_function_receiver: None,
             lambda_body_depth: 0,
             tracing_allocations: false,
+            allocation_tracing_depth: 0,
+            allocation_sites: HashMap::new(),
             debug_frozen_string_literal: false,
             frozen_collections: HashMap::new(),
             built_patterns: HashMap::new(),
@@ -551,6 +625,9 @@ impl VirtualMachine {
             traced_binding: None,
             primitive_singleton_classes: std::collections::HashMap::new(),
             method_arg_stack: Vec::new(),
+            method_running_stack: Vec::new(),
+            weak_references: Vec::new(),
+            embedded_sources_run: std::collections::HashSet::new(),
             method_owner_stack: Vec::new(),
             method_nesting_stack: Vec::new(),
             catch_tags: Vec::new(),
@@ -932,6 +1009,23 @@ impl VirtualMachine {
     /// The (callee, defined) names of the method currently running, or None
     /// at file or class-body scope. Block frames report the method that
     /// lexically encloses them rather than whichever method called them.
+    /// The class path and the name of the method enclosing what is running,
+    /// as `ObjectSpace.allocation_class_path` and `allocation_method_id`
+    /// report them. A singleton method has no class path.
+    pub(crate) fn enclosing_method_owner(&self) -> Option<(Option<String>, String)> {
+        use crate::vm::FrameKind;
+        for frame in self.call_stack.iter().rev() {
+            match frame.kind() {
+                FrameKind::Block => continue,
+                FrameKind::Boundary => return None,
+                FrameKind::Method { defined, .. } => {
+                    return Some((frame.owner_path().map(str::to_string), defined.clone()));
+                }
+            }
+        }
+        None
+    }
+
     pub(crate) fn enclosing_method_names(&self) -> Option<(String, String)> {
         use crate::vm::FrameKind;
         for frame in self.call_stack.iter().rev() {
@@ -1017,6 +1111,39 @@ impl Drop for VirtualMachine {
 
         for class in found {
             class.tear_down();
+        }
+    }
+}
+
+/// An object a WeakRef points at without keeping it alive. A value Ruby
+/// never frees, such as an Integer or a Symbol, is held as it is.
+pub(crate) enum WeakTarget {
+    Instance(std::rc::Weak<RefCell<crate::object::Instance>>),
+    Array(std::rc::Weak<RefCell<Vec<Object>>>),
+    Dict(std::rc::Weak<RefCell<indexmap::IndexMap<String, Object>>>),
+    String(std::rc::Weak<crate::object::StringValue>),
+    Held(Object),
+}
+
+impl WeakTarget {
+    pub(crate) fn of(object: &Object) -> Self {
+        match object {
+            Object::Instance(held) => WeakTarget::Instance(Rc::downgrade(held)),
+            Object::Array(held) => WeakTarget::Array(Rc::downgrade(held)),
+            Object::Dict(held) => WeakTarget::Dict(Rc::downgrade(held)),
+            Object::String(held) => WeakTarget::String(Rc::downgrade(held)),
+            other => WeakTarget::Held(other.clone()),
+        }
+    }
+
+    /// The object, when something else still holds it.
+    pub(crate) fn reach(&self) -> Option<Object> {
+        match self {
+            WeakTarget::Instance(held) => held.upgrade().map(Object::Instance),
+            WeakTarget::Array(held) => held.upgrade().map(Object::Array),
+            WeakTarget::Dict(held) => held.upgrade().map(Object::Dict),
+            WeakTarget::String(held) => held.upgrade().map(Object::String),
+            WeakTarget::Held(object) => Some(object.clone()),
         }
     }
 }

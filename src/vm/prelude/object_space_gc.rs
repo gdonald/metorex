@@ -96,7 +96,7 @@ module ObjectSpace
   # table of every live object, so only the values whose id is derived from
   # the value itself can be answered at all.
   def self._id2ref(id)
-    warn "warning: ObjectSpace._id2ref is deprecated"
+    warn "ObjectSpace._id2ref is deprecated", uplevel: 1, category: :deprecated
     return nil if id == 4
     return true if id == 2
     return false if id == 0

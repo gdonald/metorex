@@ -6,7 +6,6 @@ use super::core::VirtualMachine;
 use super::utils::*;
 
 use crate::ast::Statement;
-use crate::class::Class;
 use crate::error::MetorexError;
 use crate::lexer::Position;
 use crate::object::Object;
@@ -648,6 +647,14 @@ impl VirtualMachine {
             match self.execute_statement(statement)? {
                 ControlFlow::Next => {}
                 ControlFlow::Value(v) => last_value = Some(v),
+                // A `break` whose block's call has returned raises here, so
+                // this `begin` can rescue it.
+                ControlFlow::Break { value, position } => {
+                    return match self.break_signal(value.clone(), position_to_location(position)) {
+                        error @ MetorexError::UncaughtException { .. } => Err(error),
+                        _ => Ok(ControlFlow::Break { value, position }),
+                    };
+                }
                 flow => return Ok(flow),
             }
         }
@@ -799,12 +806,13 @@ impl VirtualMachine {
             // A name in a rescue clause is read where it was written, so one
             // naming a class of the enclosing module is found by its simple
             // name the way any other constant reference is.
+            // A module catches an exception whose class includes it.
             let target_class = match self.resolve_constant_in_scope(type_name) {
-                Some(Object::Class(class)) => Some(class),
+                Some(Object::Class(class) | Object::Module(class)) => Some(class),
                 _ => match self.environment().get(type_name) {
-                    Some(Object::Class(class)) => Some(class),
+                    Some(Object::Class(class) | Object::Module(class)) => Some(class),
                     _ => match self.resolve_qualified_constant(type_name) {
-                        Some(Object::Class(class)) => Some(class),
+                        Some(Object::Class(class) | Object::Module(class)) => Some(class),
                         _ => None,
                     },
                 },
@@ -830,7 +838,7 @@ impl VirtualMachine {
                     },
                 );
             if let (Some(target_class), Some(raised_class)) = (target_class, raised_class)
-                && Self::is_class_or_subclass(&raised_class, &target_class)
+                && raised_class.has_ancestor(&target_class)
             {
                 return Ok(true);
             }
@@ -861,20 +869,6 @@ impl VirtualMachine {
                 | "EOFError"
                 | "FrozenError"
         ) || name.starts_with("Errno::")
-    }
-
-    /// Check if a class is the same as or a subclass of another class.
-    pub(crate) fn is_class_or_subclass(class: &Rc<Class>, target: &Rc<Class>) -> bool {
-        if Rc::ptr_eq(class, target) {
-            return true;
-        }
-
-        // Check superclass chain
-        if let Some(superclass) = class.superclass() {
-            return Self::is_class_or_subclass(&superclass, target);
-        }
-
-        false
     }
 }
 

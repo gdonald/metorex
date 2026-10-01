@@ -40,8 +40,18 @@ impl<'a> Lexer<'a> {
             self.advance();
         }
 
-        // Check if it's a keyword
-        self.keyword_or_identifier(ident)
+        // A keyword written as a label, `next: 1`, is a name like any other.
+        // After a ternary `?` the colon belongs to the ternary instead.
+        let kind = self.keyword_or_identifier(ident.clone());
+        if !matches!(kind, TokenKind::Ident(_))
+            && !ident.ends_with('?')
+            && self.peek() == Some(':')
+            && self.peek_second() != Some(':')
+            && !matches!(self.prev_significant, Some(TokenKind::Question))
+        {
+            return TokenKind::Ident(ident);
+        }
+        kind
     }
 
     /// Whether the character two past the cursor leaves an `=` standing

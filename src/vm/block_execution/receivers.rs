@@ -20,6 +20,7 @@ impl VirtualMachine {
         let tokens =
             crate::lexer::Lexer::with_start_line(source, lineno.max(1) as usize).tokenize();
         let statements = crate::parser::Parser::new(tokens)
+            .inside_eval()
             .parse()
             .map_err(|errors| {
                 let reported = errors
@@ -50,11 +51,9 @@ impl VirtualMachine {
         let named = named.or_else(|| {
             let written_in = previous_source_file
                 .clone()
-                .or_else(|| {
-                    previous_file
-                        .as_ref()
-                        .map(|held| held.display().to_string())
-                })
+                .map(std::path::PathBuf::from)
+                .or_else(|| previous_file.clone())
+                .map(|held| self.reported_spelling(&held).display().to_string())
                 .unwrap_or_default();
             Some(format!(
                 "{}{}:{})",
@@ -163,6 +162,7 @@ impl VirtualMachine {
                 CallFrame::boundary(frame_name.clone()).with_location(frame_location_string.clone())
             }
         }
+        .owned_by(block.defining_owner.clone())
         .nested_in_a_block(
             block
                 .written_depth
@@ -255,6 +255,24 @@ impl VirtualMachine {
             std::rc::Rc::clone(&block.written_within),
             block.opened_at.unwrap_or(position.line),
         );
+        // A `def` in the block, or in a block it opens, installs on the
+        // receiver's singleton class rather than where the method running
+        // the block was defined.
+        let running_frame = self.current_method_frame;
+        let replaced_definee = match running_frame {
+            Some(running)
+                if !crate::vm::native_methods::object_methods::refuses_a_singleton(&receiver) =>
+            {
+                Some(self.method_definees.insert(
+                    running,
+                    (
+                        self.def_scope_stack.len(),
+                        crate::vm::core::Definee::SingletonOf(receiver.clone()),
+                    ),
+                ))
+            }
+            _ => None,
+        };
         let execution_result = self.with_call_frame(frame, move |vm| {
             vm.environment_mut().push_isolated_scope();
             let result = (|| -> Result<Object, MetorexError> {
@@ -380,6 +398,16 @@ impl VirtualMachine {
         }
         self.current_source_file = saved_source_file;
         self.current_source_encoding = saved_source_encoding;
+        if let (Some(running), Some(previous)) = (running_frame, replaced_definee) {
+            match previous {
+                Some(entry) => {
+                    self.method_definees.insert(running, entry);
+                }
+                None => {
+                    self.method_definees.remove(&running);
+                }
+            }
+        }
 
         match execution_result {
             Ok(value) => Ok(value),

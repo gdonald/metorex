@@ -15,9 +15,13 @@ impl VirtualMachine {
         let mut flags = 0i64;
         let mut base: Option<String> = None;
         let mut sorted = true;
+        // One String is a pattern of its own, where a list hands over each
+        // pattern as a path, and the two refuse a NUL byte differently.
+        let mut listed = false;
         for (index, argument) in arguments.iter().enumerate() {
             match argument {
                 Object::Array(held) => {
+                    listed = true;
                     for one in held.borrow().iter().cloned().collect::<Vec<Object>>() {
                         patterns.push(self.glob_pattern_text(&one, position)?);
                     }
@@ -78,11 +82,17 @@ impl VirtualMachine {
         };
         let against_base = base.as_ref().is_some_and(|held| !held.is_empty());
         let mut found: Vec<Object> = Vec::new();
+        let several = listed || patterns.len() > 1;
         for pattern in patterns {
             if pattern.contains('\0') {
+                let message = if several {
+                    "path name contains null byte"
+                } else {
+                    "nul-separated glob pattern is deprecated"
+                };
                 return Err(crate::vm::errors::simple_exception(
                     "ArgumentError",
-                    "nul-separated glob pattern is deprecated",
+                    message,
                     position,
                 ));
             }
@@ -129,7 +139,7 @@ impl VirtualMachine {
             }
             return Ok(path_text(text));
         }
-        self.directory_path_argument("glob", held, position)
+        self.path_argument_text("glob", held, position)
     }
 }
 

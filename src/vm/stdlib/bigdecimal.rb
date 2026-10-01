@@ -27,14 +27,21 @@ class BigDecimal < Numeric
   SIGN_POSITIVE_INFINITE = 3
   SIGN_NEGATIVE_INFINITE = -3
 
-  VERSION = "3.1.4"
+  VERSION = "4.0.1"
   BASE = 10000
 
   # What `BigDecimal.mode` reports for a rule that is off.
   EXCEPTION_UNDERFLOW_MODE = 4
 
-  # How many digits a division carries when the caller names none.
-  DEFAULT_PRECISION = 20
+  # How many digits a division carries when the caller names none, at
+  # least. The operand with more digits adds to it, as `division_digits`
+  # works out.
+  DEFAULT_PRECISION = 32
+
+  # The significant digits a Float holds, which a division adds to the
+  # digits its operands have.
+  DOUBLE_FIGURES = 16
+  private_constant :DOUBLE_FIGURES
 
   @@rounding_mode = ROUND_HALF_UP
   @@limit = 0
@@ -138,20 +145,24 @@ class BigDecimal < Numeric
     build sign, digits, digits.length
   end
 
+  # A Float read as decimal digits: with no precision named, the shortest
+  # digits that read back as the same Float, cut to sixteen; with one, that
+  # many significant digits, rounded. Zero keeps its sign.
   def self.from_float(value, precision = 0)
-    if precision.nil? || precision == 0
-      raise ArgumentError, "can't omit precision for a Float"
-    end
+    precision = 0 if precision.nil?
     return build 0, "", 0, :nan if value.nan?
-    if value.infinite?
-      return build(value.infinite?, "", 0, :infinite)
-    end
-    from_string "%.#{precision}e" % value
+    return build(value.infinite?, "", 0, :infinite) if value.infinite?
+    return build((1.0 / value) < 0 ? -1 : 1, "", 0) if value == 0.0
+    raise ArgumentError, "precision too large." if precision > DOUBLE_FIGURES
+    return from_string("%.#{precision - 1}e" % value) if precision > 0
+    read = from_string value.to_s
+    return read if read.digits_of.length <= DOUBLE_FIGURES
+    build read.sign_of, read.digits_of[0, DOUBLE_FIGURES], read.exponent_of
   end
 
   def self.from_rational(value, precision = 0)
     if precision.nil? || precision == 0
-      raise ArgumentError, "can't omit precision for a Rational"
+      raise ArgumentError, "can't omit precision for a Rational."
     end
     numerator = from_integer value.numerator
     denominator = from_integer value.denominator
@@ -161,23 +172,28 @@ class BigDecimal < Numeric
   # The digits a written number stands for. Anything the notation does not
   # allow is refused rather than read as far as it goes.
   def self.from_string(text)
-    held = text.strip.gsub("_", "")
+    held = text.strip
     return build 0, "", 0, :nan if held =~ /\A[+-]?NaN\z/
     if held =~ /\A([+-])?Infinity\z/
       return build($1 == "-" ? -1 : 1, "", 0, :infinite)
     end
-    unless held =~ /\A([+-])?(\d*)(?:\.(\d*))?(?:[eEdD]([+-]?\d+))?\z/
+    # An underscore stands alone between two digits, and a whole number may
+    # end with one.
+    run = '\d+(?:_\d+)*'
+    match = held.match(/\A([+-])?(#{run})_?\z/) ||
+            held.match(/\A([+-])?(#{run})?(?:\.(#{run})?)?(?:[eEdD]([+-]?#{run}))?\z/)
+    if match.nil?
       raise ArgumentError, "invalid value for BigDecimal(): \"#{text}\""
     end
-    sign_text, whole, fraction, power = $1, $2, $3, $4
-    whole = "" if whole.nil?
-    fraction = "" if fraction.nil?
+    sign_text, whole, fraction, power = match[1], match[2], match[3], match[4]
+    whole = whole.to_s.delete("_")
+    fraction = fraction.to_s.delete("_")
     if whole.empty? && fraction.empty?
       raise ArgumentError, "invalid value for BigDecimal(): \"#{text}\""
     end
     sign = sign_text == "-" ? -1 : 1
     digits = whole + fraction
-    exponent = whole.length + (power.nil? ? 0 : power.to_i)
+    exponent = whole.length + (power.nil? ? 0 : power.delete("_").to_i)
     build sign, digits, exponent
   end
 
@@ -213,8 +229,13 @@ class BigDecimal < Numeric
     zero? || !finite? ? 0 : @exponent
   end
 
+  # The decimal digits from the first significant one to the last, with the
+  # zeros a whole number ends in and the ones after the point before the
+  # first digit counted too.
   def precision
-    finite? ? @digits.length : 0
+    return 0 unless finite? && !zero?
+    return [@digits.length, @exponent].max if @exponent > 0
+    @digits.length - @exponent
   end
 
   def precs
@@ -302,25 +323,35 @@ class BigDecimal < Numeric
     return coerced_binary(other, :div) if held.nil?
     if digits.nil?
       raise ZeroDivisionError, "divided by 0" if held.zero?
-      quotient = quotient_with self, held, DEFAULT_PRECISION
+      quotient = quotient_with self, held, division_digits(held)
       raise FloatDomainError, quotient.to_s("") unless quotient.finite?
       return quotient.floor_to_integer.to_integer
     end
-    return quotient_with(self, held, DEFAULT_PRECISION) if digits == 0
+    return quotient_with(self, held, division_digits(held)) if digits == 0
     quotient_with self, held, digits
   end
 
   def /(other)
     held = companion other
     return coerced_binary(other, :/) if held.nil?
-    quotient_with self, held, DEFAULT_PRECISION
+    quotient_with self, held, division_digits(held)
   end
 
   def quo(other, digits = nil)
     held = companion other
     return coerced_binary(other, :quo) if held.nil?
-    quotient_with self, held, digits.nil? || digits == 0 ? DEFAULT_PRECISION : digits
+    return quotient_with(self, held, division_digits(held)) if digits.nil? || digits == 0
+    quotient_with self, held, digits
   end
+
+  # The digits a division carries when none are named: those of the operand
+  # with more, and twice Float's, at least 32.
+  def division_digits(other)
+    wanted = [precision, other.precision].max + DOUBLE_FIGURES
+    wanted < DEFAULT_PRECISION ? DEFAULT_PRECISION : wanted
+  end
+
+  private :division_digits
 
   def add(other, digits)
     with_named_precision(digits) { self + other }
@@ -370,28 +401,19 @@ class BigDecimal < Numeric
 
   alias_method :power, :**
 
+  # The quotient cut downward, as an Integer, and what is left over. A
+  # quotient that is not a number, or has no end, cannot be an Integer.
   def divmod(other)
     held = companion other
     return coerced_binary(other, :divmod) if held.nil?
-    raise ZeroDivisionError, "divided by 0" if held.zero? && !nan?
-    nan = BigDecimal.build 0, "", 0, :nan
-    return [nan, nan] if nan? || held.nan?
-    # A dividend without end divides into a count without end, and what is
-    # left over cannot be said.
-    if !finite?
-      sign = (infinite? > 0) == (held > 0) ? 1 : -1
-      return [BigDecimal.build(sign, "", 0, :infinite), nan]
-    end
-    return [BigDecimal.build(0, "", 0, :zero), self] unless held.finite?
-    quotient = whole_quotient held, false
-    [quotient, self - quotient * held]
+    quotient, left_over = quotient_and_left_over held, false
+    [quotient.to_i, left_over]
   end
 
   def %(other)
     held = companion other
     return coerced_binary(other, :%) if held.nil?
-    raise ZeroDivisionError, "divided by 0" if held.zero? && !nan? && finite?
-    divmod(held)[1]
+    quotient_and_left_over(held, false)[1]
   end
 
   alias_method :modulo, :%
@@ -401,12 +423,7 @@ class BigDecimal < Numeric
   def remainder(other)
     held = companion other
     return coerced_binary(other, :remainder) if held.nil?
-    raise ZeroDivisionError, "divided by 0" if held.zero? && !nan? && finite?
-    if nan? || held.nan? || !finite? || !held.finite?
-      return BigDecimal.build(0, "", 0, :nan)
-    end
-    quotient = whole_quotient held, true
-    self - quotient * held
+    quotient_and_left_over(held, true)[1]
   end
 
   def <=>(other)
@@ -453,7 +470,7 @@ class BigDecimal < Numeric
   end
 
   def to_i
-    raise FloatDomainError, to_s unless finite?
+    raise FloatDomainError, written("") unless finite?
     truncate_to_integer.to_integer
   end
 
@@ -462,7 +479,7 @@ class BigDecimal < Numeric
   def to_f
     return Float::NAN if nan?
     return @sign * Float::INFINITY if @special == :infinite
-    to_s("F").to_f
+    written("F").to_f
   end
 
   def to_r
@@ -484,8 +501,10 @@ class BigDecimal < Numeric
     to_s "F"
   end
 
+  # Written the way `to_s` writes it, without asking a `to_s` a program
+  # put in front of this one.
   def inspect
-    to_s ""
+    written ""
   end
 
   # The written form. "F" spells the number out in full, a leading "+" asks
@@ -494,6 +513,10 @@ class BigDecimal < Numeric
   # The number written out. Nothing but digits and punctuation goes into it,
   # so the answer is tagged US-ASCII the way Ruby tags it.
   def to_s(format = "")
+    written format
+  end
+
+  def written(format)
     named = format.to_s
     grouping = named[/\d+/].to_i
     plain = named.include?("F") || named.include?("f")
@@ -508,11 +531,31 @@ class BigDecimal < Numeric
     "#{mark}#{body}".force_encoding(Encoding::US_ASCII)
   end
 
-  def round(digits = 0, mode = nil)
-    wanted = mode.nil? ? @@rounding_mode : BigDecimal.rounding_named(mode)
+  private :written
+
+  # Rounded to `digits` places after the point. With no argument, or a
+  # place count below one alone, the answer is an Integer; a rounding rule
+  # named alongside, or a `half:` option, keeps it a BigDecimal.
+  def round(*arguments)
+    if arguments.size > 2
+      raise ArgumentError, "wrong number of arguments (given #{arguments.size}, expected 0..2)"
+    end
+    digits = 0
+    wanted = @@rounding_mode
+    to_integer = arguments.empty?
+    first, second = arguments
+    if arguments.size == 1 && first.is_a?(Hash)
+      wanted = BigDecimal.rounding_option first
+    elsif arguments.size >= 1
+      digits = first.to_int
+      to_integer = digits < 1 if arguments.size == 1
+      unless second.nil?
+        wanted = second.is_a?(Hash) ? BigDecimal.rounding_option(second) : BigDecimal.rounding_named(second)
+      end
+    end
     return refuse_whole_number(digits) unless finite?
     rounded = round_at digits, wanted
-    digits <= 0 ? rounded.to_integer : rounded
+    to_integer ? rounded.to_integer : rounded
   end
 
   def ceil(digits = 0)
@@ -548,39 +591,32 @@ class BigDecimal < Numeric
     self - fix
   end
 
-  def sqrt(digits)
-    unless digits.is_a? Integer
-      raise TypeError, "wrong argument type #{digits.class} (expected Integer)"
+  # The square root to `precision` significant digits, or to sixteen more
+  # than the value holds when none is named. Newton's method starts from the
+  # Float root and doubles the digits it trusts at each step.
+  def sqrt(precision)
+    precision = Internal.coerce_validate_prec(precision, :sqrt, accept_zero: true)
+    return Internal.infinity_computation_result if infinite? == 1
+
+    raise FloatDomainError, "sqrt of negative value" if self < 0
+    raise FloatDomainError, "sqrt of 'NaN'(Not a Number)" if nan?
+    return self if zero?
+
+    if precision == 0
+      limit = BigDecimal.limit
+      precision = n_significant_digits + BigDecimal.double_fig
+      precision = [limit, precision].min if limit.nonzero?
     end
-    wanted_digits = digits
-    if wanted_digits < 0
-      raise ArgumentError, "negative precision for sqrt"
+
+    half_exponent = exponent / 2
+    x = _decimal_shift(-2 * half_exponent)
+    y = BigDecimal(Math.sqrt(x.to_f), 0)
+    steps = [precision + BigDecimal.double_fig]
+    steps << 2 + steps.last / 2 while steps.last > BigDecimal.double_fig
+    steps.reverse_each do |digits|
+      y = y.add(x.div(y, digits), digits).div(2, digits)
     end
-    if nan? || @sign < 0 && !zero?
-      raise FloatDomainError, "sqrt of negative value"
-    end
-    return self if !finite? || zero?
-    wanted = wanted_digits
-    wanted = DEFAULT_PRECISION if wanted < DEFAULT_PRECISION
-    # Newton's method, carried a few digits wider than what is asked for so
-    # the last digit that is kept has settled.
-    working = wanted + 10
-    half = BigDecimal.from_string "0.5"
-    # A root sits at about half the power of ten its value does, which is a
-    # near enough start that each step from there doubles the settled digits.
-    guess = BigDecimal.build 1, "5", (@exponent + 1) / 2
-    # Each step is carried only as wide as the digits it can settle, so the
-    # early steps stay cheap and only the last one works at full width.
-    carried = 16
-    100.times do
-      carried = carried * 2
-      carried = working if carried > working
-      next_guess = (guess + quotient_with(self, guess, carried)) * half
-      settled = carried >= working && (next_guess - guess).zero?
-      guess = next_guess
-      break if settled
-    end
-    guess.round_to_significant wanted
+    y._decimal_shift(half_exponent).mult(1, precision)
   end
 
   # A rounding rule named by symbol or string reads back as the number it
@@ -604,6 +640,18 @@ class BigDecimal < Numeric
     found = NAMED_ROUNDING[mode.to_s.downcase.to_sym] if mode.respond_to? :to_s
     raise ArgumentError, "invalid rounding mode (#{mode})" if found.nil?
     found
+  end
+
+  # The rule a `half:` option names: how a value standing on a half rounds.
+  def self.rounding_option(options)
+    half = options[:half]
+    return @@rounding_mode if half.nil?
+    case half.to_s
+    when "up" then ROUND_HALF_UP
+    when "down" then ROUND_HALF_DOWN
+    when "even" then ROUND_HALF_EVEN
+    else raise ArgumentError, "invalid rounding mode (#{half})"
+    end
   end
 
   def self.mode(selector, value = nil)
@@ -695,9 +743,16 @@ class BigDecimal < Numeric
     sign = left.sign_of * right.sign_of
     wanted = digits + 2
     shifted = left.digits_of.to_i * 10 ** (wanted + right.digits_of.length)
-    quotient = shifted / right.digits_of.to_i
+    quotient, left_over = shifted.divmod right.digits_of.to_i
     exponent = left.exponent_of - right.exponent_of - wanted - left.digits_of.length
-    BigDecimal.build(sign, quotient.to_s, quotient.to_s.length + exponent)
+    # A remainder past the digits carried still tips a quotient that stops
+    # on a half, so it is kept as one more digit.
+    spelled = quotient.to_s
+    unless left_over.zero?
+      spelled += "1"
+      exponent -= 1
+    end
+    BigDecimal.build(sign, spelled, spelled.length + exponent)
       .round_to_significant(digits)
       .within_limit
   end
@@ -789,6 +844,32 @@ class BigDecimal < Numeric
 
   private :whole_quotient
 
+  # The whole quotient, as a BigDecimal, and what is left over, cut toward
+  # zero or downward. Not a number on either side, or no end on both, is
+  # not a number; a divisor of zero is refused; a dividend without end
+  # leaves nothing that can be said; a divisor without end leaves the
+  # dividend whole, or takes one more step down when the signs differ.
+  def quotient_and_left_over(held, toward_zero)
+    nan = BigDecimal.build 0, "", 0, :nan
+    return [nan, nan] if nan? || held.nan? || (infinite? && held.infinite?)
+    raise ZeroDivisionError, "divided by 0" if held.zero?
+    if infinite?
+      sign = (infinite? > 0) == (held > 0) ? 1 : -1
+      return [BigDecimal.build(sign, "", 0, :infinite), nan]
+    end
+    return [BigDecimal.from_integer(0), self] if zero?
+    if held.infinite?
+      if !toward_zero && (self > 0) != (held > 0)
+        return [BigDecimal.from_integer(-1), held]
+      end
+      return [BigDecimal.from_integer(0), self]
+    end
+    quotient = whole_quotient held, toward_zero
+    [quotient, self - quotient * held]
+  end
+
+  private :quotient_and_left_over
+
   # The whole part, cut downward, still as a BigDecimal.
   def floor_to_integer
     round_at 0, ROUND_FLOOR
@@ -865,7 +946,7 @@ class BigDecimal < Numeric
   # Ruby does for NaN and the infinities.
   def refuse_whole_number(digits)
     return self if digits > 0
-    raise FloatDomainError, to_s("")
+    raise FloatDomainError, written("")
   end
 
   private :ordered, :refuse_whole_number
@@ -937,10 +1018,175 @@ end
 BigDecimal::INFINITY = BigDecimal.build(1, "", 0, :infinite)
 BigDecimal::NAN = BigDecimal.build(0, "", 0, :nan)
 
+class BigDecimal
+  # How many significant digits the value holds, without the zeros on
+  # either side of them.
+  def n_significant_digits
+    finite? ? @digits.length : 0
+  end
+
+  # The same value with the point moved `places` to the right, exactly.
+  def _decimal_shift(places)
+    return self if !finite? || zero?
+    BigDecimal.build @sign, @digits, @exponent + places
+  end
+
+  # Runs the block and puts the limit back as it was, whatever the block
+  # set it to.
+  def self.save_limit
+    held = limit
+    begin
+      yield
+    ensure
+      limit held
+    end
+  end
+
+  # What the functions in BigMath read their arguments and results through.
+  module Internal
+    def self.coerce_to_bigdecimal(value, precision, method_name)
+      case value
+      when BigDecimal
+        return value
+      when Integer, Float
+        return BigDecimal(value, 0)
+      when Rational
+        return BigDecimal(value, [precision, 2 * BigDecimal.double_fig].max)
+      end
+      raise ArgumentError, "#{value.inspect} can't be coerced into BigDecimal"
+    end
+
+    def self.coerce_validate_prec(precision, method_name, accept_zero: false)
+      unless Integer === precision
+        original = precision
+        unless precision.respond_to?(:to_int)
+          raise TypeError, "no implicit conversion of #{original.class} into Integer"
+        end
+        precision = precision.to_int
+        raise TypeError, "can't convert #{original.class} to Integer" unless Integer === precision
+      end
+      if accept_zero
+        raise ArgumentError, "Negative precision for #{method_name}" if precision < 0
+      elsif precision <= 0
+        raise ArgumentError, "Zero or negative precision for #{method_name}"
+      end
+      precision
+    end
+
+    def self.infinity_computation_result
+      if (BigDecimal.mode(BigDecimal::EXCEPTION_ALL) & BigDecimal::EXCEPTION_INFINITY) != 0
+        raise FloatDomainError, "Computation results in 'Infinity'"
+      end
+      BigDecimal::INFINITY
+    end
+
+    def self.nan_computation_result
+      if (BigDecimal.mode(BigDecimal::EXCEPTION_ALL) & BigDecimal::EXCEPTION_NaN) != 0
+        raise FloatDomainError, "Computation results to 'NaN'"
+      end
+      BigDecimal::NAN
+    end
+  end
+end
+
 # Functions over BigDecimal values that go beyond arithmetic. Each series
 # below stops once its next term sits further down than the digits being
 # asked for, which is the point past which it changes nothing.
 module BigMath
+  # The natural logarithm to `precision` digits. A value far from one is
+  # brought between 0.3 and 3 by powers of ten, then near one by square
+  # roots, and the series for log((1 + x) / (1 - x)) finishes it.
+  def self.log(x, precision)
+    precision = BigDecimal::Internal.coerce_validate_prec(precision, :log)
+    raise Math::DomainError, "Complex argument for BigMath.log" if Complex === x
+
+    x = BigDecimal::Internal.coerce_to_bigdecimal(x, precision, :log)
+    return BigDecimal::Internal.nan_computation_result if x.nan?
+    raise Math::DomainError, "Negative argument for log" if x < 0
+    return -BigDecimal::Internal.infinity_computation_result if x.zero?
+    return BigDecimal::Internal.infinity_computation_result if x.infinite?
+    return BigDecimal(0) if x == 1
+
+    working = precision + BigDecimal.double_fig
+    BigDecimal.save_limit do
+      BigDecimal.limit(0)
+      if x > 10 || x < BigDecimal("0.1")
+        log10 = log(BigDecimal(10), working)
+        exponent = x.exponent
+        x = x._decimal_shift(-exponent)
+        if x < BigDecimal("0.3")
+          x *= 10
+          exponent -= 1
+        end
+        return (log10 * exponent).add(log(x, working), precision)
+      end
+
+      minus_one_exponent = (x - 1).exponent
+      sqrt_steps = [Integer.sqrt(working) + 3 * minus_one_exponent, 0].max
+      log10_of_two = 0.3010299956639812
+      sqrt_precision = working + [-minus_one_exponent, 0].max + (sqrt_steps * log10_of_two).ceil
+      sqrt_steps.times { x = x.sqrt(sqrt_precision) }
+
+      x = (x - 1).div(x + 1, sqrt_precision)
+      y = x
+      x2 = x.mult(x, working)
+      i = 1
+      loop do
+        digits = working + x.exponent - y.exponent + x2.exponent
+        break if digits <= 0 || x.zero?
+        x = x.mult(x2.round(digits - x2.exponent), digits)
+        y = y.add(x.div(2 * i + 1, digits), working)
+        i += 1
+      end
+
+      y.mult(2**(sqrt_steps + 1), precision)
+    end
+  end
+
+  # The Taylor series for e**x, carried until a term falls below the last
+  # digit.
+  def self.exp_taylor(x, precision)
+    term = BigDecimal(1)
+    sum = BigDecimal(1)
+    i = 1
+    loop do
+      digits = precision + term.exponent
+      break if digits <= 0 || term.zero?
+      term = term.mult(x, digits).div(i, digits)
+      sum = sum.add(term, precision)
+      i += 1
+    end
+    sum
+  end
+  private_class_method :exp_taylor
+
+  # e raised to `x`, to `precision` digits. A large power is brought below
+  # one by powers of ten and raised back by tenth powers.
+  def self.exp(x, precision)
+    precision = BigDecimal::Internal.coerce_validate_prec(precision, :exp)
+    x = BigDecimal::Internal.coerce_to_bigdecimal(x, precision, :exp)
+    return BigDecimal::Internal.nan_computation_result if x.nan?
+    if x.infinite?
+      return x > 0 ? BigDecimal::Internal.infinity_computation_result : BigDecimal(0)
+    end
+    return BigDecimal(1) if x.zero?
+
+    count = x < -1 || x > 1 ? x.exponent : 0
+    working = precision + BigDecimal.double_fig + count
+    x = x._decimal_shift(-count)
+
+    rounded = x.round(Integer.sqrt(working))
+    y = exp_taylor(rounded, working).mult(exp_taylor(x.sub(rounded, working), working), working)
+
+    count.times do
+      squared = y.mult(y, working)
+      fifth = squared.mult(squared, working).mult(y, working)
+      y = fifth.mult(fifth, working)
+    end
+
+    y.mult(1, precision)
+  end
+
   def self.PI(precision)
     working = precision + 10
     sixteen = BigDecimal.from_string "16"
@@ -994,8 +1240,13 @@ module BigMath
 end
 
 module Kernel
-  def BigDecimal(value, precision = 0)
+  # With `exception: false`, a value that is not a number answers nil
+  # rather than being refused.
+  def BigDecimal(value, precision = 0, exception: true)
     BigDecimal.interpret value, precision
+  rescue ArgumentError, TypeError
+    raise if exception
+    nil
   end
 
   private :BigDecimal
@@ -1008,7 +1259,7 @@ class Integer
 end
 
 class Float
-  def to_d(precision = BigDecimal::DEFAULT_PRECISION)
+  def to_d(precision = 0)
     BigDecimal.from_float self, precision
   end
 end

@@ -433,3 +433,18 @@ fn test_filesystem_reading_what_is_there_no_parens_execution() {
     let output = run_example("filesystem/reading_what_is_there_no_parens.rb");
     assert_eq!(output, READING_WHAT_IS_THERE_OUTPUT);
 }
+
+/// The expected output of both `filesystem/null_byte_paths` variants.
+const NULL_BYTE_PATHS_OUTPUT: &str = "\"path name contains null byte\"\n\"path name contains null byte\"\n\"path name contains null byte\"\n\"path name contains null byte\"\n\"path name contains null byte\"\n\"path name contains null byte\"\n\"nul-separated glob pattern is deprecated\"\n\"string contains null byte\"\n\"path name contains null byte\"\n";
+
+#[test]
+fn test_filesystem_null_byte_paths_execution() {
+    let output = run_example("filesystem/null_byte_paths.rb");
+    assert_eq!(output, NULL_BYTE_PATHS_OUTPUT);
+}
+
+#[test]
+fn test_filesystem_null_byte_paths_no_parens_execution() {
+    let output = run_example("filesystem/null_byte_paths_no_parens.rb");
+    assert_eq!(output, NULL_BYTE_PATHS_OUTPUT);
+}

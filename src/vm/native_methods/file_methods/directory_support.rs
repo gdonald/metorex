@@ -11,6 +11,27 @@ impl VirtualMachine {
         argument: &Object,
         position: Position,
     ) -> Result<String, MetorexError> {
+        let path = self.path_argument_text(method_name, argument, position)?;
+        // NUL ends a name the operating system reads, so one holding it names
+        // something other than what was written.
+        if path.contains('\0') {
+            return Err(crate::vm::errors::simple_exception(
+                "ArgumentError",
+                "path name contains null byte",
+                position,
+            ));
+        }
+        Ok(path)
+    }
+
+    /// The text a path argument spells, NUL bytes and all, for a caller that
+    /// reads it as a pattern rather than as a name.
+    pub(crate) fn path_argument_text(
+        &mut self,
+        method_name: &str,
+        argument: &Object,
+        position: Position,
+    ) -> Result<String, MetorexError> {
         match argument {
             Object::String(path) => Ok(path_text(path)),
             // A name is spelled by `to_path` where an object has one, and by
@@ -68,6 +89,13 @@ impl VirtualMachine {
         encoding: Option<String>,
         position: Position,
     ) -> Result<Vec<Object>, MetorexError> {
+        if path.contains('\0') {
+            return Err(crate::vm::errors::simple_exception(
+                "ArgumentError",
+                "path name contains null byte",
+                position,
+            ));
+        }
         let reading = std::fs::read_dir(path).map_err(|problem| {
             crate::vm::errors::simple_exception(
                 "Errno::ENOENT",
