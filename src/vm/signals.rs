@@ -129,6 +129,19 @@ thread_local! {
     static CATCHER: usize = NEXT_CATCHER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 }
 
+/// How many signals the interpreter has handled, so code waiting on
+/// something outside it can tell that one arrived meanwhile.
+static SIGNALS_TAKEN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+pub(crate) fn signals_taken() -> usize {
+    SIGNALS_TAKEN.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// Whether a signal has arrived that has not been handled yet.
+pub(crate) fn signal_pending() -> bool {
+    ANY_PENDING.load(std::sync::atomic::Ordering::SeqCst)
+}
+
 /// Whether any signal has arrived that no thread has taken yet.
 fn any_signal_waiting() -> bool {
     PENDING
@@ -428,6 +441,7 @@ impl crate::vm::VirtualMachine {
         number: i32,
         position: crate::lexer::Position,
     ) -> Result<(), crate::error::MetorexError> {
+        SIGNALS_TAKEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let handler = self.signal_handlers.get(name).cloned();
         match handler {
             Some(Object::String(disposition)) => match &*disposition.as_str() {

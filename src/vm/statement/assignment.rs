@@ -652,25 +652,7 @@ impl VirtualMachine {
             Expression::GlobalVariable {
                 name: written,
                 position,
-            } => {
-                // A global given a second name writes through to the first.
-                let name = self
-                    .global_aliases
-                    .get(written)
-                    .cloned()
-                    .unwrap_or_else(|| written.clone());
-                let value = self.special_global_value(written, &name, value, *position)?;
-                // `$@` is the backtrace of the exception being handled, which
-                // the assignment has set rather than a global of its own.
-                if name == "@" {
-                    return Ok(());
-                }
-                self.globals_mut().set_variable(name.clone(), value.clone());
-                // A `trace_var` hook on this global runs with the new value.
-                let name = name.clone();
-                self.fire_global_trace(&name, &value, crate::lexer::Position::new(0, 0, 0))?;
-                Ok(())
-            }
+            } => self.write_global_variable(written, value, *position),
             _ => Err(invalid_assignment_target_error(target)),
         }
     }
@@ -925,9 +907,13 @@ impl VirtualMachine {
                     {
                         return Ok(());
                     }
-                    Err(MetorexError::runtime_error(
-                        format!("Undefined setter method '{}'", setter_method),
-                        position_to_location(*position),
+                    let wording = self.receiver_wording_for(&receiver, *position);
+                    Err(crate::vm::errors::undefined_method_error_worded(
+                        &setter_method,
+                        &receiver,
+                        std::slice::from_ref(&value),
+                        wording,
+                        *position,
                     ))
                 }
             }
@@ -1186,7 +1172,7 @@ fn visibility_error(class: &Rc<Class>, name: &str, position: Position) -> Metore
         "{} method '{}' called for an instance of {}",
         marking,
         name,
-        class.name()
+        class.inspect_name()
     );
     let exc = Object::exception("NoMethodError", msg.clone());
     MetorexError::UncaughtException {
@@ -1415,5 +1401,38 @@ fn class_named(value: &Object) -> String {
     match value {
         Object::Instance(instance) => instance.borrow().class.name().to_string(),
         other => crate::vm::native_methods::define_method::ruby_class_name(other).to_string(),
+    }
+}
+
+impl VirtualMachine {
+    /// Assigns `value` to the global `$written`, the way `$written = value`
+    /// in the program does.
+    pub(crate) fn write_global_variable(
+        &mut self,
+        written: &str,
+        value: Object,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        // A global given a second name writes through to the first.
+        let name = self
+            .global_aliases
+            .get(written)
+            .cloned()
+            .unwrap_or_else(|| written.to_string());
+        // A global a C extension defined is written through its setter.
+        if let Some(hooked) = self.hooked_globals.get(&name).copied() {
+            crate::vm::capi::write_hooked_global(self, &name, hooked, value.clone(), position)?;
+            return self.fire_global_trace(&name, &value, Position::new(0, 0, 0));
+        }
+        let value = self.special_global_value(written, &name, value, position)?;
+        // `$@` is the backtrace of the exception being handled, which the
+        // assignment has set rather than a global of its own.
+        if name == "@" {
+            return Ok(());
+        }
+        self.globals_mut().set_variable(name.clone(), value.clone());
+        // A `trace_var` hook on this global runs with the new value.
+        self.fire_global_trace(&name, &value, Position::new(0, 0, 0))?;
+        Ok(())
     }
 }

@@ -153,3 +153,28 @@ fn test_oop_case_equality_of_classes_parens_execution() {
     let output = run_example("oop/case_equality_of_classes_parens.rb");
     assert_eq!(output, CASE_EQUALITY_OF_CLASSES_OUTPUT);
 }
+
+/// The expected output of both `oop/comparable/operators_need_comparable`
+/// variants.
+const OPERATORS_NEED_COMPARABLE_OUTPUT: &str = concat!(
+    "undefined method '<' for an instance of Plain\n",
+    "true\n",
+    "comparison of Ranked with nil failed\n",
+    "comparison of Ranked with 2.5 failed\n",
+    "comparison of Ranked with :sym failed\n",
+    "comparison of Ranked with String failed\n",
+    "comparison of Ranked with Array failed\n",
+    "true\n",
+);
+
+#[test]
+fn test_oop_comparable_operators_need_comparable_execution() {
+    let output = run_example("oop/comparable/operators_need_comparable.rb");
+    assert_eq!(output, OPERATORS_NEED_COMPARABLE_OUTPUT);
+}
+
+#[test]
+fn test_oop_comparable_operators_need_comparable_no_parens_execution() {
+    let output = run_example("oop/comparable/operators_need_comparable_no_parens.rb");
+    assert_eq!(output, OPERATORS_NEED_COMPARABLE_OUTPUT);
+}

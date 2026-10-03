@@ -51,6 +51,7 @@ class Struct
         instance_variable_set "@__struct_member_#{key}", value
       end
     else
+      raise ArgumentError, "struct size differs" if values.size > named.size
       named.each_with_index do |member, index|
         instance_variable_set "@__struct_member_#{member}", values[index]
       end

@@ -233,6 +233,7 @@ fn int_mul_past_the_word_width_stays_exact() {
 fn less_than_via_spaceship() {
     let result = run(r#"
 class LT
+  include Comparable
   def initialize(n)
     @n = n
   end
@@ -249,6 +250,7 @@ LT.new(1) < LT.new(2)
 fn greater_than_via_spaceship() {
     let result = run(r#"
 class GT
+  include Comparable
   def initialize(n)
     @n = n
   end
@@ -265,6 +267,7 @@ GT.new(5) > GT.new(2)
 fn less_equal_via_spaceship() {
     let result = run(r#"
 class LE
+  include Comparable
   def initialize(n)
     @n = n
   end
@@ -282,6 +285,7 @@ fn comparable_returning_nil_raises_argument_error() {
     let err = run_err(
         r#"
 class CNil
+  include Comparable
   def <=>(other)
     nil
   end

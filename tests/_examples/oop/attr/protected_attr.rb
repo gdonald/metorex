@@ -8,12 +8,12 @@ begin
   obj.foo
   puts "BUG: foo getter should have raised"
 rescue NoMethodError => e
-  puts "OK reader raised: #{e.message}"
+  puts "OK reader raised: #{e.message.sub(/0x\h+/, "0xADDRESS")}"
 end
 
 begin
   obj.foo = 1
   puts "BUG: foo setter should have raised"
 rescue NoMethodError => e
-  puts "OK writer raised: #{e.message}"
+  puts "OK writer raised: #{e.message.sub(/0x\h+/, "0xADDRESS")}"
 end

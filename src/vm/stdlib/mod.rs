@@ -68,12 +68,18 @@ pub(crate) fn embedded_library(name: &str) -> Option<&'static str> {
         "rubygems/user_interaction" => Some(include_str!("rubygems/user_interaction.rb")),
         "rubygems/gemcutter_utilities" => Some(include_str!("rubygems/gemcutter_utilities.rb")),
         "rubygems/command_manager" => Some(include_str!("rubygems/command_manager.rb")),
+        "rubygems/command" => Some(include_str!("rubygems/command.rb")),
+        "rubygems/safe_yaml" => Some(include_str!("rubygems/safe_yaml.rb")),
+        "rubygems/commands/owner_command" => {
+            Some(include_str!("rubygems/commands/owner_command.rb"))
+        }
         "optparse" | "optionparser" => Some(include_str!("optparse.rb")),
         "random/formatter" => Some(include_str!("random_formatter.rb")),
         "socket" => Some(include_str!("socket.rb")),
         "erb" => Some(include_str!("erb.rb")),
         "abbrev" => Some(include_str!("abbrev.rb")),
         "etc" => Some(include_str!("etc.rb")),
+        "mkmf" => Some(include_str!("mkmf.rb")),
         "pp" => Some(include_str!("pp.rb")),
         "fcntl" => Some(include_str!("fcntl.rb")),
         "expect" => Some(include_str!("expect.rb")),

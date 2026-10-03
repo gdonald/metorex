@@ -106,6 +106,64 @@ fn method_to_proc_block(target: &Object, position: Position) -> BlockStatement {
     made
 }
 
+/// The Proc `rb_proc_new` makes around a C block function: not a lambda,
+/// written nowhere in the program, taking any number of values and the block
+/// it is called with, and handing them all to `target`.
+pub(crate) fn proc_for_c_function(target: Object) -> Object {
+    let position = Position::default();
+    let rest = "__c_function_values".to_string();
+    let handed = "__c_function_block".to_string();
+    let call = Expression::MethodCall {
+        receiver: Box::new(Expression::Identifier {
+            name: "__method_proc_target".to_string(),
+            position,
+        }),
+        method: "call".to_string(),
+        arguments: vec![
+            Expression::Splat {
+                expression: Box::new(Expression::Identifier {
+                    name: rest.clone(),
+                    position,
+                }),
+                position,
+            },
+            Expression::BlockArg {
+                expression: Box::new(Expression::Identifier {
+                    name: handed.clone(),
+                    position,
+                }),
+                position,
+            },
+        ],
+        trailing_block: None,
+        position,
+    };
+    let mut made = BlockStatement::new(
+        vec![format!("*{rest}"), format!("&{handed}")],
+        vec![Statement::Expression {
+            expression: call,
+            position,
+        }],
+        std::collections::HashMap::new(),
+    );
+    made.captured_vars.insert(
+        "__method_proc_target".to_string(),
+        std::rc::Rc::new(std::cell::RefCell::new(target)),
+    );
+    Object::Block(std::rc::Rc::new(made))
+}
+
+/// The block `&target` hands over for a Method, which calls the Method with
+/// what the block is given.
+pub(crate) fn block_for_method(target: Object, position: Position) -> Object {
+    let mut block = method_to_proc_block(&target, position);
+    block.captured_vars.insert(
+        "__method_proc_target".to_string(),
+        std::rc::Rc::new(std::cell::RefCell::new(target)),
+    );
+    Object::Block(std::rc::Rc::new(block))
+}
+
 impl VirtualMachine {
     /// Execute a sequence of statements and return an optional result (from return statements).
     pub fn execute_program(
@@ -430,12 +488,7 @@ impl VirtualMachine {
                         // `&some_method` hands the method over as the block,
                         // which is what `to_proc` on a Method answers.
                         target @ Object::Method(_) => {
-                            let mut block = method_to_proc_block(&target, other_position);
-                            block.captured_vars.insert(
-                                "__method_proc_target".to_string(),
-                                std::rc::Rc::new(std::cell::RefCell::new(target)),
-                            );
-                            self.pending_block = Some(Object::Block(std::rc::Rc::new(block)));
+                            self.pending_block = Some(block_for_method(target, other_position));
                             self.pending_block_from_ampersand = true;
                         }
                         // An object of the program's own becomes a block
@@ -466,13 +519,8 @@ impl VirtualMachine {
                                 // A `to_proc` that answers a Method stands
                                 // for a block the same way `&method` does.
                                 target @ Object::Method(_) => {
-                                    let mut block = method_to_proc_block(&target, other_position);
-                                    block.captured_vars.insert(
-                                        "__method_proc_target".to_string(),
-                                        std::rc::Rc::new(std::cell::RefCell::new(target)),
-                                    );
                                     self.pending_block =
-                                        Some(Object::Block(std::rc::Rc::new(block)));
+                                        Some(block_for_method(target, other_position));
                                     self.pending_block_from_ampersand = true;
                                 }
                                 // Anything else is no block at all, which

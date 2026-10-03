@@ -94,11 +94,25 @@ pub(crate) fn require_candidates(named: &str) -> Vec<std::path::PathBuf> {
     if named.ends_with(".rb") {
         return vec![std::path::PathBuf::from(named)];
     }
-    vec![
-        std::path::PathBuf::from(format!("{}.rb", named)),
-        std::path::PathBuf::from(named),
-    ]
+    let mut candidates = vec![std::path::PathBuf::from(format!("{}.rb", named))];
+    // A name with no ending of its own can name a C extension built for
+    // this platform, which Ruby looks for after the Ruby file.
+    if std::path::Path::new(named).extension().is_none() {
+        candidates.push(std::path::PathBuf::from(format!(
+            "{}.{}",
+            named, PLATFORM_EXTENSION
+        )));
+    }
+    candidates.push(std::path::PathBuf::from(named));
+    candidates
 }
+
+/// The ending a C extension built for this platform carries.
+pub(crate) const PLATFORM_EXTENSION: &str = if cfg!(target_os = "macos") {
+    "bundle"
+} else {
+    "so"
+};
 
 /// Whether a path names a file built for the machine rather than one written
 /// in Ruby.

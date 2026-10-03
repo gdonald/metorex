@@ -264,6 +264,8 @@ impl VirtualMachine {
                 }
                 return Ok(Answered(Object::Bool(class_rc.is_singleton_class())));
             }
+            // A module has no superclass and no `superclass` method.
+            "superclass" if class_rc.is_module() => return Ok(Deferred),
             "superclass" => {
                 return match class_rc.superclass() {
                     Some(parent) => Ok(Answered(Object::Class(parent))),

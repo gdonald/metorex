@@ -45,7 +45,7 @@ fn test_oop_attr_dynamic_arg_execution() {
 
 #[test]
 fn test_oop_attr_protected_visibility_execution() {
-    let expected = "OK reader raised: protected method 'foo' called for an instance of \nOK writer raised: protected method 'foo=' called for an instance of \n";
+    let expected = "OK reader raised: protected method 'foo' called for an instance of #<Class:0xADDRESS>\nOK writer raised: protected method 'foo=' called for an instance of #<Class:0xADDRESS>\n";
     let output = run_example("oop/attr/protected_attr.rb");
     assert_eq!(output, expected);
 }

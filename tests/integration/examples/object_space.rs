@@ -47,3 +47,43 @@ fn test_object_space_each_object_no_parens_execution() {
     let output = run_example("object_space/each_object_no_parens.rb");
     assert_eq!(output, EACH_OBJECT_OUTPUT);
 }
+
+/// The expected output of both `object_space/gc_latest_info` variants.
+const GC_LATEST_INFO_OUTPUT: &str = concat!(
+    "[:major_by, :need_major_by, :gc_by, :have_finalizer, :immediate_sweep, :state, :weak_references_count]\n",
+    "{major_by: :force, need_major_by: nil, gc_by: :method, have_finalizer: false, immediate_sweep: true, state: :none, weak_references_count: 0}\n",
+    "true\n",
+    "8\n",
+    "[:method, :none]\n",
+    "unknown key: unknown\n",
+    "non-hash or symbol given\n",
+);
+
+#[test]
+fn test_object_space_gc_latest_info_execution() {
+    let output = run_example("object_space/gc_latest_info.rb");
+    assert_eq!(output, GC_LATEST_INFO_OUTPUT);
+}
+
+#[test]
+fn test_object_space_gc_latest_info_no_parens_execution() {
+    let output = run_example("object_space/gc_latest_info_no_parens.rb");
+    assert_eq!(output, GC_LATEST_INFO_OUTPUT);
+}
+
+/// The expected output of both `object_space/gc_answers_object_methods`
+/// variants.
+const GC_ANSWERS_OBJECT_METHODS_OUTPUT: &str =
+    "\"answered for GC\"\n\"answered for ObjectSpace\"\ntrue\n";
+
+#[test]
+fn test_object_space_gc_answers_object_methods_execution() {
+    let output = run_example("object_space/gc_answers_object_methods.rb");
+    assert_eq!(output, GC_ANSWERS_OBJECT_METHODS_OUTPUT);
+}
+
+#[test]
+fn test_object_space_gc_answers_object_methods_no_parens_execution() {
+    let output = run_example("object_space/gc_answers_object_methods_no_parens.rb");
+    assert_eq!(output, GC_ANSWERS_OBJECT_METHODS_OUTPUT);
+}

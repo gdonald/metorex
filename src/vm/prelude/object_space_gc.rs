@@ -199,6 +199,31 @@ module GC
     }
   end
 
+  # What the collector's last run was, as Ruby reports it: one reading by
+  # name, or all of them added to a Hash. Metorex runs the collector only
+  # when the program asks, so a run is one that was forced by a method call
+  # and swept at once.
+  def self.latest_gc_info(target = nil)
+    ran = GC.count > 0
+    readings = {
+      major_by: ran ? :force : nil,
+      need_major_by: nil,
+      gc_by: ran ? :method : nil,
+      have_finalizer: false,
+      immediate_sweep: ran,
+      state: :none,
+      weak_references_count: 0
+    }
+    return readings if target.nil?
+    if target.is_a? Symbol
+      raise ArgumentError, "unknown key: #{target}" unless readings.key?(target)
+      return readings[target]
+    end
+    raise TypeError, "non-hash or symbol given" unless target.is_a? Hash
+    readings.each { |name, reading| target[name] = reading }
+    target
+  end
+
   def self.auto_compact
     @auto_compact == true
   end

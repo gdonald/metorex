@@ -35,3 +35,7 @@ puts RuntimeError.exception.class.to_s
 # empty message reports that.
 puts RuntimeError.new.message
 puts RuntimeError.new("").message.inspect
+
+# An exception and an exception class both answer to `exception`.
+puts RuntimeError.new.respond_to?(:exception).to_s
+puts RuntimeError.respond_to?(:exception).to_s

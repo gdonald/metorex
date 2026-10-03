@@ -88,6 +88,8 @@ pub struct Method {
     /// The class or module a `def` installed the method in. A `def` run
     /// while the method runs installs there too.
     pub definee: Option<Rc<crate::class::Class>>,
+    /// The C function a C extension defined this method with.
+    pub c_function: Option<crate::vm::capi::CFunction>,
 }
 
 impl Method {
@@ -120,6 +122,7 @@ impl Method {
             reads_as_proc: false,
             ruby2_keywords: Rc::new(std::cell::Cell::new(false)),
             definee: None,
+            c_function: None,
         }
     }
 
@@ -157,6 +160,7 @@ impl Method {
             reads_as_proc: false,
             ruby2_keywords: Rc::new(std::cell::Cell::new(false)),
             definee: None,
+            c_function: None,
         }
     }
 
@@ -194,6 +198,7 @@ impl Method {
             reads_as_proc: false,
             ruby2_keywords: Rc::new(std::cell::Cell::new(false)),
             definee: None,
+            c_function: None,
         }
     }
 
@@ -232,6 +237,7 @@ impl Method {
             reads_as_proc: false,
             ruby2_keywords: Rc::new(std::cell::Cell::new(false)),
             definee: None,
+            c_function: None,
         }
     }
 
@@ -264,6 +270,7 @@ impl Method {
             reads_as_proc: false,
             ruby2_keywords: Rc::new(std::cell::Cell::new(false)),
             definee: None,
+            c_function: None,
         }
     }
 
@@ -296,6 +303,7 @@ impl Method {
             reads_as_proc: self.reads_as_proc,
             ruby2_keywords: Rc::clone(&self.ruby2_keywords),
             definee: self.definee.clone(),
+            c_function: self.c_function,
         }
     }
 

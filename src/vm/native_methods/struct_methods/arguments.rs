@@ -219,7 +219,6 @@ pub(crate) fn member_values(receiver: &Object, members: &[String]) -> Vec<Object
 pub(crate) fn resolve_member(
     members: &[String],
     key: &Object,
-    class_rc: &Rc<Class>,
     position: Position,
 ) -> Result<String, MetorexError> {
     match key {
@@ -227,19 +226,21 @@ pub(crate) fn resolve_member(
             let length = members.len() as i64;
             let resolved = if *index < 0 { index + length } else { *index };
             if resolved < 0 || resolved >= length {
+                let direction = if *index < 0 { "small" } else { "large" };
+                let message = format!(
+                    "offset {} too {} for struct(size:{})",
+                    index, direction, length
+                );
                 return Err(MetorexError::UncaughtException {
-                    exception: Object::exception(
-                        "IndexError",
-                        format!("offset {} too large for struct(size:{})", index, length),
-                    ),
+                    exception: Object::exception("IndexError", message.clone()),
                     location: position_to_location(position),
-                    message: format!("offset {} too large for struct(size:{})", index, length),
+                    message,
                 });
             }
             Ok(members[resolved as usize].clone())
         }
-        Object::Symbol(name) => resolve_named_member(members, &name.as_str(), class_rc, position),
-        Object::String(name) => resolve_named_member(members, &name.as_str(), class_rc, position),
+        Object::Symbol(name) => resolve_named_member(members, &name.as_str(), position),
+        Object::String(name) => resolve_named_member(members, &name.as_str(), position),
         other => Err(MetorexError::type_error(
             format!(
                 "no implicit conversion of {} into Integer",
@@ -253,14 +254,13 @@ pub(crate) fn resolve_member(
 pub(crate) fn resolve_named_member(
     members: &[String],
     name: &str,
-    class_rc: &Rc<Class>,
     position: Position,
 ) -> Result<String, MetorexError> {
     if members.iter().any(|member| member == name) {
         Ok(name.to_string())
     } else {
         Err(name_error(
-            format!("no member '{}' in struct {}", name, class_rc.ruby_name()),
+            format!("no member '{}' in struct", name),
             position,
         ))
     }

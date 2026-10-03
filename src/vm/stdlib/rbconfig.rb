@@ -55,6 +55,8 @@ module RbConfig
   prefix = File.dirname(File.dirname(__interpreter_path__()))
   CONFIG["sitelibdir"] = "#{prefix}/lib/metorex/#{RUBY_VERSION}"
   CONFIG["sitearchdir"] = "#{CONFIG["sitelibdir"]}/#{RUBY_PLATFORM}"
+  CONFIG["rubyhdrdir"] = __header_directory__()
+  CONFIG["rubyarchhdrdir"] = CONFIG["rubyhdrdir"]
 
   # Metorex runs from wherever its binary sits rather than from an installed
   # tree, so there is no prefix to name.

@@ -89,7 +89,9 @@ impl VirtualMachine {
                     Object::Instance(new_inst)
                 };
                 // The copy gets `initialize_copy` with the original, so
-                // a class can deep-copy what the shallow copy shared.
+                // a class can deep-copy what the shallow copy shared. A class
+                // that undefined it has a copy that cannot be finished.
+                self.refuse_undefined_copy_hook(&copy, receiver, position)?;
                 if let Some((class, method)) = self.lookup_method(&copy, "initialize_copy")
                     && !method.is_undefined
                 {
@@ -114,6 +116,7 @@ impl VirtualMachine {
                     let copied = details.borrow().clone();
                     Object::Exception(std::rc::Rc::new(std::cell::RefCell::new(copied)))
                 };
+                self.refuse_undefined_copy_hook(&copy, receiver, position)?;
                 if let Some((class, method)) = self.lookup_method(&copy, "initialize_copy")
                     && !method.is_undefined
                     && !method.body.is_empty()
@@ -361,5 +364,31 @@ impl VirtualMachine {
             }
         }
         Ok(())
+    }
+}
+
+impl VirtualMachine {
+    /// Refuses a copy whose class undefined `initialize_copy`, as the
+    /// NoMethodError Ruby raises when the copy calls it.
+    fn refuse_undefined_copy_hook(
+        &mut self,
+        copy: &Object,
+        original: &Object,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        let undefined = self
+            .lookup_method(copy, "initialize_copy")
+            .is_some_and(|(_, method)| method.is_undefined);
+        if !undefined {
+            return Ok(());
+        }
+        let wording = self.receiver_wording_for(copy, position);
+        Err(crate::vm::errors::undefined_method_error_worded(
+            "initialize_copy",
+            copy,
+            std::slice::from_ref(original),
+            wording,
+            position,
+        ))
     }
 }

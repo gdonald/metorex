@@ -1,6 +1,7 @@
 # What the object space can say about the objects in it. Metorex frees an
 # object when the last reference to it goes, so the sizes reported here are
-# counted from what an object holds rather than measured in the heap.
+# counted from what an object holds rather than measured in the heap, with
+# what a C type's size function reports for the pointer an object wraps.
 module ObjectSpace
   module_function
 
@@ -15,7 +16,7 @@ module ObjectSpace
     end
     counted += object.size * 8 if object.is_a?(Array)
     counted += object.length if object.is_a?(String)
-    counted
+    counted + __wrapped_size__(object)
   end
 
   # What every object of a kind holds between them. Metorex counts what the

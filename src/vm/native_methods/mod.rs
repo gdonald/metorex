@@ -83,7 +83,8 @@ pub(crate) use enumerators::*;
 pub(crate) use names::*;
 pub(crate) use subclasses::*;
 
-pub(crate) use int_methods::{RoundingMode, exact_ratio, split_rounding_mode};
+pub(crate) use exception_methods::EVERY_EXCEPTION_METHOD;
+pub(crate) use int_methods::{RoundingMode, exact_ratio, from_big, split_rounding_mode};
 
 /// Multiply by a power of two in steps small enough that each factor is a
 /// Float, so an exponent far outside the Float range still scales correctly.

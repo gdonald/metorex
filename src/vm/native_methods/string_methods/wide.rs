@@ -1,20 +1,23 @@
 // Encodings that spell a character in more than one byte.
 
+/// Whether a string holds one character per byte rather than text: one
+/// built from bytes, one tagged binary, or one in an encoding that spells a
+/// character in more than one byte.
+pub(crate) fn bytes_are_characters(string_value: &crate::object::StringValue) -> bool {
+    string_value.holds_bytes()
+        || match string_value.encoding_name().as_str() {
+            "ASCII-8BIT" | "BINARY" => true,
+            named => wide_encoding(named).is_some(),
+        }
+}
+
 /// The bytes a string stands for. A string tagged binary holds one character
 /// per byte, so its characters are its bytes rather than their UTF-8 form.
 pub(crate) fn binary_bytes(string_value: &crate::object::StringValue) -> Vec<u8> {
-    if string_value.holds_bytes() {
+    if bytes_are_characters(string_value) {
         return crate::vm::native_methods::pack_format::string_to_bytes(&string_value.as_str());
     }
-    match string_value.encoding_name().as_str() {
-        "ASCII-8BIT" | "BINARY" => {
-            crate::vm::native_methods::pack_format::string_to_bytes(&string_value.as_str())
-        }
-        named if wide_encoding(named).is_some() => {
-            crate::vm::native_methods::pack_format::string_to_bytes(&string_value.as_str())
-        }
-        _ => string_value.as_str().as_bytes().to_vec(),
-    }
+    string_value.as_str().as_bytes().to_vec()
 }
 
 /// How an encoding lays a character out: the width of a code unit, whether
@@ -24,6 +27,13 @@ pub(crate) struct WideShape {
     unit: usize,
     big_endian: bool,
     marked: bool,
+}
+
+impl WideShape {
+    /// How many bytes one code unit takes.
+    pub(crate) fn unit(self) -> usize {
+        self.unit
+    }
 }
 
 /// The shape of an encoding that spells a character in more than one byte,

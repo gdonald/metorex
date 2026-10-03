@@ -402,51 +402,62 @@ impl VirtualMachine {
                         message: msg,
                     });
                 }
-                // Overwriting a bound value warns; replacing a pending
-                // autoload registration does not.
-                if class_rc.get_class_var(&const_name).is_some() {
-                    let msg = format!(
-                        "warning: already initialized constant {}::{}",
-                        class_rc.inspect_name(),
-                        const_name
-                    );
-                    self.emit_warning_to_stderr(&msg, position);
-                }
-                // Setting the constant cancels any pending autoload for it
-                // and clears any "loaded but unrealized" bookkeeping.
-                class_rc.remove_autoload(&const_name);
-                class_rc.clear_unrealized_autoload(&const_name);
-                class_rc.set_class_var(&const_name, arguments[1].clone());
-                let assign_file = self
-                    .reported_current_file()
-                    .map(|p| p.display().to_string())
-                    .unwrap_or_default();
-                class_rc.set_const_location(&const_name, assign_file, position.line as i64);
-                // Object's constants are top-level constants — publish to
-                // globals so bare references resolve.
-                if class_rc.name() == "Object" {
-                    self.globals_mut()
-                        .set(const_name.clone(), arguments[1].clone());
-                }
-                // An anonymous module/class value takes the constant path as
-                // its name, cascading into anonymous modules nested under it.
-                if let Object::Class(v) | Object::Module(v) = &arguments[1] {
-                    let qualified = if class_rc.name() == "Object" {
-                        const_name.clone()
-                    } else {
-                        format!("{}::{}", class_rc.inspect_name(), const_name)
-                    };
-                    v.assign_name_recursive(&qualified);
-                }
-                self.trigger_const_added_hook(
-                    Object::Class(Rc::clone(class_rc)),
-                    &const_name,
-                    position,
-                )?;
+                self.assign_constant(class_rc, &const_name, arguments[1].clone(), position)?;
                 return Ok(Answered(arguments[1].clone()));
             }
             _ => {}
         }
         Ok(Unclaimed)
+    }
+}
+
+impl VirtualMachine {
+    /// Binds `const_name` in `class_rc` to `value`, which is what `const_set`
+    /// does once it has checked the name.
+    pub(crate) fn assign_constant(
+        &mut self,
+        class_rc: &Rc<Class>,
+        const_name: &str,
+        value: Object,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        // Overwriting a bound value warns; replacing a pending
+        // autoload registration does not.
+        if class_rc.get_class_var(const_name).is_some() {
+            let msg = format!(
+                "warning: already initialized constant {}::{}",
+                class_rc.inspect_name(),
+                const_name
+            );
+            self.emit_warning_to_stderr(&msg, position);
+        }
+        // Setting the constant cancels any pending autoload for it
+        // and clears any "loaded but unrealized" bookkeeping.
+        class_rc.remove_autoload(const_name);
+        class_rc.clear_unrealized_autoload(const_name);
+        class_rc.set_class_var(const_name, value.clone());
+        let assign_file = self
+            .reported_current_file()
+            .map(|p| p.display().to_string())
+            .unwrap_or_default();
+        class_rc.set_const_location(const_name, assign_file, position.line as i64);
+        // Object's constants are top-level constants, published to globals
+        // so bare references resolve.
+        if class_rc.name() == "Object" {
+            self.globals_mut()
+                .set(const_name.to_string(), value.clone());
+        }
+        // An anonymous module/class value takes the constant path as
+        // its name, cascading into anonymous modules nested under it.
+        if let Object::Class(v) | Object::Module(v) = &value {
+            let qualified = if class_rc.name() == "Object" {
+                const_name.to_string()
+            } else {
+                format!("{}::{}", class_rc.inspect_name(), const_name)
+            };
+            v.assign_name_recursive(&qualified);
+        }
+        self.trigger_const_added_hook(Object::Class(Rc::clone(class_rc)), const_name, position)?;
+        Ok(())
     }
 }

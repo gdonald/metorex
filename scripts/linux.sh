@@ -71,13 +71,16 @@ fi
 # The image carries an account with the host's own ids, which the container
 # runs as. A test that asks what a file refuses reads differently for root.
 # Coverage watches the test process as it runs, which a container refuses by
-# default, so the two settings that let it are given here.
+# default, so the two settings that let it are given here. The C extensions
+# the spec suite compiles are kept per architecture, as the build is, since
+# one built for the other architecture cannot be loaded.
 exec docker run --rm "${terminal[@]}" \
   --platform "linux/$ARCH" \
   --cap-add=SYS_PTRACE \
   --security-opt seccomp=unconfined \
   --volume "$ROOT:/work" \
   --volume "metorex-linux-target-$ARCH:/work/target" \
+  --volume "metorex-linux-spec-ext-$ARCH:/work/ruby/spec/ext" \
   --volume "metorex-cargo-registry-$ARCH:/usr/local/cargo/registry" \
   --workdir /work \
   --env "METOREX_EMULATED=$EMULATED" \

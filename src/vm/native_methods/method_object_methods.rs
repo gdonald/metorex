@@ -631,6 +631,11 @@ pub(crate) fn method_parameter_list(method_obj: &crate::object::Method) -> Objec
 /// Ruby's arity: the count of required parameters, made negative when a call
 /// may pass more or fewer than that.
 fn method_arity(method_obj: &crate::object::Method) -> i64 {
+    // A method a C extension defined takes the count it was defined with,
+    // and either variadic form takes any number.
+    if let Some(function) = method_obj.c_function {
+        return i64::from(function.arity.max(-1));
+    }
     let splat_index = method_obj.variadic_param.as_ref().map(|(index, _)| *index);
     let mut required = 0i64;
     let mut optional_positional = false;

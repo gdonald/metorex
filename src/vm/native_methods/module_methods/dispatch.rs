@@ -421,12 +421,17 @@ impl VirtualMachine {
         // account of. A name either module carries itself wins, which is how
         // the objspace library adds to them, and so does a name every object
         // answers, since those say something true about the module itself.
+        // A method the program defined on Object or Kernel is one every
+        // object answers too.
         if (module_rc.name() == "GC" || module_rc.name() == "ObjectSpace")
             && method_name != "name"
             && !ANSWERED_BY_EVERY_OBJECT.contains(&method_name)
             && module_rc.find_method(method_name).is_none()
             && crate::vm::method_lookup::module_level_method(module_rc, method_name).is_none()
             && self.class_method_of(module_rc, method_name).is_none()
+            && self
+                .lookup_method(&Object::Module(Rc::clone(module_rc)), method_name)
+                .is_none_or(|(_, found)| found.body.is_empty() && found.captured_vars.is_none())
         {
             return Ok(Some(Object::Nil));
         }

@@ -81,10 +81,11 @@ RUN chmod -R a+rwX "$CARGO_HOME" "$RUSTUP_HOME" \
   && mkdir -p "$CARGO_HOME/registry" \
   && chown -R "$UID:$GID" "$CARGO_HOME/registry"
 
-# The build directory belongs to that account in the image, so the volume
-# mounted over it when the container runs takes the same ownership and the
-# build can write there.
-RUN mkdir -p /work/target && chown "$UID:$GID" /work /work/target
+# The build directory and the directory the spec suite compiles C extensions
+# into belong to that account in the image, so the volume mounted over each
+# when the container runs takes the same ownership and can be written to.
+RUN mkdir -p /work/target /work/ruby/spec/ext \
+  && chown "$UID:$GID" /work /work/target /work/ruby /work/ruby/spec /work/ruby/spec/ext
 
 USER builder
 WORKDIR /work

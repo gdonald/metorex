@@ -1,4 +1,6 @@
 class Pair
+  include Comparable
+
   def initialize(v)
     @v = v
   end

@@ -207,6 +207,7 @@ fn test_equals_method() {
         reads_as_proc: false,
         ruby2_keywords: std::rc::Rc::new(std::cell::Cell::new(false)),
         definee: None,
+        c_function: None,
     });
     let method2 = Rc::clone(&method1);
     let method3 = Rc::new(Method {
@@ -236,6 +237,7 @@ fn test_equals_method() {
         reads_as_proc: false,
         ruby2_keywords: std::rc::Rc::new(std::cell::Cell::new(false)),
         definee: None,
+        c_function: None,
     });
 
     let obj1 = Object::Method(method1);

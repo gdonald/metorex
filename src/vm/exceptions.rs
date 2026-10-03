@@ -186,7 +186,7 @@ impl VirtualMachine {
                 let existing = Object::Exception(Rc::clone(cell));
                 let handed: Vec<Object> = message.into_iter().collect();
                 let answered = self.send_to_object(existing, "exception", handed, position)?;
-                let Object::Exception(answered_cell) = &answered else {
+                let Object::Exception(_) = &answered else {
                     let msg = "exception object expected".to_string();
                     return Err(MetorexError::UncaughtException {
                         exception: Object::exception("TypeError", msg.clone()),
@@ -194,7 +194,6 @@ impl VirtualMachine {
                         message: msg,
                     });
                 };
-                answered_cell.borrow_mut().cause_settled = true;
                 answered
             }
             Some(Object::String(text)) => {
@@ -290,6 +289,16 @@ impl VirtualMachine {
                     cell.borrow_mut().cause = None;
                 }
                 Some(_) | None => {}
+            }
+            // An exception raised for the first time takes the one being
+            // handled where it is raised as its cause, never itself.
+            let unsettled = !cell.borrow().cause_settled && cell.borrow().cause.is_none();
+            if unsettled
+                && let Some(active @ Object::Exception(_)) = self.globals().get("!")
+                && let Object::Exception(active_cell) = &active
+                && !Rc::ptr_eq(active_cell, cell)
+            {
+                cell.borrow_mut().cause = Some(Box::new(active));
             }
         }
         if let Object::Exception(cell) = &exception {

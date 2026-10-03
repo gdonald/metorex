@@ -428,3 +428,24 @@ fn test_encodings_regexp_encodings_no_parens_execution() {
     let output = run_example("encodings/regexp_encodings_no_parens.rb");
     assert_eq!(output, REGEXP_ENCODINGS_OUTPUT);
 }
+
+/// The expected output of both `encodings/symbol_encodings` variants.
+const SYMBOL_ENCODINGS_OUTPUT: &str = concat!(
+    "#<Encoding:US-ASCII>\n",
+    "#<Encoding:UTF-8>\n",
+    "#<Encoding:UTF-16LE>\n",
+    "#<Encoding:UTF-16LE>\n",
+    "22\n",
+);
+
+#[test]
+fn test_encodings_symbol_encodings_execution() {
+    let output = run_example("encodings/symbol_encodings.rb");
+    assert_eq!(output, SYMBOL_ENCODINGS_OUTPUT);
+}
+
+#[test]
+fn test_encodings_symbol_encodings_parens_execution() {
+    let output = run_example("encodings/symbol_encodings_parens.rb");
+    assert_eq!(output, SYMBOL_ENCODINGS_OUTPUT);
+}

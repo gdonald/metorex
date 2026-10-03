@@ -21,9 +21,14 @@ impl VirtualMachine {
             message,
         };
         let Some((class, method)) = self.lookup_method(argument, "to_int") else {
+            if matches!(argument, Object::Nil) {
+                return Err(refuse(
+                    "no implicit conversion from nil to integer".to_string(),
+                ));
+            }
             return Err(refuse(format!(
                 "no implicit conversion of {} into Integer",
-                source
+                self.conversion_name(argument)
             )));
         };
         let converted =

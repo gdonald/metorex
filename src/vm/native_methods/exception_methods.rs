@@ -760,6 +760,21 @@ fn backtrace_type_error(value: &Object, position: Position) -> MetorexError {
     }
 }
 
+/// The methods every Exception answers natively, whatever its class.
+pub(crate) const EVERY_EXCEPTION_METHOD: &[&str] = &[
+    "message",
+    "detailed_message",
+    "full_message",
+    "to_s",
+    "inspect",
+    "backtrace",
+    "backtrace_locations",
+    "set_backtrace",
+    "cause",
+    "exception",
+    "==",
+];
+
 /// The methods an Exception answers natively. A class carries no entry for
 /// any of them, so `undef_method` reads this list to know they are there.
 pub(crate) const NATIVE_EXCEPTION_METHODS: &[&str] = &[

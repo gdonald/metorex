@@ -490,3 +490,19 @@ fn test_control_flow_case_clause_bodies_no_parens_execution() {
     let output = run_example("control_flow/case_clause_bodies_no_parens.rb");
     assert_eq!(output, CASE_CLAUSE_BODIES_OUTPUT);
 }
+
+/// The expected output of both `control_flow/break_inside_expression`
+/// variants.
+const BREAK_INSIDE_EXPRESSION_OUTPUT: &str = ":middle\n20\n:stopped\n[1, 2]\n";
+
+#[test]
+fn test_control_flow_break_inside_expression_execution() {
+    let output = run_example("control_flow/break_inside_expression.rb");
+    assert_eq!(output, BREAK_INSIDE_EXPRESSION_OUTPUT);
+}
+
+#[test]
+fn test_control_flow_break_inside_expression_no_parens_execution() {
+    let output = run_example("control_flow/break_inside_expression_no_parens.rb");
+    assert_eq!(output, BREAK_INSIDE_EXPRESSION_OUTPUT);
+}

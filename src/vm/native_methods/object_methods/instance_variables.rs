@@ -256,14 +256,7 @@ impl VirtualMachine {
                     Object::Instance(instance_rc) => {
                         let is_frozen = instance_rc.borrow().frozen;
                         if is_frozen {
-                            let class_name = instance_rc.borrow().class.name().to_string();
-                            let msg = format!("can't modify frozen {}", class_name);
-                            let exc = Object::exception("FrozenError", msg.clone());
-                            return Err(MetorexError::UncaughtException {
-                                exception: exc,
-                                location: position_to_location(position),
-                                message: msg,
-                            });
+                            return Err(self.frozen_modification_error(receiver, position));
                         }
                         instance_rc.borrow_mut().set_var(var_name, value.clone());
                         Ok(Some(value))

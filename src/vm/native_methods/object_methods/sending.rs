@@ -89,7 +89,7 @@ impl VirtualMachine {
                             "{} method '{}' called for an instance of {}",
                             named,
                             method,
-                            self.builtins().class_of(receiver).name()
+                            self.builtins().class_of(receiver).inspect_name()
                         );
                         let exception = Object::exception("NoMethodError", message.clone());
                         if let Object::Exception(cell) = &exception {

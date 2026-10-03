@@ -304,7 +304,7 @@ impl VirtualMachine {
                         "{} method '{}' called for an instance of {}",
                         self.visibility_word(&receiver, method_name),
                         method_name,
-                        class.name()
+                        class.inspect_name()
                     );
                     let exc = crate::vm::errors::no_method_error(
                         &msg,
@@ -529,6 +529,9 @@ impl VirtualMachine {
                     (matches!(receiver, Object::Method(_))
                         && crate::vm::native_methods::method_object_methods::NATIVE_METHOD_OBJECT_METHODS
                             .contains(&name))
+                        || (matches!(receiver, Object::Exception(_))
+                            && crate::vm::native_methods::EVERY_EXCEPTION_METHOD
+                                .contains(&name))
                         || crate::vm::native_methods::is_native_kernel_method(name)
                         || (self.builtins().class_of(receiver).name() == "File"
                             && crate::vm::native_methods::class_methods::is_native_io_method(name))
@@ -573,6 +576,13 @@ impl VirtualMachine {
         // rest of Kernel's surface is not reported here yet: turning it all on
         // changes which names mspec's mocks alias and breaks Module#autoload.
         if name == "respond_to_missing?" || (name == "new" && matches!(receiver, Object::Class(_)))
+        {
+            return true;
+        }
+        // An exception class builds one with `exception` as well as `new`.
+        if name == "exception"
+            && matches!(receiver, Object::Class(_))
+            && self.is_exception_class(class_rc)
         {
             return true;
         }

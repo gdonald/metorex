@@ -99,7 +99,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let member = resolve_member(members, &arguments[0], class_rc, position)?;
+                let member = resolve_member(members, &arguments[0], position)?;
                 Ok(Some(member_value(receiver, &member)))
             }
             "[]=" => {
@@ -111,7 +111,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let member = resolve_member(members, &arguments[0], class_rc, position)?;
+                let member = resolve_member(members, &arguments[0], position)?;
                 if self.object_is_frozen(receiver) {
                     return Err(self.frozen_modification_error(receiver, position));
                 }
@@ -127,7 +127,7 @@ impl VirtualMachine {
                 if arguments.is_empty() {
                     return Err(method_argument_error(method_name, 1, 0, position));
                 }
-                let member = match resolve_member(members, &arguments[0], class_rc, position) {
+                let member = match resolve_member(members, &arguments[0], position) {
                     Ok(member) => member,
                     Err(_) => return Ok(Some(Object::Nil)),
                 };

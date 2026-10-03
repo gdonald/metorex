@@ -24,3 +24,8 @@ pub fn record(name: &str) {
 pub fn all() -> Vec<String> {
     NAMES.with(|held| held.borrow().iter().cloned().collect())
 }
+
+/// Whether a symbol of this name has been made, without making one.
+pub fn contains(name: &str) -> bool {
+    NAMES.with(|held| held.borrow().contains(name))
+}

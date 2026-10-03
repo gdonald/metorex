@@ -61,7 +61,13 @@ impl VirtualMachine {
         receiver: &Object,
         position: Position,
     ) -> MetorexError {
-        let class_name = crate::vm::native_methods::define_method::ruby_class_name(receiver);
+        let class_name = match self.send_to_object(receiver.clone(), "class", Vec::new(), position)
+        {
+            Ok(class) => class.to_string(),
+            Err(_) => {
+                crate::vm::native_methods::define_method::ruby_class_name(receiver).to_string()
+            }
+        };
         // `inspect` may itself modify the object, which raises here again.
         // Ruby shows `...` rather than recursing.
         let rendered = if self.rendering_frozen_error {

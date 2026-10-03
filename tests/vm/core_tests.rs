@@ -444,6 +444,7 @@ fn comparable_spaceship_fallback_for_less_than() {
     // fallback derives < from the <=> result.
     let result = run(r#"
 class Sortable
+  include Comparable
   def initialize(v)
     @v = v
   end
@@ -466,6 +467,7 @@ fn comparable_spaceship_fallback_for_greater_than() {
     // dispatch.rs line 159: derive > from <=> result when > is not defined.
     let result = run(r#"
 class Ranked
+  include Comparable
   def initialize(v)
     @v = v
   end

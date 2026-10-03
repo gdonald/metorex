@@ -495,6 +495,18 @@ impl VirtualMachine {
                                     again = true;
                                     break;
                                 }
+                                // A `break` raised from inside an expression,
+                                // or by a C function called from this body,
+                                // that has not yet passed a block boundary
+                                // belongs to this block.
+                                Err(MetorexError::BlockBreak {
+                                    value,
+                                    home_frame: None,
+                                    ..
+                                }) => ControlFlow::Break {
+                                    value,
+                                    position: statement.position(),
+                                },
                                 other => other?,
                             };
                             match flow {

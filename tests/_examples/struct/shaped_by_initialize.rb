@@ -13,6 +13,12 @@ p [here.x, here.y]
 here.instance_eval { initialize 5 }
 p [here.x, here.y]
 
+begin
+  here.instance_eval { initialize 6, 7, 8 }
+rescue ArgumentError => error
+  p error.message
+end
+
 class Tagged < Struct
   attr_reader :tag
 

@@ -68,6 +68,7 @@ x
 fn comparable_less_from_spaceship() {
     let result = run(r#"
 class Weight
+  include Comparable
   def initialize(n)
     @n = n
   end
@@ -89,6 +90,7 @@ a < b
 fn comparable_greater_equal_from_spaceship() {
     let result = run(r#"
 class Weight
+  include Comparable
   def initialize(n)
     @n = n
   end
@@ -110,6 +112,7 @@ a >= b
 fn comparable_less_equal_from_spaceship() {
     let result = run(r#"
 class Weight
+  include Comparable
   def initialize(n)
     @n = n
   end
@@ -744,6 +747,7 @@ fn clamp_with_incomparable_types_errors_or_returns_self() {
 fn comparable_less_via_spaceship_on_instance() {
     let result = run(r#"
 class Ord
+  include Comparable
   def initialize(n)
     @n = n
   end
@@ -760,6 +764,7 @@ Ord.new(1) < Ord.new(2)
 fn comparable_greater_via_spaceship_on_instance() {
     let result = run(r#"
 class Ord2
+  include Comparable
   def initialize(n); @n = n; end
   def <=>(other); @n - other.instance_variable_get("@n"); end
 end
@@ -772,6 +777,7 @@ Ord2.new(5) > Ord2.new(3)
 fn comparable_less_equal_via_spaceship_on_instance() {
     let result = run(r#"
 class Ord3
+  include Comparable
   def initialize(n); @n = n; end
   def <=>(other); @n - other.instance_variable_get("@n"); end
 end
@@ -784,6 +790,7 @@ Ord3.new(5) <= Ord3.new(5)
 fn comparable_greater_equal_via_spaceship_on_instance() {
     let result = run(r#"
 class Ord4
+  include Comparable
   def initialize(n); @n = n; end
   def <=>(other); @n - other.instance_variable_get("@n"); end
 end
@@ -798,6 +805,7 @@ fn comparable_less_with_spaceship_returning_nil_raises() {
     let err = run_err(
         r#"
 class Bad
+  include Comparable
   def <=>(other)
     nil
   end
@@ -813,6 +821,7 @@ fn comparable_less_with_float_spaceship_result() {
     // <=> returning a Float (line 373) — the ordering still works.
     let result = run(r#"
 class FltOrd
+  include Comparable
   def initialize(f); @f = f; end
   def <=>(other); @f - other.instance_variable_get("@f"); end
 end

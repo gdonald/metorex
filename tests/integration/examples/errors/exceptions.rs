@@ -187,7 +187,8 @@ fn test_errors_exception_method_copies_execution() {
         "RuntimeError\nsecond\nfirst\nfalse\n",
         "Tagged\n:boom\nmessage\n",
         "built\nException\nRuntimeError\n",
-        "RuntimeError\n\"\"\n"
+        "RuntimeError\n\"\"\n",
+        "true\ntrue\n"
     );
     let output = run_example("errors/exception_method/copies.rb");
     assert_eq!(output, expected);
@@ -200,7 +201,8 @@ fn test_errors_exception_method_copies_parens_execution() {
         "RuntimeError\nsecond\nfirst\nfalse\n",
         "Tagged\n:boom\nmessage\n",
         "built\nException\nRuntimeError\n",
-        "RuntimeError\n\"\"\n"
+        "RuntimeError\n\"\"\n",
+        "true\ntrue\n"
     );
     let output = run_example("errors/exception_method/copies_parens.rb");
     assert_eq!(output, expected);

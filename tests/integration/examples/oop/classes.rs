@@ -115,7 +115,7 @@ fn test_oop_set_temporary_name_parens_execution() {
 
 #[test]
 fn test_struct_basics_execution() {
-    let expected = "1\n2\n[1, 2]\n[:x, :y]\n2\n1\n2\n1\n10\n20\n#<struct Point x=10, y=20>\ntrue\nfalse\nnil\n[:x, :y]\n[10, 20]\n10\n20\nx=10\ny=20\n42\ntrue\nexample.com\n80\nstruct size differs\nno member 'missing' in struct Point\n1\n10\n[10, 20]\na\n[\"a\", \"b\"]\n#<struct Pair left=\"a\", right=\"b\">\n";
+    let expected = "1\n2\n[1, 2]\n[:x, :y]\n2\n1\n2\n1\n10\n20\n#<struct Point x=10, y=20>\ntrue\nfalse\nnil\n[:x, :y]\n[10, 20]\n10\n20\nx=10\ny=20\n42\ntrue\nexample.com\n80\nstruct size differs\nno member 'missing' in struct\n1\n10\n[10, 20]\na\n[\"a\", \"b\"]\n#<struct Pair left=\"a\", right=\"b\">\n";
     let output = run_example("oop/struct_basics.rb");
     assert_eq!(output, expected);
 }

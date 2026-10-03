@@ -1265,6 +1265,36 @@ fn test_stdlib_rubygems_interaction_no_parens_execution() {
     assert_eq!(output, RUBYGEMS_INTERACTION_OUTPUT);
 }
 
+/// The expected output of both `stdlib/rubygems_owner` variants.
+const RUBYGEMS_OWNER_OUTPUT: &str = "[\"owner\", \"Manage gem owners of a gem on the push server\", {}]\n[\"Owners for gem: rake\", \"- .]2;title.\", \"- maintainer\", \"- 7\"]\n[\"runtime\"]\n";
+
+#[test]
+fn test_stdlib_rubygems_owner_execution() {
+    let output = run_example("stdlib/rubygems_owner.rb");
+    assert_eq!(output, RUBYGEMS_OWNER_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_rubygems_owner_no_parens_execution() {
+    let output = run_example("stdlib/rubygems_owner_no_parens.rb");
+    assert_eq!(output, RUBYGEMS_OWNER_OUTPUT);
+}
+
+/// The expected output of both `stdlib/mkmf_module` variants.
+const MKMF_MODULE_OUTPUT: &str = "MakeMakefile\ntrue\n";
+
+#[test]
+fn test_stdlib_mkmf_module_execution() {
+    let output = run_example("stdlib/mkmf_module.rb");
+    assert_eq!(output, MKMF_MODULE_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_mkmf_module_no_parens_execution() {
+    let output = run_example("stdlib/mkmf_module_no_parens.rb");
+    assert_eq!(output, MKMF_MODULE_OUTPUT);
+}
+
 /// The expected output of both `stdlib/prime_generators` variants.
 const PRIME_GENERATORS_OUTPUT: &str = "[2, 3, 5, 7, 11, 13, 17, 19]\n19\n[2, 3, 5, 7, 11, 13]\n[2, 3, 5]\n2\n2\n[2, 3, 5, 7, 11, 13, 17, 19, 23, 29]\n[2, 3, 5, 7, 11, 13, 17, 19]\n[[2, 1], [3, 2], [5, 3]]\ntrue\nfalse\n[[2, 3], [3, 2], [5, 1]]\n360\ntrue\n[true, true, false]\n[1, 2]\n[2, 3, 4, 5]\n[20, 30]\n";
 

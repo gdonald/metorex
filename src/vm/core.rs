@@ -46,6 +46,9 @@ pub struct VirtualMachine {
     /// The second names globals have been given, each pointing at the one
     /// it stands for. `alias $ERROR_INFO $!` records one here.
     pub(crate) global_aliases: std::collections::HashMap<String, String>,
+    /// The globals a C extension defined, read and written through the
+    /// functions it gave.
+    pub(crate) hooked_globals: std::collections::HashMap<String, crate::vm::capi::HookedGlobal>,
     pub(crate) heap: Rc<RefCell<Heap>>,
     pub(crate) builtins: BuiltinClasses,
     pub(crate) current_file: Option<PathBuf>,
@@ -496,6 +499,7 @@ impl VirtualMachine {
         let mut vm = Self {
             // `$-0` is `$/` under the flag's name, and so on for the others
             // the command line spells with a dash.
+            hooked_globals: std::collections::HashMap::new(),
             global_aliases: [
                 ("-0", "/"),
                 ("-v", "VERBOSE"),

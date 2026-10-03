@@ -137,38 +137,31 @@ impl VirtualMachine {
                 }
             }
         }
-        for dir in &search_dirs {
-            if named_outright || found_path.is_some() {
-                break;
-            }
-            // A directory on the load path is named by the file it
-            // points at, while the name asked for is left as written.
-            let base = std::path::PathBuf::from(dir);
-            let base = base.canonicalize().unwrap_or(base);
-            // Prefer `.rb` file over a directory of the same name.
-            for candidate in require_candidates(&require_name) {
-                let candidate = base.join(candidate);
-                if candidate.is_file() {
-                    found_path = Some(candidate);
-                    break;
+        // Each ending is looked for along the whole load path before the
+        // next, so a `.rb` file anywhere on it wins over a C extension in
+        // an earlier directory, and either over a directory of the name.
+        if !named_outright && found_path.is_none() {
+            'search: for candidate in require_candidates(&require_name) {
+                for dir in &search_dirs {
+                    // A directory on the load path is named by the file it
+                    // points at, while the name asked for is left as written.
+                    let base = std::path::PathBuf::from(dir);
+                    let base = base.canonicalize().unwrap_or(base);
+                    let path = base.join(&candidate);
+                    if path.is_file() {
+                        found_path = Some(path);
+                        break 'search;
+                    }
                 }
-            }
-            if found_path.is_some() {
-                break;
             }
         }
         // A file built for the machine rather than written in Ruby is
         // not something metorex can run. Ruby reports what the loader
         // said rather than the path it was looking for, so the error
         // names no path at all.
-        let mut named_a_native_extension = false;
-        if found_path
+        let mut named_a_native_extension = found_path
             .as_ref()
-            .is_some_and(|held| names_a_native_extension(held))
-        {
-            found_path = None;
-            named_a_native_extension = true;
-        }
+            .is_some_and(|held| names_a_native_extension(held));
         // A path with no extension of its own may still name one of
         // those files, and naming it is refused the same way.
         if found_path.is_none() && !named_a_native_extension {
@@ -263,6 +256,27 @@ impl VirtualMachine {
         // whatever spelling it is listed under.
         if was_already_loaded {
             return Ok(Object::Bool(false));
+        }
+        if names_a_native_extension(&resolved) {
+            self.mark_file_loaded(canonical_path.clone());
+            let listed = standing_for.to_string_lossy().into_owned();
+            let features = match self.globals().get("\"") {
+                Some(Object::Array(features)) => Some(features),
+                _ => None,
+            };
+            if let Some(features) = &features {
+                features.borrow_mut().push(Object::string(listed.clone()));
+            }
+            if let Err(error) = self.load_native_extension(&canonical_path, position) {
+                self.unmark_file_loaded(&canonical_path);
+                if let Some(features) = &features {
+                    features.borrow_mut().retain(
+                        |feature| !matches!(feature, Object::String(held) if *held.as_str() == *listed),
+                    );
+                }
+                return Err(error);
+            }
+            return Ok(Object::Bool(true));
         }
         self.load_call_site = self
             .current_source_file

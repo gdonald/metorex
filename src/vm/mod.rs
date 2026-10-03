@@ -6,6 +6,7 @@ pub(crate) mod allocation_sites;
 mod begin_rescue;
 mod block_execution;
 mod call_frame;
+pub(crate) mod capi;
 mod class_execution;
 mod control_flow;
 mod control_structures;

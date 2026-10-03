@@ -4,6 +4,7 @@ mod algorithms;
 mod array_methods;
 mod basics;
 mod builtins;
+mod c_extensions;
 mod callables;
 mod command_options;
 mod control_flow;

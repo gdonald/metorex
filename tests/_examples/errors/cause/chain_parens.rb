@@ -51,3 +51,39 @@ begin
 rescue RuntimeError => error
   puts(error.cause.inspect)
 end
+
+# An exception made before the rescue and raised by a method its body calls
+# records the exception the rescue was handling.
+def raise_from_method(error)
+  Kernel.raise(error)
+end
+
+begin
+  begin
+    raise "handled first"
+  rescue
+    raise(RangeError.new("made in the rescue"))
+  end
+rescue RangeError => error
+  puts(error.cause.inspect)
+end
+
+begin
+  begin
+    raise "handled second"
+  rescue
+    Kernel.raise(RangeError.new("raised through Kernel"))
+  end
+rescue RangeError => error
+  puts(error.cause.inspect)
+end
+
+begin
+  begin
+    raise "handled first"
+  rescue
+    raise_from_method(RangeError.new("made earlier"))
+  end
+rescue RangeError => error
+  puts(error.cause.message)
+end

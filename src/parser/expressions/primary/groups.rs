@@ -23,7 +23,13 @@ impl Parser {
         // an argument written without parentheses or a modifier's condition.
         let held_paren_less = std::mem::take(&mut self.paren_less_arg_depth);
         let held_condition = std::mem::take(&mut self.modifier_condition_depth);
+        // A `:` inside the group cannot be the separator of a ternary the
+        // group sits in, so `cond ? (break :a) : b` reads `:a` as a symbol.
+        let held_ternary = std::mem::take(&mut self.ternary_depth);
+        let held_ternary_branch = std::mem::take(&mut self.ternary_branch_depth);
         let parsed = self.parse_paren_group_body(token_position);
+        self.ternary_depth = held_ternary;
+        self.ternary_branch_depth = held_ternary_branch;
         self.assignment_rhs_depth = held;
         self.call_argument_depth = held_arguments;
         self.refuse_paren_less_args = held_refusal;

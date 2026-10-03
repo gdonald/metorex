@@ -94,3 +94,41 @@ fn test_oop_clone_semantics_parens_execution() {
     let output = run_example("oop/clone_semantics_parens.rb");
     assert_eq!(output, expected);
 }
+
+/// The expected output of both `oop/undefined_copy_hook` variants.
+const UNDEFINED_COPY_HOOK_OUTPUT: &str = concat!(
+    "undefined method 'initialize_copy' for an instance of Uncopyable\n",
+    "undefined method 'initialize_copy' for an instance of Uncopyable\n",
+);
+
+#[test]
+fn test_oop_undefined_copy_hook_execution() {
+    let output = run_example("oop/undefined_copy_hook.rb");
+    assert_eq!(output, UNDEFINED_COPY_HOOK_OUTPUT);
+}
+
+#[test]
+fn test_oop_undefined_copy_hook_no_parens_execution() {
+    let output = run_example("oop/undefined_copy_hook_no_parens.rb");
+    assert_eq!(output, UNDEFINED_COPY_HOOK_OUTPUT);
+}
+
+/// The expected output of both `oop/module_superclass/undefined` variants.
+const MODULE_SUPERCLASS_OUTPUT: &str = concat!(
+    "false\n",
+    "undefined method 'superclass' for module Greetings\n",
+    "Object\n",
+    "nil\n",
+);
+
+#[test]
+fn test_oop_module_superclass_undefined_execution() {
+    let output = run_example("oop/module_superclass/undefined.rb");
+    assert_eq!(output, MODULE_SUPERCLASS_OUTPUT);
+}
+
+#[test]
+fn test_oop_module_superclass_undefined_parens_execution() {
+    let output = run_example("oop/module_superclass/undefined_parens.rb");
+    assert_eq!(output, MODULE_SUPERCLASS_OUTPUT);
+}

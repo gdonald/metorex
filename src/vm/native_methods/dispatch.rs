@@ -471,8 +471,13 @@ impl VirtualMachine {
                 // The names a Symbol answers for itself: `id2name` and `name`
                 // give its characters, and `intern` and `to_sym` give it back.
                 // A symbol named in ASCII is written in ASCII, and one with
-                // any other character is written in UTF-8.
-                let named_in = if text.as_str().is_ascii() {
+                // any other character is written in UTF-8. A symbol in an
+                // encoding that is not ASCII-compatible keeps its encoding
+                // whatever it spells.
+                let ascii_compatible =
+                    crate::vm::native_methods::string_methods::wide_encoding(&text.encoding_name())
+                        .is_none();
+                let named_in = if ascii_compatible && text.as_str().is_ascii() {
                     "US-ASCII".to_string()
                 } else {
                     text.encoding_name()

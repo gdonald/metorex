@@ -115,10 +115,27 @@ impl VirtualMachine {
             return self.invoke_method(class, method, left, vec![name, right], position);
         }
 
+        // Object defines no comparison operators; Comparable adds them on top
+        // of `<=>`. An object of the program's own that is not Comparable has
+        // no such method at all.
+        if matches!(left, Object::Instance(_))
+            && let Some(operator) = comparison_operator_name(op)
+            && !self.is_comparable(&left)
+        {
+            let wording = self.receiver_wording_for(&left, position);
+            return Err(crate::vm::errors::undefined_method_error_worded(
+                operator,
+                &left,
+                std::slice::from_ref(&right),
+                wording,
+                position,
+            ));
+        }
+
         // For instances, try dispatching to <=> method (Comparable protocol)
         if let Some((class, method)) = self.lookup_method(&left, "<=>") {
-            let left_type = left.type_name().to_string();
-            let right_type = right.type_name().to_string();
+            let left_type = self.class_name_for_comparison(&left, position);
+            let right_type = self.comparison_subject(&right, position);
             let cmp_result = self.invoke_method(class, method, left, vec![right], position)?;
             let cmp_value: Option<f64> = match &cmp_result {
                 Object::Int(n) => Some(*n as f64),
@@ -537,4 +554,42 @@ thread_local! {
     /// answers 0 instead of recursing forever.
     static ORDERING: std::cell::RefCell<Vec<(usize, usize)>> =
         const { std::cell::RefCell::new(Vec::new()) };
+}
+
+impl VirtualMachine {
+    /// Whether the object is a kind of Comparable, through its class or a
+    /// module it was extended with.
+    pub(crate) fn is_comparable(&self, object: &Object) -> bool {
+        let Some(Object::Module(comparable)) = self.globals().get("Comparable") else {
+            return false;
+        };
+        self.builtins().is_instance_of(object, &comparable)
+    }
+
+    /// The name of the object's class, as a failed comparison names it.
+    fn class_name_for_comparison(&mut self, object: &Object, position: Position) -> String {
+        match self.send_to_object(object.clone(), "class", Vec::new(), position) {
+            Ok(class) => class.to_string(),
+            Err(_) => object.type_name().to_string(),
+        }
+    }
+
+    /// How a failed comparison names the other side, as MRI's `rb_cmperr`
+    /// does: an immediate value or a Float by its `inspect`, anything else by
+    /// its class.
+    fn comparison_subject(&mut self, object: &Object, position: Position) -> String {
+        match object {
+            Object::Nil
+            | Object::Bool(_)
+            | Object::Int(_)
+            | Object::Symbol(_)
+            | Object::Float(_) => {
+                match self.send_to_object(object.clone(), "inspect", Vec::new(), position) {
+                    Ok(Object::String(text)) => text.as_str().to_string(),
+                    _ => object.to_string(),
+                }
+            }
+            other => self.class_name_for_comparison(other, position),
+        }
+    }
 }

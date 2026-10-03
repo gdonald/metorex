@@ -149,73 +149,7 @@ impl VirtualMachine {
                 self.eval_class_var_read(name, *position)
             }
             Expression::GlobalVariable { name, position } => {
-                // `$?` is the status of the last child waited for, which lives
-                // with the process rather than in the global table.
-                // A global given a second name reads what the first holds,
-                // whatever that first name is: `$MATCH` reads the match `$&`
-                // names the same way `$&` does.
-                let name = self
-                    .global_aliases
-                    .get(name)
-                    .cloned()
-                    .unwrap_or_else(|| name.clone());
-                if name == "?" {
-                    return Ok(self.process_last_status());
-                }
-                // `$=` once made matches ignore case, and reading it says it
-                // no longer does once the deprecated category is asked for.
-                if name == "=" && self.warning_category_enabled("deprecated") {
-                    let message = format!(
-                        "{}variable $= is no longer effective\n",
-                        self.warning_prefix(0, *position)
-                    );
-                    self.warn_through_warning_module(message, *position)?;
-                }
-                // A number past what a capture can be numbered names no
-                // group at all, which Ruby says so about and reads as nil.
-                if number_variable_is_too_big(&name) {
-                    let at = (
-                        self.current_source_file.clone().unwrap_or_default(),
-                        position.line,
-                        position.column,
-                    );
-                    if self.reported_big_number_variables.insert(at) {
-                        let message = format!(
-                            "warning: '${name}' is too big for a number variable, always nil"
-                        );
-                        self.emit_warning_to_stderr(&message, *position);
-                    }
-                    return Ok(Object::Nil);
-                }
-                // `$1` through `$9` name the captures of the last match, and
-                // `` $` `` and `$'` the text on either side of it.
-                if let Some(group) = crate::vm::native_methods::capture_reference(&name) {
-                    return self.last_match_part(group, *position);
-                }
-                // `$@` is where the exception being handled was raised, which
-                // is the backtrace that exception carries.
-                if name == "@" {
-                    let raised = self.globals().get("!").unwrap_or(Object::Nil);
-                    if matches!(raised, Object::Nil) {
-                        return Ok(Object::Nil);
-                    }
-                    return self.send_to_object(raised, "backtrace", Vec::new(), *position);
-                }
-                match self.globals().get(&name) {
-                    Some(held) => Ok(held),
-                    None => {
-                        // Reading a global nothing has set says so in
-                        // verbose mode.
-                        if matches!(self.globals().get("VERBOSE"), Some(Object::Bool(true))) {
-                            let message = format!(
-                                "{}global variable '${name}' not initialized\n",
-                                self.warning_prefix(0, *position)
-                            );
-                            self.warn_through_warning_module(message, *position)?;
-                        }
-                        Ok(Object::Nil)
-                    }
-                }
+                self.read_global_variable(name, *position)
             }
             Expression::MagicFile { .. } => {
                 // The file the code was written in, which is not the file
@@ -857,14 +791,14 @@ impl VirtualMachine {
             {
                 return Ok(result);
             }
-            // Comparable-style fallback: if the class defines `<=>`,
-            // derive `<`, `<=`, `>`, `>=` from its result. (Ruby gets
-            // these from the Comparable mixin; metorex synthesizes
-            // them.)
+            // Comparable derives `<`, `<=`, `>` and `>=` from `<=>` for a
+            // class that includes it; metorex answers them here rather than
+            // through methods on the module.
             if matches!(
                 op,
                 BinaryOp::Less | BinaryOp::LessEqual | BinaryOp::Greater | BinaryOp::GreaterEqual
-            ) && let Some((class, spaceship)) = self.lookup_method(&left_value, "<=>")
+            ) && (!matches!(left_value, Object::Instance(_)) || self.is_comparable(&left_value))
+                && let Some((class, spaceship)) = self.lookup_method(&left_value, "<=>")
             {
                 let cmp = self.invoke_method(
                     class,
@@ -1008,4 +942,85 @@ fn number_variable_is_too_big(name: &str) -> bool {
         return false;
     }
     name.parse::<u128>().is_ok_and(|held| held > HIGHEST_GROUP)
+}
+
+impl VirtualMachine {
+    /// The value the global `$name` holds, read the way `$name` written in
+    /// the program reads it.
+    pub(crate) fn read_global_variable(
+        &mut self,
+        name: &str,
+        position: crate::lexer::Position,
+    ) -> Result<Object, MetorexError> {
+        // `$?` is the status of the last child waited for, which lives
+        // with the process rather than in the global table.
+        // A global given a second name reads what the first holds,
+        // whatever that first name is: `$MATCH` reads the match `$&`
+        // names the same way `$&` does.
+        let name = self
+            .global_aliases
+            .get(name)
+            .cloned()
+            .unwrap_or_else(|| name.to_string());
+        // A global a C extension defined is read through its getter.
+        if let Some(hooked) = self.hooked_globals.get(&name).copied() {
+            return crate::vm::capi::read_hooked_global(self, &name, hooked, position);
+        }
+        if name == "?" {
+            return Ok(self.process_last_status());
+        }
+        // `$=` once made matches ignore case, and reading it says it
+        // no longer does once the deprecated category is asked for.
+        if name == "=" && self.warning_category_enabled("deprecated") {
+            let message = format!(
+                "{}variable $= is no longer effective\n",
+                self.warning_prefix(0, position)
+            );
+            self.warn_through_warning_module(message, position)?;
+        }
+        // A number past what a capture can be numbered names no
+        // group at all, which Ruby says so about and reads as nil.
+        if number_variable_is_too_big(&name) {
+            let at = (
+                self.current_source_file.clone().unwrap_or_default(),
+                position.line,
+                position.column,
+            );
+            if self.reported_big_number_variables.insert(at) {
+                let message =
+                    format!("warning: '${name}' is too big for a number variable, always nil");
+                self.emit_warning_to_stderr(&message, position);
+            }
+            return Ok(Object::Nil);
+        }
+        // `$1` through `$9` name the captures of the last match, and
+        // `` $` `` and `$'` the text on either side of it.
+        if let Some(group) = crate::vm::native_methods::capture_reference(&name) {
+            return self.last_match_part(group, position);
+        }
+        // `$@` is where the exception being handled was raised, which
+        // is the backtrace that exception carries.
+        if name == "@" {
+            let raised = self.globals().get("!").unwrap_or(Object::Nil);
+            if matches!(raised, Object::Nil) {
+                return Ok(Object::Nil);
+            }
+            return self.send_to_object(raised, "backtrace", Vec::new(), position);
+        }
+        match self.globals().get(&name) {
+            Some(held) => Ok(held),
+            None => {
+                // Reading a global nothing has set says so in
+                // verbose mode.
+                if matches!(self.globals().get("VERBOSE"), Some(Object::Bool(true))) {
+                    let message = format!(
+                        "{}global variable '${name}' not initialized\n",
+                        self.warning_prefix(0, position)
+                    );
+                    self.warn_through_warning_module(message, position)?;
+                }
+                Ok(Object::Nil)
+            }
+        }
+    }
 }

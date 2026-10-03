@@ -90,12 +90,10 @@ impl VirtualMachine {
             passed.extend(arguments);
             return self.invoke_method(owner, handler, receiver, passed, position);
         }
-        let message = format!("undefined method '{}' for {}", name, receiver.type_name());
-        Err(MetorexError::UncaughtException {
-            exception: Object::exception("NoMethodError", message.clone()),
-            location: crate::vm::utils::position_to_location(position),
-            message,
-        })
+        let wording = self.receiver_wording_for(&receiver, position);
+        Err(crate::vm::errors::undefined_method_error_worded(
+            name, &receiver, &arguments, wording, position,
+        ))
     }
 
     /// Give a freshly built `Interrupt` the signal it stands for. Its
@@ -767,9 +765,12 @@ impl VirtualMachine {
             return Ok(exception);
         }
 
-        // Create a new instance of the class
-        let instance = crate::object::Instance::new(Rc::clone(&class));
-        let instance_obj = Object::Instance(Rc::clone(&instance));
+        // Create a new instance of the class, with the allocator a C
+        // extension gave it when there is one.
+        let instance_obj = match self.allocate_through_c(&class, position)? {
+            Some(made) => made,
+            None => Object::Instance(crate::object::Instance::new(Rc::clone(&class))),
+        };
 
         // Look for an 'initialize' method and call it if present. A class
         // without one still consumes the block `new` was given, the way

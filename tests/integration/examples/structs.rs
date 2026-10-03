@@ -17,7 +17,8 @@ fn test_struct_member_methods_no_parens_execution() {
 }
 
 /// The expected output of both `struct/shaped_by_initialize` variants.
-const SHAPED_BY_INITIALIZE_OUTPUT: &str = "true\n[3, 4]\n[5, nil]\n[\"held\", :tagged]\ntrue\n";
+const SHAPED_BY_INITIALIZE_OUTPUT: &str =
+    "true\n[3, 4]\n[5, nil]\n\"struct size differs\"\n[\"held\", :tagged]\ntrue\n";
 
 #[test]
 fn test_struct_shaped_by_initialize_execution() {

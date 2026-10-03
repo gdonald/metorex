@@ -102,6 +102,17 @@ impl VirtualMachine {
             ));
         }
 
+        if let Some(function) = method.c_function {
+            return self.call_c_function(
+                function,
+                class,
+                method_name,
+                receiver,
+                arguments,
+                position,
+            );
+        }
+
         // An instance of a String, Array, Set, or Hash subclass answers the
         // native table through the collection it is backed by, so a method the
         // subclass writes itself has to run its own body rather than be

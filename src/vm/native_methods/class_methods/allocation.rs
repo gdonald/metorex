@@ -145,6 +145,11 @@ impl VirtualMachine {
                 message,
             });
         }
+        if method_name == "allocate"
+            && let Some(made) = self.allocate_through_c(class_rc, position)?
+        {
+            return Ok(Answered(made));
+        }
         // A class that defines its own `allocate` answers with that, so the
         // uninitialized instance below is not what it hands back.
         if method_name == "allocate" && self.class_method_of(class_rc, "allocate").is_some() {

@@ -188,6 +188,7 @@ Foo.class_variable_get(:@@x)
 fn comparable_spaceship_fallback_for_greater_than() {
     let result = run(r#"
 class Weight
+  include Comparable
   def initialize(v)
     @val = v
   end

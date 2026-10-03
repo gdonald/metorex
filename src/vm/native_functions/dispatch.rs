@@ -63,6 +63,13 @@ impl VirtualMachine {
                 Ok(path) => Object::string(path.display().to_string()),
                 Err(_) => Object::Nil,
             }),
+            // Where the headers a C extension is compiled against live.
+            "__header_directory__" => Ok(Object::string(crate::vm::capi::HEADER_DIRECTORY)),
+            // The bytes a C type's size function counts for what an object
+            // wraps, which `ObjectSpace.memsize_of` adds.
+            "__wrapped_size__" => Ok(Object::Int(
+                arguments.first().map_or(0, crate::vm::capi::wrapped_size) as i64,
+            )),
             "puts" => self.put_lines(arguments, position),
             "method" => self.method_object(arguments, position),
             "autoload" | "autoload?" => self.register_autoload(name, arguments, position),

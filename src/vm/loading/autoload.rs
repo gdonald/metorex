@@ -385,6 +385,12 @@ impl VirtualMachine {
                 crate::lexer::Position::new(0, 0, 0),
             )
             .map(|_| ())
+        } else if names_a_c_extension(p) {
+            self.require_feature(
+                vec![Object::string(path.clone())],
+                crate::lexer::Position::new(0, 0, 0),
+            )
+            .map(|_| ())
         } else if p.is_absolute() {
             self.execute_file(p).map(|_| ())
         } else {
@@ -470,4 +476,20 @@ pub(crate) fn on_the_same_thread(one: &Object, other: &Object) -> bool {
         (Object::Nil, Object::Nil) => true,
         _ => false,
     }
+}
+
+/// Whether an autoload path names a C extension, written with its ending or
+/// standing beside one built for this platform, which `require` loads.
+fn names_a_c_extension(path: &std::path::Path) -> bool {
+    if crate::vm::native_functions::names_a_native_extension(path) {
+        return true;
+    }
+    let built = format!(
+        "{}.{}",
+        path.display(),
+        crate::vm::native_functions::PLATFORM_EXTENSION
+    );
+    path.extension().is_none()
+        && !path.with_extension("rb").is_file()
+        && std::path::Path::new(&built).is_file()
 }
