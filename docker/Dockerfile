@@ -67,7 +67,11 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
 # password database, which `Etc.getpwuid` and `File.expand_path "~"` read.
 ARG UID=1000
 ARG GID=1000
-RUN if ! getent group "$GID" >/dev/null; then groupadd --gid "$GID" builder; fi \
+# The base image already has an `ubuntu` account with id 1000, the id a Linux
+# host's first user and the Harness CI checkout both build under, so whatever
+# account holds the id is removed first.
+RUN if existing=$(getent passwd "$UID"); then userdel --remove "${existing%%:*}"; fi \
+  && if ! getent group "$GID" >/dev/null; then groupadd --gid "$GID" builder; fi \
   && useradd --uid "$UID" --gid "$GID" --create-home --shell /bin/bash builder
 
 # Coverage compiles the tests its own way, so the tool CI measures with is

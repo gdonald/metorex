@@ -12,6 +12,11 @@ static VALUE pinned;
 static void node_mark(void *pointer) {
   struct node *held = pointer;
   rb_gc_mark(held->child);
+  rb_gc_mark_movable(held->child);
+  rb_gc_mark_maybe(held->child);
+  VALUE both[2] = {held->child, Qnil};
+  rb_gc_mark_locations(both, both + 2);
+  held->child = rb_gc_location(held->child);
 }
 
 static void node_free(void *pointer) {

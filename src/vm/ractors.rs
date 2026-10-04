@@ -68,22 +68,31 @@ impl VirtualMachine {
     }
 
     /// Refuse a constant holding an object that is not shareable to a Ractor
-    /// other than the main one. `named` is the constant's full name.
+    /// other than the main one. `named` is the constant's full name, and
+    /// `found_where_written` says whether a scope open around the code held
+    /// it rather than an ancestor of one.
     pub(crate) fn refuse_unshareable_constant(
         &mut self,
         named: &str,
+        found_where_written: bool,
         value: &Object,
         position: Position,
     ) -> Result<(), MetorexError> {
         if position.prelude || !self.in_a_non_main_ractor() || self.is_shareable(value, position)? {
             return Ok(());
         }
-        // Ruby writes the word in lower case for a constant read inside a
-        // method.
-        let who = if self.def_scope_stack.is_empty() {
-            "Ractor"
-        } else {
+        // Ruby writes the word in lower case for a constant a method reads
+        // from a scope open around it.
+        let in_a_method = self.call_stack().last().is_some_and(|frame| {
+            matches!(
+                frame.kind(),
+                crate::vm::call_frame::FrameKind::Method { .. }
+            ) && frame.block_depth() == 0
+        });
+        let who = if in_a_method && found_where_written {
             "ractor"
+        } else {
+            "Ractor"
         };
         Err(isolation_error(
             &format!("can not access non-shareable objects in constant {named} by non-main {who}."),
@@ -131,8 +140,9 @@ impl VirtualMachine {
 impl VirtualMachine {
     /// The name of the class or module a bare constant written here is read
     /// from: the first scope open around the code, or one of its ancestors,
-    /// that holds it, and Object otherwise.
-    pub(crate) fn constant_owner_name(&self, name: &str) -> String {
+    /// that holds it, and Object otherwise. The flag says whether a scope
+    /// open around the code held it.
+    pub(crate) fn constant_owner_name(&self, name: &str) -> (String, bool) {
         let nesting: Vec<std::rc::Rc<crate::class::Class>> = match self.method_nesting_stack.last()
         {
             Some(nesting) if !nesting.is_empty() => nesting.clone(),
@@ -142,16 +152,16 @@ impl VirtualMachine {
             .iter()
             .find(|scope| scope.get_class_var(name).is_some())
         {
-            return scope.ruby_name();
+            return (scope.ruby_name(), true);
         }
         let mut cursor = nesting.first().cloned();
         while let Some(class) = cursor {
             if class.get_class_var(name).is_some() {
-                return class.ruby_name();
+                return (class.ruby_name(), false);
             }
             cursor = class.superclass();
         }
-        "Object".to_string()
+        ("Object".to_string(), false)
     }
 }
 
@@ -207,8 +217,9 @@ impl VirtualMachine {
     }
 }
 
-/// The address that names an object a Ractor can move.
-fn moved_address(held: &Object) -> Option<usize> {
+/// The address that names an object a Ractor can move, or that a scheduler
+/// keeps fibers waiting on.
+pub(crate) fn moved_address(held: &Object) -> Option<usize> {
     match held {
         Object::Instance(instance) => Some(std::rc::Rc::as_ptr(instance) as usize),
         other => VirtualMachine::collection_address(other),

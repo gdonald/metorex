@@ -145,8 +145,13 @@ impl VirtualMachine {
                 if name.starts_with(|first: char| first.is_ascii_uppercase())
                     && self.in_a_non_main_ractor()
                 {
-                    let named = format!("{}::{name}", self.constant_owner_name(name));
-                    self.refuse_unshareable_constant(&named, &value, *position)?;
+                    let (owner, found_where_written) = self.constant_owner_name(name);
+                    self.refuse_unshareable_constant(
+                        &format!("{owner}::{name}"),
+                        found_where_written,
+                        &value,
+                        *position,
+                    )?;
                 }
                 Ok(value)
             }
@@ -562,6 +567,7 @@ impl VirtualMachine {
                 {
                     self.refuse_unshareable_constant(
                         &format!("Object::{name}"),
+                        false,
                         &value,
                         *position,
                     )?;
@@ -671,6 +677,7 @@ impl VirtualMachine {
                     };
                     self.refuse_unshareable_constant(
                         &format!("{owner}::{name}"),
+                        false,
                         &value,
                         *position,
                     )?;

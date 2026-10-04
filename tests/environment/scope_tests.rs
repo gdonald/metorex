@@ -431,3 +431,13 @@ fn a_binding_lists_a_captured_local() {
         vec!["total".to_string()]
     );
 }
+
+#[test]
+fn a_name_only_hoisted_in_the_parent_is_only_hoisted_here() {
+    let parent = Rc::new(RefCell::new(Scope::new()));
+    parent.borrow_mut().hoist("later".to_string());
+    let scope = Scope::with_parent(parent);
+
+    assert!(scope.is_only_hoisted("later"));
+    assert!(!scope.is_only_hoisted("unknown"));
+}

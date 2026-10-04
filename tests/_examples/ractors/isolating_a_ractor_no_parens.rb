@@ -25,6 +25,11 @@ class Box
   def self.count = @@count
   LIST = [1, 2]
   FROZEN = [1, 2].freeze
+  def self.list = LIST
+end
+
+class SmallBox < Box
+  def self.inherited_list = LIST
 end
 LIST = [3]
 
@@ -36,6 +41,8 @@ reached = Ractor.new do
     attempt { $0 },
     attempt { Box.count },
     attempt { Box::LIST },
+    attempt { Box.list },
+    attempt { SmallBox.inherited_list },
     attempt { Box::FROZEN },
     attempt { LIST },
     attempt { ::LIST },

@@ -39,12 +39,14 @@ struct DataSlot {
     data: *mut c_void,
 }
 
-/// A wrapped pointer, the type it was wrapped with when it is typed, and the
-/// VALUE C knows the object by.
+/// A wrapped pointer, the type it was wrapped with when it is typed, the
+/// VALUE C knows the object by, and the object itself, held weakly so the
+/// references to it can be counted.
 struct Wrapped {
     slot: Box<DataSlot>,
     data_type: Option<*const DataType>,
     value: Value,
+    instance: std::rc::Weak<RefCell<Instance>>,
 }
 
 /// A mark or free function, which C hands the wrapped pointer.
@@ -54,6 +56,20 @@ type DataFunction = extern "C-unwind" fn(*mut c_void);
 const DEFAULT_FREE: usize = usize::MAX;
 
 impl Wrapped {
+    /// What a collection needs to know of this object.
+    fn collectable(&self) -> Collectable {
+        let (mark, free) = self.functions();
+        Collectable {
+            value: self.value,
+            mark,
+            free,
+            data: self.slot.data,
+            // The handle table holds one reference, and every other one is
+            // something reaching the object.
+            outside: self.instance.strong_count().saturating_sub(1),
+        }
+    }
+
     /// The mark function and the free function, read from where C can still
     /// change them: the struct itself, or the type it names.
     fn functions(&self) -> (usize, usize) {
@@ -70,13 +86,15 @@ impl Wrapped {
 }
 
 /// What a collection does with one Data object: its VALUE, its mark and free
-/// functions, and the pointer they are handed.
+/// functions, the pointer they are handed, and how many references besides
+/// the handle table's reach it.
 #[derive(Clone, Copy)]
 struct Collectable {
     value: Value,
     mark: usize,
     free: usize,
     data: *mut c_void,
+    outside: usize,
 }
 
 impl Collectable {
@@ -110,13 +128,7 @@ fn take_collectables(keep: impl Fn(&Collectable) -> bool) -> Vec<Collectable> {
         let mut held = held.borrow_mut();
         let mut taken = Vec::new();
         held.retain(|_, wrapped| {
-            let (mark, free) = wrapped.functions();
-            let found = Collectable {
-                value: wrapped.value,
-                mark,
-                free,
-                data: wrapped.slot.data,
-            };
+            let found = wrapped.collectable();
             if keep(&found) {
                 return true;
             }
@@ -130,20 +142,7 @@ fn take_collectables(keep: impl Fn(&Collectable) -> bool) -> Vec<Collectable> {
 }
 
 fn every_collectable() -> Vec<Collectable> {
-    WRAPPED.with(|held| {
-        held.borrow()
-            .values()
-            .map(|wrapped| {
-                let (mark, free) = wrapped.functions();
-                Collectable {
-                    value: wrapped.value,
-                    mark,
-                    free,
-                    data: wrapped.slot.data,
-                }
-            })
-            .collect()
-    })
+    WRAPPED.with(|held| held.borrow().values().map(Wrapped::collectable).collect())
 }
 
 /// The VALUEs of the Data objects something reaches: Ruby, an address or
@@ -156,9 +155,7 @@ fn reached_values(every: &[Collectable]) -> std::collections::HashSet<Value> {
     let mut reached: std::collections::HashSet<Value> = std::collections::HashSet::new();
     let mut waiting: Vec<&Collectable> = Vec::new();
     for found in every {
-        if super::handles::references_besides_the_table(found.value) > 0
-            || roots.contains(&found.value)
-        {
+        if found.outside > 0 || roots.contains(&found.value) {
             reached.insert(found.value);
             waiting.push(found);
         }
@@ -233,7 +230,8 @@ fn wrap(
         },
         _ => super::exports::class_from(klass),
     };
-    let object = Object::Instance(Instance::new(class));
+    let instance = Instance::new(class);
+    let object = Object::Instance(Rc::clone(&instance));
     let value = to_value(&object);
     let slot = Box::new(DataSlot {
         flags: 0,
@@ -242,7 +240,7 @@ fn wrap(
         free_or_type: second,
         data,
     });
-    let key = instance_key(&object).expect("a Data object is an instance");
+    let key = Rc::as_ptr(&instance) as usize;
     WRAPPED.with(|held| {
         held.borrow_mut().insert(
             key,
@@ -250,6 +248,7 @@ fn wrap(
                 slot,
                 data_type,
                 value,
+                instance: Rc::downgrade(&instance),
             },
         )
     });

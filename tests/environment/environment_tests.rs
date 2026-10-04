@@ -346,3 +346,47 @@ fn test_current_scope_vars_collects_from_chain() {
     assert_eq!(vars.get("a"), Some(&int(1)));
     assert_eq!(vars.get("b"), Some(&int(2)));
 }
+
+#[test]
+fn the_root_scope_lists_its_own_locals() {
+    let mut env = Environment::new();
+    env.define("total".to_string(), int(1));
+
+    assert_eq!(env.local_variable_names(), vec!["total".to_string()]);
+    assert_eq!(env.binding_variable_names(), vec!["total".to_string()]);
+}
+
+#[test]
+fn a_name_read_at_the_root_is_not_reached_through_it() {
+    let mut env = Environment::new();
+    env.define("total".to_string(), int(1));
+
+    assert!(!env.resolves_to_root_binding("total"));
+}
+
+#[test]
+fn viewing_the_root_scope_stands_at_the_root() {
+    let env = Environment::new();
+
+    let viewed = env.viewing(env.global_scope());
+
+    assert_eq!(viewed.current_depth(), 0);
+}
+
+#[test]
+fn a_nested_scope_lists_the_locals_of_the_scope_around_it() {
+    let mut env = Environment::new();
+    env.push_isolated_scope();
+    env.define("outer".to_string(), int(1));
+    env.push_scope();
+    env.define("inner".to_string(), int(2));
+
+    assert_eq!(
+        env.local_variable_names(),
+        vec!["inner".to_string(), "outer".to_string()]
+    );
+    assert_eq!(
+        env.binding_variable_names(),
+        vec!["inner".to_string(), "outer".to_string()]
+    );
+}

@@ -49,6 +49,8 @@ const ISOLATING_A_RACTOR_OUTPUT: &str = concat!(
     "[Ractor::IsolationError, \"can not access global variable $0 from non-main Ractor\"]\n",
     "[Ractor::IsolationError, \"can not access class variables from non-main Ractors (@@count from Box)\"]\n",
     "[Ractor::IsolationError, \"can not access non-shareable objects in constant Box::LIST by non-main Ractor.\"]\n",
+    "[Ractor::IsolationError, \"can not access non-shareable objects in constant Box::LIST by non-main ractor.\"]\n",
+    "[Ractor::IsolationError, \"can not access non-shareable objects in constant Box::LIST by non-main Ractor.\"]\n",
     "[1, 2]\n",
     "[Ractor::IsolationError, \"can not access non-shareable objects in constant Object::LIST by non-main Ractor.\"]\n",
     "[Ractor::IsolationError, \"can not access non-shareable objects in constant Object::LIST by non-main Ractor.\"]\n",

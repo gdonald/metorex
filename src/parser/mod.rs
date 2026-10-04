@@ -424,10 +424,9 @@ impl Parser {
             .find(|opened| **opened <= here)
             .copied()
             .unwrap_or(0);
-        let Some(bindings) = self.bound_name_tokens.get(name) else {
-            return false;
-        };
-        bindings
+        // Only a name already read as a local is asked about, so the scan
+        // recorded where it is bound.
+        self.bound_name_tokens[name]
             .iter()
             .filter(|bound_at| {
                 **bound_at >= scope_opened_at

@@ -1,27 +1,16 @@
 // The scheduler a thread hands the waits of its non-blocking fibers to.
 
 use super::*;
+use crate::vm::ractors::moved_address;
 
 /// The methods a scheduler has to answer before a thread will take it.
 const SCHEDULER_METHODS: [&str; 4] = ["block", "unblock", "kernel_sleep", "io_wait"];
 
-/// Where a thread keeps the scheduler it was given.
-const SCHEDULER_VAR: &str = "__fiber_scheduler";
-
-/// Where a Mutex, Queue or Thread keeps the fibers a scheduler is holding
-/// until it is ready for them, each with the scheduler holding it.
-const WAITING_FIBERS_VAR: &str = "__scheduler_waiting_fibers";
-
 impl VirtualMachine {
     /// The scheduler the running thread was given.
     pub(crate) fn thread_scheduler(&mut self) -> Option<Object> {
-        let Object::Instance(thread) = self.running_thread() else {
-            return None;
-        };
-        match thread.borrow().get_var(SCHEDULER_VAR) {
-            None | Some(Object::Nil) => None,
-            Some(held) => Some(held.clone()),
-        }
+        let thread = moved_address(&self.running_thread()).unwrap_or(0);
+        self.thread_schedulers.get(&thread).cloned()
     }
 
     /// The scheduler a wait of the running fiber goes to: the thread's, while
@@ -61,10 +50,9 @@ impl VirtualMachine {
             }
         }
         self.close_thread_scheduler(position)?;
-        if let Object::Instance(thread) = self.running_thread() {
-            thread
-                .borrow_mut()
-                .set_var(SCHEDULER_VAR.to_string(), scheduler);
+        if !matches!(scheduler, Object::Nil) {
+            let thread = moved_address(&self.running_thread()).unwrap_or(0);
+            self.thread_schedulers.insert(thread, scheduler);
         }
         Ok(())
     }
@@ -81,17 +69,14 @@ impl VirtualMachine {
         if self.responds_to(&scheduler, "close") {
             self.send_to_object(scheduler, "close", Vec::new(), position)?;
         }
-        if let Object::Instance(thread) = self.running_thread() {
-            thread
-                .borrow_mut()
-                .set_var(SCHEDULER_VAR.to_string(), Object::Nil);
-        }
+        let thread = moved_address(&self.running_thread()).unwrap_or(0);
+        self.thread_schedulers.remove(&thread);
         Ok(())
     }
 
     /// Hand the running fiber to `scheduler` to hold until `blocker` lets it
-    /// go, noting it on the blocker so the one letting go knows to tell the
-    /// scheduler.
+    /// go, noting it against the blocker so the one letting go knows to tell
+    /// the scheduler.
     pub(crate) fn scheduler_block(
         &mut self,
         scheduler: Object,
@@ -99,23 +84,11 @@ impl VirtualMachine {
         timeout: Object,
         position: Position,
     ) -> Result<Object, MetorexError> {
-        let fiber = Object::Array(std::rc::Rc::new(std::cell::RefCell::new(vec![
-            self.fiber_current(),
-            scheduler.clone(),
-        ])));
-        if let Object::Instance(held) = blocker {
-            let waiting = match held.borrow().get_var(WAITING_FIBERS_VAR) {
-                Some(Object::Array(waiting)) => Some(std::rc::Rc::clone(waiting)),
-                _ => None,
-            };
-            match waiting {
-                Some(waiting) => waiting.borrow_mut().push(fiber),
-                None => held.borrow_mut().set_var(
-                    WAITING_FIBERS_VAR.to_string(),
-                    Object::Array(std::rc::Rc::new(std::cell::RefCell::new(vec![fiber]))),
-                ),
-            }
-        }
+        let fiber = self.fiber_current();
+        self.scheduler_waiting
+            .entry(moved_address(blocker).unwrap_or(0))
+            .or_default()
+            .push((fiber, scheduler.clone()));
         self.send_to_object(scheduler, "block", vec![blocker.clone(), timeout], position)
     }
 
@@ -126,21 +99,15 @@ impl VirtualMachine {
         blocker: &Object,
         position: Position,
     ) -> Result<(), MetorexError> {
-        let Object::Instance(held) = blocker else {
+        let key = moved_address(blocker).unwrap_or(0);
+        let Some((fiber, scheduler)) = self
+            .scheduler_waiting
+            .get_mut(&key)
+            .filter(|waiting| !waiting.is_empty())
+            .map(|waiting| waiting.remove(0))
+        else {
             return Ok(());
         };
-        let waiting = match held.borrow().get_var(WAITING_FIBERS_VAR) {
-            Some(Object::Array(waiting)) => std::rc::Rc::clone(waiting),
-            _ => return Ok(()),
-        };
-        if waiting.borrow().is_empty() {
-            return Ok(());
-        }
-        let Object::Array(entry) = waiting.borrow_mut().remove(0) else {
-            return Ok(());
-        };
-        let fiber = entry.borrow()[0].clone();
-        let scheduler = entry.borrow()[1].clone();
         self.send_to_object(scheduler, "unblock", vec![blocker.clone(), fiber], position)?;
         Ok(())
     }
@@ -152,19 +119,11 @@ impl VirtualMachine {
         blocker: &Object,
         position: Position,
     ) -> Result<(), MetorexError> {
-        while self.fibers_waiting_on(blocker) > 0 {
-            self.scheduler_unblock(blocker, position)?;
+        let key = moved_address(blocker).unwrap_or(0);
+        let waiting = self.scheduler_waiting.remove(&key).unwrap_or_default();
+        for (fiber, scheduler) in waiting {
+            self.send_to_object(scheduler, "unblock", vec![blocker.clone(), fiber], position)?;
         }
         Ok(())
-    }
-
-    fn fibers_waiting_on(&self, blocker: &Object) -> usize {
-        let Object::Instance(held) = blocker else {
-            return 0;
-        };
-        match held.borrow().get_var(WAITING_FIBERS_VAR) {
-            Some(Object::Array(waiting)) => waiting.borrow().len(),
-            _ => 0,
-        }
     }
 }
