@@ -25,8 +25,10 @@ impl VirtualMachine {
                     let inst = inst_rc.borrow();
                     inst.instance_vars
                         .keys()
+                        // The interpreter's own slots start with `__`.
                         .filter(|name| {
                             !crate::vm::native_methods::struct_methods::is_member_slot(name)
+                                && !name.starts_with("__")
                         })
                         .map(|k| Object::symbol(format!("@{}", k)))
                         .collect()

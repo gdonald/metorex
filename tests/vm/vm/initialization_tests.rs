@@ -6,7 +6,8 @@ use std::path::PathBuf;
 fn vm_initializes_with_builtins_in_global_scope() {
     let vm = VirtualMachine::new();
 
-    assert_eq!(vm.environment().current_depth(), 0);
+    // The program runs one scope beneath the one holding the core library.
+    assert_eq!(vm.environment().current_depth(), 1);
 
     let global_scope = vm.environment().global_scope();
     let scope = global_scope.borrow();
@@ -20,6 +21,16 @@ fn vm_initializes_with_builtins_in_global_scope() {
     assert!(vm.globals().contains("Object"));
     assert_eq!(vm.globals().get("nil"), Some(Object::Nil));
     assert!(vm.call_stack().is_empty());
+}
+
+#[test]
+fn the_program_scope_holds_none_of_the_core_library_names() {
+    let vm = VirtualMachine::new();
+
+    let program_scope = vm.environment().current_scope();
+    let names = program_scope.borrow().own_variable_names();
+
+    assert!(names.is_empty(), "the program scope holds {names:?}");
 }
 
 #[test]

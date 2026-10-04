@@ -13,6 +13,7 @@ mod integration {
         mod file_loading;
         mod filesystem;
         mod paths;
+        mod ractors;
         mod signals;
         mod threads;
     }

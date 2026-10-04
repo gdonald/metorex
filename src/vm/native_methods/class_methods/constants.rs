@@ -393,6 +393,7 @@ impl VirtualMachine {
                     });
                 }
                 let const_name = self.coerce_method_name(&arguments[0], "const_set", position)?;
+                self.refuse_unshareable_constant_assignment(&arguments[1], position)?;
                 if !is_valid_constant_name(&const_name) {
                     let msg = format!("wrong constant name {}", const_name);
                     let exc = Object::exception("NameError", msg.clone());

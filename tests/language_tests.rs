@@ -5,5 +5,4 @@ pub mod common;
 
 mod array;
 mod blocks;
-mod class_system;
 mod control_flow;

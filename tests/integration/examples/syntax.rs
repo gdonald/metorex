@@ -338,3 +338,18 @@ fn test_syntax_locals_by_scope_no_parens_execution() {
     let output = run_example("syntax/locals_by_scope_no_parens.rb");
     assert_eq!(output, LOCALS_BY_SCOPE_OUTPUT);
 }
+
+/// The expected output of both `syntax/lambda_parameter` variants.
+const LAMBDA_PARAMETER_OUTPUT: &str = "[:lambda, 1]\n[:proc, 2]\n";
+
+#[test]
+fn test_syntax_lambda_parameter_execution() {
+    let output = run_example("syntax/lambda_parameter.rb");
+    assert_eq!(output, LAMBDA_PARAMETER_OUTPUT);
+}
+
+#[test]
+fn test_syntax_lambda_parameter_no_parens_execution() {
+    let output = run_example("syntax/lambda_parameter_no_parens.rb");
+    assert_eq!(output, LAMBDA_PARAMETER_OUTPUT);
+}

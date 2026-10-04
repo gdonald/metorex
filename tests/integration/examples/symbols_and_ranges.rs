@@ -119,3 +119,18 @@ fn test_symbols_and_ranges_stepped_walks_parens_execution() {
     let output = run_example("symbols_and_ranges/stepped_walks_parens.rb");
     assert_eq!(output, STEPPED_WALKS_OUTPUT);
 }
+
+/// The expected output of both `symbols_and_ranges/literal_range_ends` variants.
+const LITERAL_RANGE_ENDS_OUTPUT: &str = "[true, true, true]\n[false, false]\n";
+
+#[test]
+fn test_symbols_and_ranges_literal_range_ends_execution() {
+    let output = run_example("symbols_and_ranges/literal_range_ends.rb");
+    assert_eq!(output, LITERAL_RANGE_ENDS_OUTPUT);
+}
+
+#[test]
+fn test_symbols_and_ranges_literal_range_ends_no_parens_execution() {
+    let output = run_example("symbols_and_ranges/literal_range_ends_no_parens.rb");
+    assert_eq!(output, LITERAL_RANGE_ENDS_OUTPUT);
+}

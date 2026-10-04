@@ -254,10 +254,11 @@ fn test_equals_method() {
 #[test]
 fn test_equals_block() {
     let block1 = Rc::new(BlockStatement {
+        outer_locals: Rc::default(),
         parameters: vec![],
         parameter_defaults: Vec::new(),
         body: vec![],
-        captured_vars: HashMap::new(),
+        captured_vars: Rc::default(),
         captured_def_scope: vec![],
         captured_nesting: vec![],
         defining_method: None,
@@ -278,10 +279,11 @@ fn test_equals_block() {
     // way, closing over the same cells, are a copy of one another, which is
     // what Ruby calls equal.
     let block3 = Rc::new(BlockStatement {
+        outer_locals: Rc::default(),
         parameters: vec!["held".to_string()],
         parameter_defaults: Vec::new(),
         body: vec![],
-        captured_vars: HashMap::new(),
+        captured_vars: Rc::default(),
         captured_def_scope: vec![],
         captured_nesting: vec![],
         defining_method: None,

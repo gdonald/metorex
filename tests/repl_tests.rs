@@ -385,10 +385,11 @@ fn format_object_block() {
     // Block variant — just check it doesn't panic
     use metorex::object::BlockStatement;
     let block = Object::Block(Rc::new(BlockStatement {
+        outer_locals: Rc::default(),
         parameters: vec![],
         parameter_defaults: Vec::new(),
         body: vec![],
-        captured_vars: std::collections::HashMap::new(),
+        captured_vars: Rc::default(),
         captured_def_scope: vec![],
         captured_nesting: vec![],
         defining_method: None,

@@ -79,6 +79,9 @@ class Thread
   # takes nothing.
   def raise(*arguments, **options)
     return nil unless alive?
+    # With nothing named, a RuntimeError is raised rather than the exception
+    # being handled.
+    arguments = [RuntimeError, ""] if arguments.empty? && options.empty?
     return ::Kernel.raise(*arguments, **options) if equal? Thread.current
     __raise_later__ __build_raised__(*arguments, **options)
     nil

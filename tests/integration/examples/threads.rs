@@ -271,3 +271,19 @@ fn test_threads_busy_threads_share_turns_no_parens_execution() {
     let output = run_example("threads/busy_threads_share_turns_no_parens.rb");
     assert_eq!(output, BUSY_THREADS_SHARE_TURNS_OUTPUT);
 }
+
+/// The expected output of both `threads/thread_class_settings` variants.
+const THREAD_CLASS_SETTINGS_OUTPUT: &str =
+    "true\nfalse\nfalse\n\"stopped\"\n[]\nThread::Queue\ntrue\n";
+
+#[test]
+fn test_threads_thread_class_settings_execution() {
+    let output = run_example("threads/thread_class_settings.rb");
+    assert_eq!(output, THREAD_CLASS_SETTINGS_OUTPUT);
+}
+
+#[test]
+fn test_threads_thread_class_settings_no_parens_execution() {
+    let output = run_example("threads/thread_class_settings_no_parens.rb");
+    assert_eq!(output, THREAD_CLASS_SETTINGS_OUTPUT);
+}

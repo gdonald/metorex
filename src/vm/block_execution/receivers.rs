@@ -276,10 +276,8 @@ impl VirtualMachine {
         let execution_result = self.with_call_frame(frame, move |vm| {
             vm.environment_mut().push_isolated_scope();
             let result = (|| -> Result<Object, MetorexError> {
-                for (name, value_ref) in block.captured_vars() {
-                    vm.environment_mut()
-                        .define_captured(name.clone(), value_ref.clone());
-                }
+                vm.environment_mut()
+                    .attach_captured(std::rc::Rc::clone(&block.captured_vars));
                 // Override `self` with the instance_exec receiver
                 vm.environment_mut().define("self".to_string(), receiver);
 

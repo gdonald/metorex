@@ -29,6 +29,8 @@ mod match_data_thread;
 mod object_space_gc;
 mod proc_random;
 mod process;
+mod ractor;
+mod ruby_vm;
 mod string_io;
 mod threading;
 mod time;
@@ -62,6 +64,8 @@ const PRELUDE_CHUNKS: &[&str] = &[
     core_types::SOURCE,
     kernel_argf::SOURCE,
     threading::SOURCE,
+    ractor::SOURCE,
+    ruby_vm::SOURCE,
     object_space_gc::SOURCE,
     encoding::SOURCE,
     io_streams::SOURCE,

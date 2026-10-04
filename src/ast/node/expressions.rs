@@ -184,6 +184,10 @@ pub enum Expression {
         parameter_defaults: Vec<(usize, Expression)>,
         body: Vec<Statement>,
         captured_vars: Option<Vec<String>>, // Variables captured from outer scope
+        /// The locals of the enclosing scope the body reads or assigns, in
+        /// the order it first names them, each with whether its scope assigns
+        /// it more than once. Isolating the block for a Ractor refuses them.
+        outer_locals: Vec<(String, bool)>,
         /// True for `-> {}` and `lambda {}`, false for `proc {}` and every
         /// ordinary block. Lambdas check arity strictly and return from
         /// themselves; procs do neither.

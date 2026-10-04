@@ -539,6 +539,9 @@ impl Parser {
             } else {
                 let name = match self.advance().kind {
                     TokenKind::Ident(name) => name,
+                    // `lambda` is a method rather than a keyword, so a
+                    // parameter may take its name.
+                    TokenKind::Lambda => "lambda".to_string(),
                     _ => return Err(self.error_at_previous("Expected parameter name")),
                 };
 
@@ -665,6 +668,9 @@ impl Parser {
             } else {
                 let name = match self.advance().kind {
                     TokenKind::Ident(name) => name,
+                    // `lambda` is a method rather than a keyword, so a
+                    // parameter may take its name.
+                    TokenKind::Lambda => "lambda".to_string(),
                     _ => return Err(self.error_at_previous("Expected parameter name")),
                 };
 

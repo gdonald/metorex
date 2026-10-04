@@ -2,6 +2,8 @@
 
 use super::*;
 
+use crate::vm::ractors::RACTOR_VAR;
+
 impl VirtualMachine {
     /// Instance-level Thread methods. The "thread" runs synchronously when
     /// `value`/`join` is called for the first time.
@@ -52,6 +54,18 @@ impl VirtualMachine {
             _ => return Ok(None),
         };
         match method_name {
+            "__ractor__" => Ok(Some(
+                inst.borrow()
+                    .get_var(RACTOR_VAR)
+                    .cloned()
+                    .unwrap_or(Object::Nil),
+            )),
+            "__ractor__=" => {
+                let ractor = arguments.first().cloned().unwrap_or(Object::Nil);
+                inst.borrow_mut()
+                    .set_var(RACTOR_VAR.to_string(), ractor.clone());
+                Ok(Some(ractor))
+            }
             "value" | "join" => {
                 if !arguments.is_empty() && method_name == "value" {
                     return Err(crate::vm::errors::method_argument_error(

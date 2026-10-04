@@ -193,3 +193,25 @@ fn test_oop_singleton_class_rules_no_parens_execution() {
     let output = run_example("oop/singleton_class_rules_no_parens.rb");
     assert_eq!(output, SINGLETON_CLASS_RULES_OUTPUT);
 }
+
+/// The expected output of both `oop/undefining_new` variants.
+const UNDEFINING_NEW_OUTPUT: &str = concat!(
+    "\"undefined method 'new' for class Fixed\"\n",
+    "false\n",
+    "[:build]\n",
+    ":built\n",
+    "\"private method 'new' called for class Hidden\"\n",
+    "\"private method 'assist' called for module Helpers\"\n",
+);
+
+#[test]
+fn test_oop_undefining_new_execution() {
+    let output = run_example("oop/undefining_new.rb");
+    assert_eq!(output, UNDEFINING_NEW_OUTPUT);
+}
+
+#[test]
+fn test_oop_undefining_new_no_parens_execution() {
+    let output = run_example("oop/undefining_new_no_parens.rb");
+    assert_eq!(output, UNDEFINING_NEW_OUTPUT);
+}

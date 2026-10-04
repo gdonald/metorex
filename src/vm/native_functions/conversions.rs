@@ -145,6 +145,7 @@ impl VirtualMachine {
         obj: &Object,
         position: Position,
     ) -> Result<String, MetorexError> {
+        self.refuse_moved_conversion(obj, "to_s", position)?;
         // First try to_s, then inspect, then fall back to Display
         match obj {
             // `:name.to_s` is the bare name; only `inspect` keeps the colon.
@@ -215,6 +216,7 @@ impl VirtualMachine {
         obj: &Object,
         position: Position,
     ) -> Result<String, MetorexError> {
+        self.refuse_moved_conversion(obj, "inspect", position)?;
         let rendered = self.inspect_object(obj, position)?;
         Ok(match &rendered {
             Object::String(text) => text.to_string(),

@@ -14,6 +14,7 @@ fn test_lambda_without_captured_vars() {
             position: pos(1, 10),
         }],
         captured_vars: None,
+        outer_locals: Vec::new(),
         is_lambda: false,
         position: pos(1, 1),
     };
@@ -24,6 +25,7 @@ fn test_lambda_without_captured_vars() {
 fn test_lambda_with_captured_vars() {
     // Lambda that captures 'y' from outer scope: x -> x + y
     let expr = Expression::Lambda {
+        outer_locals: Vec::new(),
         parameters: vec!["x".to_string()],
         parameter_defaults: Vec::new(),
         body: vec![Statement::Expression {
@@ -52,6 +54,7 @@ fn test_lambda_with_captured_vars() {
 fn test_lambda_with_multiple_captured_vars() {
     // Lambda that captures 'a', 'b', 'c' from outer scope
     let expr = Expression::Lambda {
+        outer_locals: Vec::new(),
         parameters: vec!["x".to_string()],
         parameter_defaults: Vec::new(),
         body: vec![Statement::Expression {
@@ -88,6 +91,7 @@ fn test_lambda_with_multiple_captured_vars() {
 fn test_lambda_implicit_return() {
     // Lambda with implicit return (last expression): x -> x * 2
     let expr = Expression::Lambda {
+        outer_locals: Vec::new(),
         parameters: vec!["x".to_string()],
         parameter_defaults: Vec::new(),
         body: vec![Statement::Expression {
@@ -116,6 +120,7 @@ fn test_lambda_implicit_return() {
 fn test_lambda_with_multiple_statements() {
     // Lambda with multiple statements, last one is implicit return
     let expr = Expression::Lambda {
+        outer_locals: Vec::new(),
         parameters: vec!["x".to_string()],
         parameter_defaults: Vec::new(),
         body: vec![
@@ -167,6 +172,7 @@ fn test_lambda_no_parameters() {
             position: pos(1, 5),
         }],
         captured_vars: None,
+        outer_locals: Vec::new(),
         is_lambda: false,
         position: pos(1, 1),
     };
@@ -177,6 +183,7 @@ fn test_lambda_no_parameters() {
 fn test_lambda_with_instance_var_capture() {
     // Lambda that captures instance variable @count
     let expr = Expression::Lambda {
+        outer_locals: Vec::new(),
         parameters: vec!["x".to_string()],
         parameter_defaults: Vec::new(),
         body: vec![Statement::Expression {
@@ -205,6 +212,7 @@ fn test_lambda_with_instance_var_capture() {
 fn test_nested_lambdas() {
     // Outer lambda that returns an inner lambda
     let inner_lambda = Expression::Lambda {
+        outer_locals: Vec::new(),
         parameters: vec!["y".to_string()],
         parameter_defaults: Vec::new(),
         body: vec![Statement::Expression {
@@ -235,6 +243,7 @@ fn test_nested_lambdas() {
             position: pos(2, 1),
         }],
         captured_vars: None,
+        outer_locals: Vec::new(),
         is_lambda: false,
         position: pos(1, 1),
     };

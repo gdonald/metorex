@@ -31,6 +31,15 @@ impl VirtualMachine {
         arguments: Vec<Object>,
         position: crate::lexer::Position,
     ) -> Result<Object, MetorexError> {
+        // An object moved to another Ractor answers nothing the interpreter
+        // asks of it either.
+        if self.was_moved(&receiver) {
+            return Err(crate::vm::errors::simple_exception(
+                "NoMethodError",
+                &format!("undefined method '{name}' for an instance of Ractor::MovedObject"),
+                position,
+            ));
+        }
         // A refinement in force here stands ahead of what the receiver's own
         // class answers, whether the call was written out or reached through
         // `send`, a Symbol turned into a block, or text being built.

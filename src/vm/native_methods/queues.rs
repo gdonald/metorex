@@ -248,6 +248,11 @@ impl VirtualMachine {
                 };
                 Ok(Some(val))
             }
+            // What the queue holds, in order, for code that walks what an
+            // object refers to.
+            "__queued__" => Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(
+                items_arr.borrow().clone(),
+            ))))),
             "size" | "length" | "count" => Ok(Some(Object::Int(items_arr.borrow().len() as i64))),
             // How many are waiting for something to be put on the queue.
             "num_waiting" => Ok(Some(Object::Int(queue_waiting_count(&inst)))),

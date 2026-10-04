@@ -1,10 +1,10 @@
 name: CI
 
+# Runs after the Harness pipeline metorex-ci passes and reports the
+# harness/metorex-ci commit status. A status event runs this file from the
+# default branch, so each job checks out the commit the status is for.
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  status
 
 env:
   CARGO_TERM_COLOR: always
@@ -13,11 +13,14 @@ env:
 jobs:
   test:
     name: Test
+    if: github.event.context == 'harness/metorex-ci' && github.event.state == 'success'
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.sha }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -62,12 +65,14 @@ jobs:
 
   mspec:
     name: Ruby Spec
+    if: github.event.context == 'harness/metorex-ci' && github.event.state == 'success'
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
         with:
+          ref: ${{ github.event.sha }}
           submodules: recursive
 
       - name: Install Rust toolchain
@@ -114,11 +119,14 @@ jobs:
 
   coverage:
     name: Code Coverage
+    if: github.event.context == 'harness/metorex-ci' && github.event.state == 'success'
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.sha }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable

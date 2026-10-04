@@ -222,6 +222,10 @@ impl VirtualMachine {
             singleton_class
                 .find_own_method(name)
                 .is_none_or(|method| !method.is_undefined)
+                && !matches!(receiver, Object::Class(attached) | Object::Module(attached)
+                    if attached
+                        .find_own_method(&format!("__class__{name}"))
+                        .is_some_and(|method| method.is_undefined))
         });
         // `obj.extend(Mod)` mixes Mod into the singleton class.
         if !include_mixins {

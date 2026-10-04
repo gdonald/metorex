@@ -229,6 +229,14 @@ pub(crate) fn register_native_functions(globals: &mut GlobalRegistry) {
         "__timeout_close__",
         Object::NativeFunction("__timeout_close__".to_string()),
     );
+    globals.set(
+        "__undefine_allocator__",
+        Object::NativeFunction("__undefine_allocator__".to_string()),
+    );
+    globals.set(
+        "__ractor_move__",
+        Object::NativeFunction("__ractor_move__".to_string()),
+    );
     // The one primitive behind the Math module, which the prelude wraps in a
     // method per function.
     globals.set(

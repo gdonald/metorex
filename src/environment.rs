@@ -232,14 +232,10 @@ impl Environment {
             .define_inherited(name, value);
     }
 
-    pub fn define_captured(
-        &mut self,
-        name: String,
-        value: std::rc::Rc<std::cell::RefCell<Object>>,
-    ) {
-        self.current_scope()
-            .borrow_mut()
-            .define_captured(name, value);
+    /// Read and write through the names a block closed over in the current
+    /// scope, without copying them into it.
+    pub fn attach_captured(&mut self, captured: crate::scope::CapturedNames) {
+        self.current_scope().borrow_mut().attach_captured(captured);
     }
 
     /// Gets a shared reference to a variable

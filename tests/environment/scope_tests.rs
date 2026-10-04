@@ -352,3 +352,82 @@ fn test_scope_default() {
     let scope = Scope::default();
     assert!(scope.get("anything").is_none());
 }
+
+/// A scope a block runs in, reading through the names the block closed over.
+fn scope_with_captured(name: &str, cell: Rc<RefCell<Object>>) -> Scope {
+    let mut captured = std::collections::HashMap::new();
+    captured.insert(name.to_string(), cell);
+    let mut scope = Scope::new();
+    scope.attach_captured(Rc::new(captured));
+    scope
+}
+
+#[test]
+fn attaching_captured_names_adds_no_names_of_the_scopes_own() {
+    let scope = scope_with_captured("total", Rc::new(RefCell::new(Object::Int(1))));
+
+    assert!(scope.own_variable_names().is_empty());
+}
+
+#[test]
+fn a_captured_name_reads_the_shared_cell() {
+    let cell = Rc::new(RefCell::new(Object::Int(1)));
+    let scope = scope_with_captured("total", Rc::clone(&cell));
+    *cell.borrow_mut() = Object::Int(5);
+
+    assert_eq!(scope.get("total"), Some(Object::Int(5)));
+}
+
+#[test]
+fn setting_a_captured_name_writes_the_shared_cell() {
+    let cell = Rc::new(RefCell::new(Object::Int(1)));
+    let mut scope = scope_with_captured("total", Rc::clone(&cell));
+    scope.mark_method_boundary();
+
+    assert!(scope.set("total", Object::Int(9)));
+    assert_eq!(*cell.borrow(), Object::Int(9));
+}
+
+#[test]
+fn a_name_the_scope_defines_shadows_a_captured_one() {
+    let mut scope = scope_with_captured("total", Rc::new(RefCell::new(Object::Int(1))));
+    scope.define("total".to_string(), Object::Int(2));
+
+    assert_eq!(scope.get("total"), Some(Object::Int(2)));
+}
+
+#[test]
+fn a_captured_name_is_not_only_hoisted() {
+    let scope = scope_with_captured("total", Rc::new(RefCell::new(Object::Int(1))));
+
+    assert!(!scope.is_only_hoisted("total"));
+}
+
+#[test]
+fn a_captured_name_reaches_blocks_written_inside_the_scope() {
+    let scope = scope_with_captured("total", Rc::new(RefCell::new(Object::Int(1))));
+
+    assert!(scope.collect_all_var_refs().contains_key("total"));
+    assert_eq!(scope.collect_all_vars().get("total"), Some(&Object::Int(1)));
+    assert!(scope.own_var_ref("total").is_some());
+    assert_eq!(scope.get_at(0, "total"), Some(Object::Int(1)));
+}
+
+#[test]
+fn set_at_depth_zero_writes_a_captured_name() {
+    let cell = Rc::new(RefCell::new(Object::Int(1)));
+    let mut scope = scope_with_captured("total", Rc::clone(&cell));
+
+    assert!(scope.set_at(0, "total", Object::Int(3)));
+    assert_eq!(*cell.borrow(), Object::Int(3));
+}
+
+#[test]
+fn a_binding_lists_a_captured_local() {
+    let scope = scope_with_captured("total", Rc::new(RefCell::new(Object::Int(1))));
+
+    assert_eq!(
+        scope.collect_binding_variable_names(),
+        vec!["total".to_string()]
+    );
+}

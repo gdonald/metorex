@@ -488,6 +488,9 @@ impl VirtualMachine {
                 // anonymous classes/modules on first assignment, matching
                 // Ruby's `klass.name` behavior after binding to a constant.
                 let is_const = name.chars().next().is_some_and(|c| c.is_ascii_uppercase());
+                if is_const {
+                    self.refuse_unshareable_constant_assignment(&value, *position)?;
+                }
                 // A constant bound inside a class or module body names what
                 // it holds under that namespace, so `M::Foo` reports its own
                 // path rather than the bare constant name.
@@ -529,9 +532,12 @@ impl VirtualMachine {
                 }
                 if is_const {
                     self.globals_mut().set(name.clone(), value.clone());
-                    // A constant the program's scope also holds, as the
+                    // A constant the core library's scope also holds, as the
                     // standard streams are, reads the new value there too.
-                    self.environment_mut().set(name, value.clone());
+                    self.environment()
+                        .global_scope()
+                        .borrow_mut()
+                        .set(name, value.clone());
                     let mut owner = None;
                     if let Some(Object::Class(object_class)) = self.globals().get("Object") {
                         if object_class.get_class_var(name).is_none() {
@@ -641,7 +647,9 @@ impl VirtualMachine {
                 // was written in, and a write reaches the one furthest up the
                 // chain that already holds it.
                 if let Some(home) = self.class_variable_home() {
-                    Self::class_var_owner(&home, name).set_class_var(name.clone(), value);
+                    let owner = Self::class_var_owner(&home, name);
+                    self.refuse_class_variable_in_ractor(name, &owner, *position)?;
+                    owner.set_class_var(name.clone(), value);
                     return Ok(());
                 }
                 Err(MetorexError::runtime_error(
@@ -1413,6 +1421,7 @@ impl VirtualMachine {
         value: Object,
         position: Position,
     ) -> Result<(), MetorexError> {
+        self.refuse_global_in_ractor(written, position)?;
         // A global given a second name writes through to the first.
         let name = self
             .global_aliases

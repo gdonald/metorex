@@ -272,6 +272,7 @@ impl Parser {
                         parameter_defaults: Vec::new(),
                         body,
                         captured_vars: Some(Vec::new()), // Empty vec signals automatic capture
+                        outer_locals: Vec::new(),
                         is_lambda: true,
                         position: start_pos,
                     });
@@ -336,6 +337,7 @@ impl Parser {
                 parameter_defaults: Vec::new(),
                 body,
                 captured_vars: Some(Vec::new()), // Empty vec signals automatic capture
+                outer_locals: Vec::new(),
                 is_lambda: true,
                 position: expr.position(),
             });
@@ -651,8 +653,7 @@ impl Parser {
         let body = body?;
         let body_closed_at = self.stream.current_position();
         self.expect(TokenKind::End, "Expected 'end' to close block")?;
-        self.closed_scope_spans
-            .push((block_opened_at, self.stream.current_position()));
+        let outer_locals = self.close_block_scope(block_opened_at, &parameters);
         let parameters = self.block_parameters_or_refuse(
             parameters,
             wrote_parameter_list,
@@ -665,6 +666,7 @@ impl Parser {
             parameter_defaults,
             body,
             captured_vars: None, // Will be filled by semantic analysis
+            outer_locals,
             is_lambda: false,
             position: start_pos,
         })
@@ -1027,8 +1029,7 @@ impl Parser {
         let body_closed_at = self.stream.current_position();
 
         self.expect(TokenKind::RBrace, "Expected '}' to close block")?;
-        self.closed_scope_spans
-            .push((block_opened_at, self.stream.current_position()));
+        let outer_locals = self.close_block_scope(block_opened_at, &parameters);
         let parameters = self.block_parameters_or_refuse(
             parameters,
             wrote_parameter_list,
@@ -1041,6 +1042,7 @@ impl Parser {
             parameter_defaults,
             body,
             captured_vars: None, // Will be filled by semantic analysis
+            outer_locals,
             is_lambda: false,
             position: start_pos,
         })

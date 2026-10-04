@@ -270,3 +270,34 @@ fn test_callables_parameter_shapes_parens_execution() {
     let output = run_example("callables/parameter_shapes_parens.rb");
     assert_eq!(output, PARAMETER_SHAPES_OUTPUT);
 }
+
+/// The expected output of both `callables/proc_written_at` variants.
+const PROC_WRITTEN_AT_OUTPUT: &str = "true\ntrue\n";
+
+#[test]
+fn test_callables_proc_written_at_execution() {
+    let output = run_example("callables/proc_written_at.rb");
+    assert_eq!(output, PROC_WRITTEN_AT_OUTPUT);
+}
+
+#[test]
+fn test_callables_proc_written_at_no_parens_execution() {
+    let output = run_example("callables/proc_written_at_no_parens.rb");
+    assert_eq!(output, PROC_WRITTEN_AT_OUTPUT);
+}
+
+/// The expected output of both `callables/closures_share_locals` variants.
+const CLOSURES_SHARE_LOCALS_OUTPUT: &str =
+    "3\n2\n33\n[:outer]\ntrue\n1\n[NameError, 3]\nNameError\n3\n";
+
+#[test]
+fn test_callables_closures_share_locals_execution() {
+    let output = run_example("callables/closures_share_locals.rb");
+    assert_eq!(output, CLOSURES_SHARE_LOCALS_OUTPUT);
+}
+
+#[test]
+fn test_callables_closures_share_locals_no_parens_execution() {
+    let output = run_example("callables/closures_share_locals_no_parens.rb");
+    assert_eq!(output, CLOSURES_SHARE_LOCALS_OUTPUT);
+}

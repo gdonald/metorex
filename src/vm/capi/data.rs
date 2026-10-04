@@ -176,7 +176,7 @@ fn reached_values(every: &[Collectable]) -> std::collections::HashSet<Value> {
 }
 
 /// The class variable holding the address of the allocator C gave a class.
-const ALLOCATOR_VAR: &str = "__c_allocator__";
+pub(crate) const ALLOCATOR_VAR: &str = "__c_allocator__";
 
 thread_local! {
     /// The wrapped pointer of every Data object, by the address of the

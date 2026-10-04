@@ -8,10 +8,8 @@ mod integration {
         mod runner;
         use runner::run_example;
 
-        mod builtins;
-        mod errors;
         mod introspection;
-        mod metaprogramming;
         mod oop;
+        mod ruby_vm;
     }
 }

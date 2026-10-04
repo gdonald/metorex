@@ -147,8 +147,8 @@ end
 #[test]
 fn define_method_with_closure_captures_variables() {
     let result = run(r#"
-prefix = "Hello"
 class Greeter
+  prefix = "Hello"
   define_method(:greet) do |name|
     prefix + ", " + name
   end

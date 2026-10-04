@@ -179,11 +179,9 @@ impl VirtualMachine {
         }
         self.running_block_breaks.push(running_break_flag(block));
         let result = (|| -> Result<Object, MetorexError> {
-            // Define captured variables using shared references
-            for (name, value_ref) in block.captured_vars() {
-                self.environment_mut()
-                    .define_captured(name.clone(), value_ref.clone());
-            }
+            // The names the block closed over are read through, not copied.
+            self.environment_mut()
+                .attach_captured(std::rc::Rc::clone(&block.captured_vars));
 
             // A lambda takes its arguments the way a method does, so the
             // count has to match what it declared.
@@ -454,11 +452,9 @@ impl VirtualMachine {
             Ok((block_position, declared)) => {
                 let mut last_value = Object::Nil;
                 let ran = (|| -> Result<ControlFlow, MetorexError> {
-                    // Define captured variables using shared references
-                    for (name, value_ref) in block.captured_vars() {
-                        self.environment_mut()
-                            .define_captured(name.clone(), value_ref.clone());
-                    }
+                    // The names the block closed over are read through, not copied.
+                    self.environment_mut()
+                        .attach_captured(std::rc::Rc::clone(&block.captured_vars));
 
                     // Define parameters as regular variables (handles *args/&block prefixes)
                     bind_block_params(

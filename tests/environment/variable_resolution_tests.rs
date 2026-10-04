@@ -401,6 +401,7 @@ fn test_lambda_parameter_scope() {
                 position: Position::default(),
             }],
             captured_vars: None,
+            outer_locals: Vec::new(),
             is_lambda: false,
             position: Position::default(),
         },

@@ -36,6 +36,8 @@ module ObjectSpace
       found.concat object
     elsif object.is_a? Hash
       object.each { |key, value| found.push(key).push(value) }
+    elsif object.is_a? Thread::Queue
+      found.concat object.__queued__
     end
     found
   end

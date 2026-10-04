@@ -50,6 +50,20 @@ impl VirtualMachine {
             "srand" => self.seed_generator(arguments, position),
             "sleep" => self.sleep_for(arguments, position),
             "__timeout_open__" => self.open_timeout(arguments, position),
+            // A class whose instances cannot be made, as C's
+            // `rb_undef_alloc_func` says of one.
+            "__undefine_allocator__" => {
+                if let Some(Object::Class(class)) = arguments.first() {
+                    class.set_class_var(crate::vm::capi::data_allocator_var(), Object::Int(0));
+                }
+                Ok(Object::Nil)
+            }
+            "__ractor_move__" => {
+                if let Some(moved) = arguments.into_iter().next() {
+                    self.mark_moved(moved);
+                }
+                Ok(Object::Nil)
+            }
             "__timeout_close__" => {
                 self.timeout_limits.pop();
                 Ok(Object::Nil)

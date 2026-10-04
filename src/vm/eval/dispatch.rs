@@ -140,7 +140,16 @@ impl VirtualMachine {
             }
 
             // ── Variables / identifiers ─────────────────────────────────────
-            Expression::Identifier { name, position } => self.eval_identifier(name, *position),
+            Expression::Identifier { name, position } => {
+                let value = self.eval_identifier(name, *position)?;
+                if name.starts_with(|first: char| first.is_ascii_uppercase())
+                    && self.in_a_non_main_ractor()
+                {
+                    let named = format!("{}::{name}", self.constant_owner_name(name));
+                    self.refuse_unshareable_constant(&named, &value, *position)?;
+                }
+                Ok(value)
+            }
             Expression::SelfExpr { position } => self.eval_self(*position),
             Expression::InstanceVariable { name, position } => {
                 self.eval_instance_var_read(name, *position)
@@ -235,6 +244,7 @@ impl VirtualMachine {
                 parameter_defaults,
                 body,
                 captured_vars,
+                outer_locals,
                 is_lambda,
                 position,
                 ..
@@ -270,15 +280,18 @@ impl VirtualMachine {
                     *is_lambda,
                 );
                 block.defining_owner = self.enclosing_method_owner().and_then(|(owner, _)| owner);
+                block.outer_locals = Rc::new(outer_locals.clone());
                 // The block's body belongs to the file it was written in,
                 // wherever it is later called from.
                 // A block the core library opens stands in for Ruby's C code,
                 // which names no source location at all.
                 if !position.prelude {
-                    block.source_file = self
-                        .current_source_file
-                        .clone()
-                        .or_else(|| self.current_file.as_ref().map(|f| f.display().to_string()));
+                    // The main script is named the way it was given, as
+                    // `__FILE__` names it.
+                    block.source_file = self.current_source_file.clone().or_else(|| {
+                        self.reported_current_file()
+                            .map(|path| path.display().to_string())
+                    });
                     // Where the block was opened, which is the line
                     // `source_location` names however far down the body starts.
                     block.opened_at = Some(position.line);
@@ -542,10 +555,16 @@ impl VirtualMachine {
                         *position,
                     );
                 }
-                if let Some(value) = self.globals().get(name) {
-                    return Ok(value);
-                }
-                if let Some(value) = self.object_constant(name) {
+                if let Some(value) = self
+                    .globals()
+                    .get(name)
+                    .or_else(|| self.object_constant(name))
+                {
+                    self.refuse_unshareable_constant(
+                        &format!("Object::{name}"),
+                        &value,
+                        *position,
+                    )?;
                     return Ok(value);
                 }
                 let message = format!("uninitialized constant {}", name);
@@ -608,6 +627,15 @@ impl VirtualMachine {
                         at.column,
                     )
                 });
+                // A range written with literal ends is built once, so the
+                // Strings at its ends are frozen with it.
+                if written_at.is_some() {
+                    for held in [&start_value, &end_value] {
+                        if let Object::String(text) = held {
+                            text.freeze();
+                        }
+                    }
+                }
                 let mark = match written_at {
                     Some(place) => self
                         .written_ranges
@@ -635,7 +663,19 @@ impl VirtualMachine {
                 position,
             } => {
                 let ns_value = self.evaluate_expression(namespace)?;
-                self.read_scoped_constant(ns_value, name, position)
+                let value = self.read_scoped_constant(ns_value.clone(), name, position)?;
+                if self.in_a_non_main_ractor() {
+                    let owner = match &ns_value {
+                        Object::Class(held) | Object::Module(held) => held.ruby_name(),
+                        other => format!("{other}"),
+                    };
+                    self.refuse_unshareable_constant(
+                        &format!("{owner}::{name}"),
+                        &value,
+                        *position,
+                    )?;
+                }
+                Ok(value)
             }
             Expression::If {
                 condition,
@@ -952,6 +992,7 @@ impl VirtualMachine {
         name: &str,
         position: crate::lexer::Position,
     ) -> Result<Object, MetorexError> {
+        self.refuse_global_in_ractor(name, position)?;
         // `$?` is the status of the last child waited for, which lives
         // with the process rather than in the global table.
         // A global given a second name reads what the first holds,

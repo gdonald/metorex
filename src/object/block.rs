@@ -50,13 +50,16 @@ pub type CodePlaces = Rc<Vec<(String, usize)>>;
 pub struct BlockStatement {
     /// Parameter names
     pub parameters: Vec<String>,
+    /// The locals of the scope the block was written in that its body names.
+    pub outer_locals: Rc<Vec<(String, bool)>>,
     /// Default values for optional parameters, keyed by index into
     /// `parameters` (e.g. `{ |a, b = 1| }` records `(1, <1>)`).
     pub parameter_defaults: Vec<(usize, crate::ast::Expression)>,
     /// Block body (AST statements)
     pub body: Vec<Statement>,
-    /// Captured variables from outer scope (shared mutable references)
-    pub captured_vars: HashMap<String, Rc<RefCell<Object>>>,
+    /// Captured variables from outer scope (shared mutable references),
+    /// shared by every call of the block rather than copied into each.
+    pub captured_vars: Rc<HashMap<String, Rc<RefCell<Object>>>>,
     /// Lexical class/module nesting at the moment the block was defined.
     /// Restored during invocation so a bare `Foo = 1` inside the body lands
     /// on the same enclosing module that an unbroken straight-line statement
@@ -134,7 +137,7 @@ impl BlockStatement {
             parameters,
             parameter_defaults: Vec::new(),
             body,
-            captured_vars,
+            captured_vars: Rc::new(captured_vars),
             captured_def_scope: Vec::new(),
             captured_nesting: Vec::new(),
             defining_method: None,
@@ -143,6 +146,7 @@ impl BlockStatement {
             source_file: None,
             home_frame: None,
             opened_at: None,
+            outer_locals: Rc::default(),
             from_symbol: None,
             written_in: None,
             written_depth: None,
@@ -168,7 +172,7 @@ impl BlockStatement {
             parameters,
             parameter_defaults,
             body,
-            captured_vars,
+            captured_vars: Rc::new(captured_vars),
             captured_def_scope,
             captured_nesting: Vec::new(),
             defining_method,
@@ -177,6 +181,7 @@ impl BlockStatement {
             source_file: None,
             home_frame: None,
             opened_at: None,
+            outer_locals: Rc::default(),
             from_symbol: None,
             written_in: None,
             written_depth: None,

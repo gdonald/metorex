@@ -17,8 +17,6 @@ mod integration {
         mod object_space;
         mod scanning;
         mod sets;
-        mod stdlib;
-        mod stdlib_libraries;
         mod structs;
         mod tabular_data;
     }

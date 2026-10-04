@@ -16,6 +16,11 @@ mod coercion;
 mod collection;
 mod control;
 mod data;
+
+/// The class variable holding the address of the allocator C gave a class.
+pub(crate) fn data_allocator_var() -> &'static str {
+    data::ALLOCATOR_VAR
+}
 mod debug;
 mod definitions;
 mod digests;

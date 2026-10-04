@@ -170,7 +170,7 @@ impl VirtualMachine {
         method.captured_vars = Some(if block.captured_vars.is_empty() {
             self.environment().current_scope_var_refs()
         } else {
-            block.captured_vars.clone()
+            (*block.captured_vars).clone()
         });
         method
     }

@@ -40,6 +40,7 @@ pub(super) mod param_binding;
 mod pattern_matching;
 mod prelude;
 mod program;
+mod ractors;
 pub mod signals;
 pub(crate) mod stdlib;
 mod warn;

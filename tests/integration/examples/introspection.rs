@@ -490,7 +490,7 @@ fn test_introspection_respond_to() {
     let expected = concat!(
         "true\nfalse\ntrue\nfalse\ntrue\nfalse\ntrue\n",
         "false\nfalse\ntrue\n",
-        "NoMethodError: private method 'new' called for Sealed\n",
+        "NoMethodError: private method 'new' called for class Sealed\n",
         "true\ntrue\ntrue\n",
         "TypeError: 42 is not a symbol nor a string\n"
     );
@@ -503,7 +503,7 @@ fn test_introspection_respond_to_no_parens() {
     let expected = concat!(
         "true\nfalse\ntrue\nfalse\ntrue\nfalse\ntrue\n",
         "false\nfalse\ntrue\n",
-        "NoMethodError: private method 'new' called for Sealed\n",
+        "NoMethodError: private method 'new' called for class Sealed\n",
         "true\ntrue\ntrue\n",
         "TypeError: 42 is not a symbol nor a string\n"
     );

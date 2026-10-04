@@ -97,6 +97,11 @@ pub struct Parser {
     /// The tokens every scope read so far spans: blocks, methods, classes
     /// and modules. A name bound inside one is a local of that scope alone.
     pub(crate) closed_scope_spans: Vec<(usize, usize)>,
+    /// The tokens each block read so far spans, with the names it takes as
+    /// parameters.
+    pub(crate) block_parameter_spans: Vec<(usize, usize, Vec<String>)>,
+    /// The tokens every `def`, `class` and `module` read so far spans.
+    pub(crate) closed_method_spans: Vec<(usize, usize)>,
 
     /// For each block the walk is inside, which anonymous parameters that
     /// block declared: `|*|`, `|**|`, `|&|`. Forwarding one of those on from
@@ -274,10 +279,12 @@ fn collect_bound_names(tokens: &[Token]) -> std::collections::HashMap<String, Ve
             // a local after it. The lexer gives it a token of its own, so the
             // name is collected here rather than among the identifiers.
             TokenKind::Lambda
-                if matches!(
-                    tokens.get(index + 1).map(|next| &next.kind),
-                    Some(TokenKind::Equal)
-                ) =>
+                if in_parameters
+                    || in_block_parameters
+                    || matches!(
+                        tokens.get(index + 1).map(|next| &next.kind),
+                        Some(TokenKind::Equal)
+                    ) =>
             {
                 names.entry("lambda".to_string()).or_default().push(index);
             }
@@ -298,6 +305,21 @@ fn collect_bound_names(tokens: &[Token]) -> std::collections::HashMap<String, Ve
         }
     }
     names
+}
+
+/// The names a block's parameter list binds, with the `*`, `**` and `&`
+/// markers and any default value left out.
+fn parameter_names(parameters: &[String]) -> Vec<String> {
+    parameters
+        .iter()
+        .flat_map(|parameter| {
+            parameter
+                .split(|letter: char| !(letter.is_alphanumeric() || letter == '_'))
+                .filter(|name| !name.is_empty())
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .collect()
 }
 
 /// The names a regexp gives its groups with `(?<name>...)` that can be
@@ -324,7 +346,11 @@ impl Parser {
     /// pattern already, or bound before this point anywhere but inside a
     /// block that has closed since.
     pub(crate) fn names_a_local(&self, name: &str) -> bool {
-        let here = self.stream.current_position();
+        self.names_a_local_at(name, self.stream.current_position())
+    }
+
+    /// Whether `name` is a local variable at the token `here`.
+    fn names_a_local_at(&self, name: &str, here: usize) -> bool {
         let scope_opened_at = self.method_scope_starts.last().copied().unwrap_or(0);
         self.bound_name_tokens.get(name).is_some_and(|bindings| {
             bindings.iter().any(|bound_at| {
@@ -338,6 +364,96 @@ impl Parser {
         })
     }
 
+    /// The locals of the scope around a block that the block's tokens, from
+    /// `opened_at` up to `closed_at`, name, in the order they first name
+    /// them. A name the block or a block inside it takes as a parameter is
+    /// that parameter rather than the outer local.
+    pub(crate) fn outer_locals_used(
+        &self,
+        opened_at: usize,
+        closed_at: usize,
+        parameters: &[String],
+    ) -> Vec<(String, bool)> {
+        let own = parameter_names(parameters);
+        let tokens = self.stream.tokens();
+        let mut found: Vec<(String, bool)> = Vec::new();
+        for index in opened_at..closed_at {
+            let TokenKind::Ident(name) = &tokens[index].kind else {
+                continue;
+            };
+            let names_a_method = index > 0
+                && matches!(
+                    tokens[index - 1].kind,
+                    TokenKind::Dot | TokenKind::SafeDot | TokenKind::ColonColon | TokenKind::Def
+                );
+            let labels_an_argument = matches!(
+                tokens.get(index + 1),
+                Some(next) if matches!(next.kind, TokenKind::Colon) && !next.had_leading_space
+            );
+            // A parameter of a block written inside this one is that
+            // block's own, wherever in it the name is written.
+            let a_nested_parameter = self.block_parameter_spans.iter().any(|(from, to, names)| {
+                *from > opened_at
+                    && *to <= closed_at
+                    && (*from..*to).contains(&index)
+                    && names.contains(name)
+            });
+            if names_a_method
+                || name.starts_with(|first: char| first.is_ascii_uppercase())
+                || labels_an_argument
+                || a_nested_parameter
+                || own.contains(name)
+                || found.iter().any(|(seen, _)| seen == name)
+                || !self.names_a_local_at(name, opened_at)
+            {
+                continue;
+            }
+            found.push((name.clone(), self.bound_more_than_once(name, opened_at)));
+        }
+        found
+    }
+
+    /// Whether the scope `name` is a local of at `here` binds it at more
+    /// than one place, a block inside the scope included and a method,
+    /// class or module inside it left out.
+    fn bound_more_than_once(&self, name: &str, here: usize) -> bool {
+        let scope_opened_at = self
+            .method_scope_starts
+            .iter()
+            .rev()
+            .find(|opened| **opened <= here)
+            .copied()
+            .unwrap_or(0);
+        let Some(bindings) = self.bound_name_tokens.get(name) else {
+            return false;
+        };
+        bindings
+            .iter()
+            .filter(|bound_at| {
+                **bound_at >= scope_opened_at
+                    && !self.closed_method_spans.iter().any(|(from, to)| {
+                        *from > scope_opened_at && (*from..*to).contains(*bound_at)
+                    })
+            })
+            .count()
+            > 1
+    }
+
+    /// Close a block whose tokens run from `opened_at` to here, noting the
+    /// parameters it takes, and answer the outer locals it names.
+    pub(crate) fn close_block_scope(
+        &mut self,
+        opened_at: usize,
+        parameters: &[String],
+    ) -> Vec<(String, bool)> {
+        let closed_at = self.stream.current_position();
+        let outer_locals = self.outer_locals_used(opened_at, closed_at, parameters);
+        self.block_parameter_spans
+            .push((opened_at, closed_at, parameter_names(parameters)));
+        self.closed_scope_spans.push((opened_at, closed_at));
+        outer_locals
+    }
+
     /// Open the scope of a `def`, `class` or `module`, which sees no local
     /// bound outside it.
     pub(crate) fn open_method_scope(&mut self) {
@@ -349,8 +465,9 @@ impl Parser {
     /// nobody else's local.
     pub(crate) fn close_method_scope(&mut self) {
         if let Some(opened_at) = self.method_scope_starts.pop() {
-            self.closed_scope_spans
-                .push((opened_at, self.stream.current_position()));
+            let closed_at = self.stream.current_position();
+            self.closed_scope_spans.push((opened_at, closed_at));
+            self.closed_method_spans.push((opened_at, closed_at));
         }
     }
 
@@ -408,6 +525,8 @@ impl Parser {
             bound_name_tokens: collect_bound_names(&tokens_for_names),
             method_scope_starts: Vec::new(),
             closed_scope_spans: Vec::new(),
+            block_parameter_spans: Vec::new(),
+            closed_method_spans: Vec::new(),
             block_anonymous_params: Vec::new(),
             method_anonymous_block: Vec::new(),
             warnings: Vec::new(),

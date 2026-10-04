@@ -23,6 +23,7 @@ fn test_block_assigned_to_variable() {
                 position: pos(1, 1),
             },
             value: Expression::Lambda {
+                outer_locals: Vec::new(),
                 parameters: vec!["x".to_string()],
                 parameter_defaults: Vec::new(),
                 body: vec![Statement::Expression {
@@ -143,6 +144,7 @@ fn test_block_passed_as_argument_with_function() {
                 position: pos(6, 1),
             },
             value: Expression::Lambda {
+                outer_locals: Vec::new(),
                 parameters: vec!["x".to_string()],
                 parameter_defaults: Vec::new(),
                 body: vec![Statement::Expression {
@@ -220,6 +222,7 @@ fn test_block_returned_from_function_standalone() {
             parameters: vec![Parameter::simple("n".to_string(), pos(1, 17))],
             body: vec![Statement::Expression {
                 expression: Expression::Lambda {
+                    outer_locals: Vec::new(),
                     parameters: vec!["x".to_string()],
                     parameter_defaults: Vec::new(),
                     body: vec![Statement::Expression {
@@ -305,6 +308,7 @@ fn test_block_with_multiple_parameters() {
                 position: pos(1, 1),
             },
             value: Expression::Lambda {
+                outer_locals: Vec::new(),
                 parameters: vec!["x".to_string(), "y".to_string()],
                 parameter_defaults: Vec::new(),
                 body: vec![Statement::Expression {
@@ -382,6 +386,7 @@ fn test_block_with_no_parameters() {
                     position: pos(1, 21),
                 }],
                 captured_vars: None,
+                outer_locals: Vec::new(),
                 is_lambda: false,
                 position: pos(1, 14),
             },
@@ -428,6 +433,7 @@ fn test_block_stored_in_array() {
             value: Expression::Array {
                 elements: vec![
                     Expression::Lambda {
+                        outer_locals: Vec::new(),
                         parameters: vec!["x".to_string()],
                         parameter_defaults: Vec::new(),
                         body: vec![Statement::Expression {
@@ -450,6 +456,7 @@ fn test_block_stored_in_array() {
                         position: pos(2, 3),
                     },
                     Expression::Lambda {
+                        outer_locals: Vec::new(),
                         parameters: vec!["x".to_string()],
                         parameter_defaults: Vec::new(),
                         body: vec![Statement::Expression {
@@ -472,6 +479,7 @@ fn test_block_stored_in_array() {
                         position: pos(3, 3),
                     },
                     Expression::Lambda {
+                        outer_locals: Vec::new(),
                         parameters: vec!["x".to_string()],
                         parameter_defaults: Vec::new(),
                         body: vec![Statement::Expression {
@@ -556,6 +564,7 @@ fn test_block_returned_from_method() {
                 parameters: vec![Parameter::simple("factor".to_string(), pos(2, 26))],
                 body: vec![Statement::Return {
                     value: Some(Expression::Lambda {
+                        outer_locals: Vec::new(),
                         parameters: vec!["x".to_string()],
                         parameter_defaults: Vec::new(),
                         body: vec![Statement::Expression {
@@ -676,10 +685,12 @@ fn test_nested_block_closures() {
                 position: pos(2, 1),
             },
             value: Expression::Lambda {
+                outer_locals: Vec::new(),
                 parameters: vec!["x".to_string()],
                 parameter_defaults: Vec::new(),
                 body: vec![Statement::Expression {
                     expression: Expression::Lambda {
+                        outer_locals: Vec::new(),
                         parameters: vec!["y".to_string()],
                         parameter_defaults: Vec::new(),
                         body: vec![Statement::Expression {
@@ -805,6 +816,7 @@ fn test_array_map_with_block() {
                 method: "map".to_string(),
                 arguments: vec![],
                 trailing_block: Some(Box::new(Expression::Lambda {
+                    outer_locals: Vec::new(),
                     parameters: vec!["x".to_string()],
                     parameter_defaults: Vec::new(),
                     body: vec![Statement::Expression {
@@ -872,6 +884,7 @@ fn test_range_map_with_block() {
             method: "map".to_string(),
             arguments: vec![],
             trailing_block: Some(Box::new(Expression::Lambda {
+                outer_locals: Vec::new(),
                 parameters: vec!["i".to_string()],
                 parameter_defaults: Vec::new(),
                 body: vec![Statement::Expression {

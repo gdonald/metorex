@@ -19,6 +19,7 @@ fn block_returns_last_expression() {
                 position: pos(1, 1),
             },
             value: Expression::Lambda {
+                outer_locals: Vec::new(),
                 parameters: vec!["x".to_string()],
                 parameter_defaults: Vec::new(),
                 body: vec![Statement::Expression {
@@ -90,6 +91,7 @@ fn block_captures_outer_variable() {
                 position: pos(2, 1),
             },
             value: Expression::Lambda {
+                outer_locals: Vec::new(),
                 parameters: vec!["y".to_string()],
                 parameter_defaults: Vec::new(),
                 body: vec![Statement::Expression {
@@ -160,6 +162,7 @@ fn block_argument_mismatch_raises_error() {
                     position: pos(1, 12),
                 }],
                 captured_vars: None,
+                outer_locals: Vec::new(),
                 is_lambda: true,
                 position: pos(1, 5),
             },
@@ -202,6 +205,7 @@ fn block_return_statement_exits_early() {
                 position: pos(1, 1),
             },
             value: Expression::Lambda {
+                outer_locals: Vec::new(),
                 parameters: vec![],
                 parameter_defaults: Vec::new(),
                 body: vec![

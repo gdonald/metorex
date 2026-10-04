@@ -116,7 +116,7 @@ fn respond_to_with_private_allowed_finds_it() {
 #[test]
 fn calling_a_private_native_class_method_raises() {
     let error = run_err(&format!("{SEALED}\nSealed.new"));
-    assert!(error.contains("private method 'new' called for Sealed"));
+    assert!(error.contains("private method 'new' called for class Sealed"));
 }
 
 #[test]

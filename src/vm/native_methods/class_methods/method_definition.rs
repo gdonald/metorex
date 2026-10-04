@@ -127,10 +127,13 @@ impl VirtualMachine {
                     // A method put on a class by `def Klass.name` lives under
                     // the `__class__` name on the class itself, so a
                     // `class << Klass` body has to reach it there.
+                    // `new` and `allocate` are answered natively for every
+                    // class, so a singleton class holds them too.
                     let class_method_owner = self.attached_class_of(class_rc).filter(|attached| {
-                        attached
-                            .find_method(&format!("__class__{}", name))
-                            .is_some_and(|method| !method.is_undefined)
+                        matches!(name.as_str(), "new" | "allocate")
+                            || attached
+                                .find_method(&format!("__class__{}", name))
+                                .is_some_and(|method| !method.is_undefined)
                     });
                     // Kernel methods live in the native dispatch tables rather
                     // than in a class's method map, so they count as present.

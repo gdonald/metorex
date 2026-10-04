@@ -280,13 +280,13 @@ fn class_new_non_class_superclass_errors() {
 #[test]
 fn anonymous_module_with_block() {
     let result = run(r#"
-m = Module.new {
+Helping = Module.new {
   def helper
     "helping"
   end
 }
 class User
-  include m
+  include Helping
 end
 User.new.helper
 "#);

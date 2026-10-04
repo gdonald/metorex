@@ -172,6 +172,9 @@ pub struct VirtualMachine {
     /// runs out, and what to raise when it does. A sleep that would run past
     /// the nearest one ends the block instead.
     pub(crate) timeout_limits: Vec<(std::time::Instant, Object, Object)>,
+    /// Every object sent to another Ractor with `move: true`, held so its
+    /// address names it alone, and those addresses.
+    pub(crate) moved_objects: (Vec<Object>, std::collections::HashSet<usize>),
     /// How deep the machine is inside a body-less method stub standing in for
     /// a native one. A method bound explicitly reaches its native body even
     /// on an object whose class answers nothing of Kernel's.
@@ -556,6 +559,7 @@ impl VirtualMachine {
             file_encodings: HashMap::new(),
             reported_files: std::collections::HashMap::new(),
             timeout_limits: Vec::new(),
+            moved_objects: (Vec::new(), std::collections::HashSet::new()),
             bound_stub_depth: 0,
             current_method_frame: Some(TOP_LEVEL_FRAME),
             iterating_sets: Vec::new(),
@@ -653,6 +657,11 @@ impl VirtualMachine {
         // friends have to keep skipping them.
         vm.seeded_global_names
             .extend(vm.environment.current_scope_vars().into_keys());
+        // The program runs in a scope of its own beneath the one holding the
+        // core library, so a method, which sees only that root scope, does
+        // not see the program's top-level locals, and a block closes over
+        // the program's locals without the core library's names.
+        vm.environment.push_isolated_scope();
         vm
     }
 
@@ -692,7 +701,9 @@ impl VirtualMachine {
                 .unwrap_or(Object::Nil),
             _ => Object::Nil,
         };
-        self.environment_mut()
+        self.environment()
+            .global_scope()
+            .borrow_mut()
             .define("$!".to_string(), exception.clone());
         self.globals_mut().set_variable("!", exception);
         self.globals_mut().set_variable("@", backtrace);
@@ -766,7 +777,9 @@ impl VirtualMachine {
             }
             _ => exception,
         };
-        self.environment_mut()
+        self.environment()
+            .global_scope()
+            .borrow_mut()
             .define("$!".to_string(), exception.clone());
         let backtrace = match &exception {
             Object::Exception(details) => details
@@ -803,8 +816,7 @@ impl VirtualMachine {
             .clone()
             .or_else(|| self.current_source_file.clone())
             .or_else(|| {
-                self.current_file
-                    .as_ref()
+                self.reported_current_file()
                     .map(|file| file.display().to_string())
             });
         location
@@ -964,7 +976,10 @@ impl VirtualMachine {
         // `$*` is the same list under the name Ruby's own punctuation gives
         // it, which `$ARGV` reads through.
         self.globals.set_variable("*", argv.clone());
-        self.environment.define("ARGV".to_string(), argv);
+        self.environment
+            .global_scope()
+            .borrow_mut()
+            .define("ARGV".to_string(), argv);
         self.seeded_global_names.insert("ARGV".to_string());
     }
 

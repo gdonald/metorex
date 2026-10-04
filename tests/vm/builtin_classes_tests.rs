@@ -113,10 +113,11 @@ fn class_of_block() {
     let builtins = BuiltinClasses::new();
     use metorex::object::BlockStatement;
     let block = Object::Block(Rc::new(BlockStatement {
+        outer_locals: Rc::default(),
         parameters: vec![],
         parameter_defaults: Vec::new(),
         body: vec![],
-        captured_vars: HashMap::new(),
+        captured_vars: Rc::default(),
         captured_def_scope: vec![],
         captured_nesting: vec![],
         defining_method: None,

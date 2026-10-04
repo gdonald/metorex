@@ -63,6 +63,7 @@ pub fn for_over_each(
                 parameter_defaults: Vec::new(),
                 body: statements,
                 captured_vars: None,
+                outer_locals: Vec::new(),
                 is_lambda: false,
                 position,
             })),

@@ -203,13 +203,30 @@ pub(crate) fn register_builtin_modules(globals: &mut GlobalRegistry, builtins: &
     // Queue, SizedQueue, Mutex, and ConditionVariable live under Thread, and
     // Ruby names each at the top level too. The two names reach the same
     // class.
-    for (short, full) in [
-        ("Queue", "Thread::Queue"),
-        ("SizedQueue", "Thread::SizedQueue"),
-        ("Mutex", "Thread::Mutex"),
-        ("ConditionVariable", "Thread::ConditionVariable"),
+    // A SizedQueue is a Queue with a limit.
+    let queue = Class::new("Thread::Queue", Some(Class::new("Object", None)));
+    for (short, full, made) in [
+        ("Queue", "Thread::Queue", Rc::clone(&queue)),
+        (
+            "SizedQueue",
+            "Thread::SizedQueue",
+            Class::new("Thread::SizedQueue", Some(queue)),
+        ),
+        (
+            "Mutex",
+            "Thread::Mutex",
+            Class::new("Thread::Mutex", Some(Class::new("Object", None))),
+        ),
+        (
+            "ConditionVariable",
+            "Thread::ConditionVariable",
+            Class::new(
+                "Thread::ConditionVariable",
+                Some(Class::new("Object", None)),
+            ),
+        ),
     ] {
-        let made = Object::Class(Class::new(full, Some(Class::new("Object", None))));
+        let made = Object::Class(made);
         thread.set_class_var(short, made.clone());
         globals.set(full, made.clone());
         globals.set(short, made);

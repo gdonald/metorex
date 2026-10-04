@@ -168,6 +168,7 @@ impl VirtualMachine {
         }
 
         let receiver = self.evaluate_expression(receiver_expr)?;
+        self.refuse_moved_receiver(&receiver, position)?;
         // `held&.name(args) { block }` runs none of what follows when there
         // is no receiver, so the arguments are never evaluated.
         if method_name == crate::parser::SAFE_CALL && matches!(receiver, Object::Nil) {
@@ -215,8 +216,9 @@ impl VirtualMachine {
                         return handled;
                     }
                     let msg = format!(
-                        "private method '{}' called for {}",
+                        "private method '{}' called for {} {}",
                         method_name,
+                        class_rc.kind_name().to_lowercase(),
                         class_rc.ruby_name()
                     );
                     return Err(MetorexError::UncaughtException {
@@ -340,8 +342,9 @@ impl VirtualMachine {
                 return handled;
             }
             let msg = format!(
-                "private method '{}' called for {}",
+                "private method '{}' called for {} {}",
                 method_name,
+                class_rc.kind_name().to_lowercase(),
                 class_rc.ruby_name()
             );
             return Err(MetorexError::UncaughtException {

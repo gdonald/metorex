@@ -146,7 +146,7 @@ pub(crate) fn proc_for_c_function(target: Object) -> Object {
         }],
         std::collections::HashMap::new(),
     );
-    made.captured_vars.insert(
+    std::rc::Rc::make_mut(&mut made.captured_vars).insert(
         "__method_proc_target".to_string(),
         std::rc::Rc::new(std::cell::RefCell::new(target)),
     );
@@ -157,7 +157,7 @@ pub(crate) fn proc_for_c_function(target: Object) -> Object {
 /// what the block is given.
 pub(crate) fn block_for_method(target: Object, position: Position) -> Object {
     let mut block = method_to_proc_block(&target, position);
-    block.captured_vars.insert(
+    std::rc::Rc::make_mut(&mut block.captured_vars).insert(
         "__method_proc_target".to_string(),
         std::rc::Rc::new(std::cell::RefCell::new(target)),
     );

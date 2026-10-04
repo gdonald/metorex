@@ -232,9 +232,13 @@ impl VirtualMachine {
         Object::Dict(Rc::new(std::cell::RefCell::new(entries)))
     }
 
-    /// The file the interpreter is running, as `path` reports it.
+    /// The file the code running now was written in, as `path` reports it:
+    /// the main script the way it was given, as `__FILE__` names it.
     fn traced_path(&self) -> String {
-        match &self.current_file {
+        if let Some(file) = &self.current_source_file {
+            return file.clone();
+        }
+        match self.reported_current_file() {
             Some(path) => path.to_string_lossy().to_string(),
             None => "-e".to_string(),
         }

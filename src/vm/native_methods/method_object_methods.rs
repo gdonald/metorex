@@ -507,6 +507,62 @@ impl VirtualMachine {
                     block_obj.ruby2_keywords.set(true);
                     return Ok(Some(receiver.clone()));
                 }
+                // The locals of the scope the block was written in that its
+                // body names, which a Ractor refuses to share.
+                "__outer_locals__" => {
+                    return Ok(Some(Object::array(
+                        block_obj
+                            .outer_locals
+                            .iter()
+                            .map(|(name, _)| Object::string(name.clone()))
+                            .collect(),
+                    )));
+                }
+                // The outer locals the body assigns to, which a shareable
+                // Proc may not do.
+                "__outer_locals_assigned__" => {
+                    let assigned = crate::ast::collect_assigned_locals(&block_obj.body);
+                    return Ok(Some(Object::array(
+                        block_obj
+                            .outer_locals
+                            .iter()
+                            .filter(|(name, _)| assigned.contains(name))
+                            .map(|(name, _)| Object::string(name.clone()))
+                            .collect(),
+                    )));
+                }
+                // Each outer local the body names, with what it holds and
+                // whether its scope assigns it more than once.
+                "__outer_values__" => {
+                    let pairs = block_obj
+                        .outer_locals
+                        .iter()
+                        .filter_map(|(name, reassigned)| {
+                            let held = block_obj.captured_vars.get(name)?.borrow().clone();
+                            Some(Object::array(vec![
+                                Object::string(name.clone()),
+                                held,
+                                Object::Bool(*reassigned),
+                            ]))
+                        })
+                        .collect();
+                    return Ok(Some(Object::array(pairs)));
+                }
+                // A copy of the block whose `self` is the value given, made a
+                // lambda when asked.
+                "__with_self__" => {
+                    let mut copied = (**block_obj).clone();
+                    Rc::make_mut(&mut copied.captured_vars).insert(
+                        "self".to_string(),
+                        Rc::new(std::cell::RefCell::new(
+                            arguments.first().cloned().unwrap_or(Object::Nil),
+                        )),
+                    );
+                    if arguments.get(1).is_some_and(|held| held.is_truthy()) {
+                        copied.is_lambda = true;
+                    }
+                    return Ok(Some(Object::Block(Rc::new(copied))));
+                }
                 // Where the callable was written: the file and the line the
                 // block was opened on.
                 "source_location" => {

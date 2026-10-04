@@ -18,14 +18,5 @@ mod integration {
         mod dsl;
         mod enumerable;
         mod eval;
-        mod functions;
-        mod globals;
-        mod hash_methods;
-        mod methods;
-        mod programs;
-        mod regexp;
-        mod strings;
-        mod symbols_and_ranges;
-        mod syntax;
     }
 }

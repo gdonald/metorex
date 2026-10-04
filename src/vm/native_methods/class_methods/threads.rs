@@ -1,6 +1,10 @@
 // Threads, fibers and the objects they hand values through.
 
 use super::*;
+use crate::vm::ractors::RACTOR_VAR;
+
+/// Where `Thread.report_on_exception=` keeps what it was set to.
+const REPORT_ON_EXCEPTION_GLOBAL: &str = "__thread_report_on_exception";
 
 impl VirtualMachine {
     /// Threads, fibers, queues and mutexes, along with the calendar helpers
@@ -81,6 +85,12 @@ impl VirtualMachine {
             let block = self.pending_block.take().unwrap_or(Object::Nil);
             let inst_rc = Instance::new(Rc::clone(class_rc));
             let obj = Object::Instance(Rc::clone(&inst_rc));
+            // A thread belongs to the Ractor of the thread that made it.
+            if let Object::Instance(maker) = self.running_thread()
+                && let Some(ractor) = maker.borrow().get_var(RACTOR_VAR).cloned()
+            {
+                inst_rc.borrow_mut().set_var(RACTOR_VAR.to_string(), ractor);
+            }
             // A subclass may write its own `initialize`, and what it hands to
             // `super` is what the thread runs. `start` and `fork` never go
             // through it, which is what tells them apart from `new`.
@@ -372,8 +382,19 @@ impl VirtualMachine {
                     self.globals_mut().set("__Thread_main", main.clone());
                     return Ok(Answered(main));
                 }
-                "report_on_exception" | "report_on_exception=" => {
-                    return Ok(Answered(Object::Bool(true)));
+                // Whether a thread made from now on reports dying of an
+                // exception, which is on until the program turns it off.
+                "report_on_exception" => {
+                    let held = self.globals().get(REPORT_ON_EXCEPTION_GLOBAL);
+                    return Ok(Answered(Object::Bool(
+                        held.is_none_or(|wanted| wanted.is_truthy()),
+                    )));
+                }
+                "report_on_exception=" => {
+                    let wanted = arguments.first().cloned().unwrap_or(Object::Nil);
+                    self.globals_mut()
+                        .set(REPORT_ON_EXCEPTION_GLOBAL, Object::Bool(wanted.is_truthy()));
+                    return Ok(Answered(wanted));
                 }
                 "respond_to?" => {
                     if let Some(arg) = arguments.first() {

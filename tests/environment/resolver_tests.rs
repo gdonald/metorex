@@ -499,6 +499,7 @@ fn resolver_lambda_expression() {
                 },
             )],
             captured_vars: None,
+            outer_locals: Vec::new(),
             is_lambda: false,
             position: pos(),
         },

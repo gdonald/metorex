@@ -76,6 +76,7 @@ impl Parser {
             parameter_defaults,
             body,
             captured_vars: Some(Vec::new()),
+            outer_locals: Vec::new(),
             is_lambda: false,
             position: token_position,
         })
@@ -141,6 +142,7 @@ impl Parser {
                         parameter_defaults: defaults,
                         body,
                         captured_vars: Some(Vec::new()),
+                        outer_locals: Vec::new(),
                         is_lambda: true,
                         position,
                     });
@@ -159,6 +161,7 @@ impl Parser {
                 position: token_position,
             }],
             captured_vars: Some(Vec::new()),
+            outer_locals: Vec::new(),
             is_lambda: true,
             position: token_position,
         })
@@ -178,6 +181,7 @@ impl Parser {
                 parameter_defaults: Vec::new(),
                 body,
                 captured_vars: Some(Vec::new()),
+                outer_locals: Vec::new(),
                 is_lambda: true,
                 position,
             })
@@ -200,6 +204,7 @@ impl Parser {
                 parameter_defaults: Vec::new(),
                 body,
                 captured_vars: Some(Vec::new()),
+                outer_locals: Vec::new(),
                 is_lambda: true,
                 position,
             })
@@ -354,6 +359,7 @@ impl Parser {
                     parameter_defaults: defaults,
                     body,
                     captured_vars: Some(Vec::new()),
+                    outer_locals: Vec::new(),
                     is_lambda: true,
                     position,
                 });
@@ -370,6 +376,7 @@ impl Parser {
                 position: token_position,
             }],
             captured_vars: Some(Vec::new()),
+            outer_locals: Vec::new(),
             is_lambda: true,
             position: token_position,
         })

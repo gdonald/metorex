@@ -88,7 +88,12 @@ impl VirtualMachine {
                 // lives, so that is checked alongside the class's own mark.
                 let singleton = class.singleton_class_slot().clone();
                 for name in class.method_names() {
+                    // An undefined name stands in the table only to hide the
+                    // method, so it is not listed.
                     if let Some(bare) = name.strip_prefix("__class__")
+                        && !class
+                            .find_method(&name)
+                            .is_some_and(|method| method.is_undefined)
                         && !class.is_method_private(&name)
                         && !singleton
                             .as_ref()
@@ -104,6 +109,12 @@ impl VirtualMachine {
                     if let Some(singleton) = class.singleton_class_slot().clone() {
                         for name in singleton.method_names() {
                             if !name.starts_with("__class__")
+                                && !singleton
+                                    .find_method(&name)
+                                    .is_some_and(|method| method.is_undefined)
+                                && !class
+                                    .find_own_method(&format!("__class__{name}"))
+                                    .is_some_and(|method| method.is_undefined)
                                 && !singleton.is_method_private(&name)
                                 && !names.contains(&name)
                             {

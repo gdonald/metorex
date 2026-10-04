@@ -335,6 +335,7 @@ fn test_dictionary_empty() {
 #[test]
 fn test_lambda_expression() {
     let expr = Expression::Lambda {
+        outer_locals: Vec::new(),
         parameters: vec!["x".to_string(), "y".to_string()],
         parameter_defaults: Vec::new(),
         body: vec![Statement::Expression {

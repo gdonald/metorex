@@ -105,8 +105,16 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<Object, MetorexError> {
         match self.class_variable_home() {
-            Some(home) => Self::inherited_class_var(&home, name)
-                .ok_or_else(|| uninitialized_class_var_error(name, &home, position)),
+            Some(home) => {
+                let value = Self::inherited_class_var(&home, name)
+                    .ok_or_else(|| uninitialized_class_var_error(name, &home, position))?;
+                self.refuse_class_variable_in_ractor(
+                    name,
+                    &Self::class_var_owner(&home, name),
+                    position,
+                )?;
+                Ok(value)
+            }
             // With no class or module open, there is nothing for the variable
             // to belong to, which Ruby refuses outright.
             None => Err(MetorexError::runtime_error(
