@@ -157,12 +157,58 @@ module Digest
     end
   end
 
-  # `Digest::Base` is where MRI puts the algorithms it implements in C. The
-  # distinction does not survive here, so it names the same class. Each of the
-  # library's names loads this one file, so the constant is only set once.
-  Base = Class unless defined? Digest::Base
+  # `Digest::Base` is where MRI puts the algorithms it implements in C, and
+  # what a C extension subclasses to add one: the subclass names the C
+  # functions computing its digest, and the methods here run them on a
+  # context each instance keeps. A class naming none computes its digest the
+  # way Digest::Class does.
+  class Base < Digest::Class
+    def initialize(string = nil)
+      raise NotImplementedError, "Digest::Base is an abstract class" if instance_of?(Digest::Base)
+      return super unless __plugin__?
+      __plugin_reset__
+      update string unless string.nil?
+    end
 
-  class MD5 < Digest::Class
+    def update(string)
+      return super unless __plugin__?
+      __plugin_update__ Digest.coerce_message(string)
+    end
+
+    def <<(string)
+      update string
+    end
+
+    def reset
+      return super unless __plugin__?
+      __plugin_reset__
+    end
+
+    def finish
+      return super unless __plugin__?
+      __plugin_finish__
+    end
+
+    def digest_length
+      return super unless __plugin__?
+      __plugin_lengths__[0]
+    end
+
+    def block_length
+      return super unless __plugin__?
+      __plugin_lengths__[1]
+    end
+
+    private
+
+    # Whether the class names C functions computing its digest. A C
+    # extension asking for the Digest namespace replaces this.
+    def __plugin__?
+      false
+    end
+  end
+
+  class MD5 < Digest::Base
     def algorithm
       "MD5"
     end
@@ -176,7 +222,7 @@ module Digest
     end
   end
 
-  class SHA1 < Digest::Class
+  class SHA1 < Digest::Base
     def algorithm
       "SHA1"
     end
@@ -190,7 +236,7 @@ module Digest
     end
   end
 
-  class SHA256 < Digest::Class
+  class SHA256 < Digest::Base
     def algorithm
       "SHA256"
     end
@@ -204,7 +250,7 @@ module Digest
     end
   end
 
-  class SHA384 < Digest::Class
+  class SHA384 < Digest::Base
     def algorithm
       "SHA384"
     end
@@ -218,7 +264,7 @@ module Digest
     end
   end
 
-  class SHA512 < Digest::Class
+  class SHA512 < Digest::Base
     def algorithm
       "SHA512"
     end

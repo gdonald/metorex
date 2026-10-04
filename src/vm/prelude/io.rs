@@ -452,7 +452,7 @@ class IO
   def __read_to_the_end__
     collected = +""
     loop do
-      piece = IO.__stream__("read", __stream_handle__, "", 0).to_s
+      piece = __stream_read__(0).to_s
       break if piece.empty?
       collected = collected + piece
     end
@@ -542,6 +542,7 @@ class IO
   # The number the operating system holds this stream under.
   def fileno
     raise IOError, "closed stream" if closed?
+    raise IOError, "uninitialized stream" if __stream_handle__.nil?
     IO.__stream__ "fileno", __stream_handle__, "", 0
   end
 
@@ -558,8 +559,11 @@ class IO
     @__popen_pid
   end
 
+  # A frozen stream keeps no flag of its own, so the descriptor it held
+  # says whether it was closed.
   def closed?
-    @closed == true
+    return true if @closed == true
+    frozen? && !@handle.nil? && !IO.__stream__("open?", @handle, "", 0)
   end
 
   # A stream closes the descriptor it holds unless it was told not to, which
@@ -583,7 +587,7 @@ class IO
     ensure
       @__popen_writer.close unless @__popen_writer.nil? || @__popen_writer.closed?
       IO.__stream__ "close", __stream_handle__, "", 0 if autoclose?
-      @closed = true
+      @closed = true unless frozen?
     end
     # A stream joined to a forked child waits for it, which is what sets `$?`.
     Process.waitpid @__popen_pid unless @__popen_pid.nil?

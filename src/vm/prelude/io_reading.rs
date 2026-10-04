@@ -86,7 +86,7 @@ pub(super) const SOURCE: &str = r##"
     # What could not be written stays held, so the next flush or the close
     # reports the same trouble rather than losing it.
     IO.__stream__ "write", __stream_handle__, @pending, 0
-    @pending = nil
+    @pending = nil unless frozen?
     nil
   end
   private :__drain__
@@ -199,7 +199,7 @@ pub(super) const SOURCE: &str = r##"
       # What was put back is already in hand, so a descriptor with nothing
       # waiting behind it does not make the read fail.
       more = begin
-        IO.__stream__("read", __stream_handle__, "", wanted - waiting.bytesize).to_s
+        __stream_read__(wanted - waiting.bytesize).to_s
       rescue Errno::EAGAIN
         raise if waiting.empty?
         ""
@@ -222,13 +222,25 @@ pub(super) const SOURCE: &str = r##"
     held
   end
 
+  # Up to `count` bytes read from the descriptor, or everything it has ready
+  # for a count of 0. A fiber that is not blocking hands the wait for
+  # something to read to its scheduler.
+  def __stream_read__(count)
+    scheduler = Fiber.current_scheduler
+    unless scheduler.nil? || IO.__stream__("ready?", __stream_handle__, "", 0)
+      scheduler.io_wait self, IO::READABLE, nil
+    end
+    IO.__stream__ "read", __stream_handle__, "", count
+  end
+  private :__stream_read__
+
   # Take a byte-order mark off the front of the stream, where the mode asked
   # for one and the stream opens with one.
   def __take_bom__
     return if @__bom_read
     @__bom_read = true
     return unless __asks_for_bom__
-    head = IO.__stream__("read", __stream_handle__, "", 4).to_s
+    head = __stream_read__(4).to_s
     found, width = IO.bom_encoding(head.bytes)
     if found.nil?
       @peeked = head.empty? ? nil : head
@@ -304,7 +316,7 @@ pub(super) const SOURCE: &str = r##"
     raise ArgumentError, "negative length #{wanted} given" if wanted < 0
     target = buffer.nil? ? nil : __as_buffer__(buffer)
     return target.nil? ? "" : target if wanted == 0
-    held = IO.__stream__ "read", __stream_handle__, "", wanted
+    held = __stream_read__ wanted
     if held.nil? || held.empty?
       __fill_buffer__ target, ""
       raise EOFError, "end of file reached"
@@ -447,7 +459,7 @@ pub(super) const SOURCE: &str = r##"
     taken = read([wanted, @peeked.bytesize].min)
     short = wanted - taken.bytesize
     if short > 0 && IO.__stream__("ready?", __stream_handle__, "", 0)
-      taken += IO.__stream__("read", __stream_handle__, "", short).to_s.b
+      taken += __stream_read__(short).to_s.b
     end
     taken
   end

@@ -449,3 +449,46 @@ fn test_encodings_symbol_encodings_parens_execution() {
     let output = run_example("encodings/symbol_encodings_parens.rb");
     assert_eq!(output, SYMBOL_ENCODINGS_OUTPUT);
 }
+
+/// The expected output of both `encodings/converting_through_jis` variants.
+const CONVERTING_THROUGH_JIS_OUTPUT: &str = concat!(
+    "[[\"UTF-8\", \"EUC-JP\"], [\"EUC-JP\", \"stateless-ISO-2022-JP\"], [\"stateless-ISO-2022-JP\", \"ISO-2022-JP\"]]\n",
+    "[[\"Shift_JIS\", \"EUC-JP\"]]\n",
+    "\"\\e\\x24\\x42\\x24\\x22\"\n",
+    "\"\\e\\x28\\x42\\x61\"\n",
+    "\"\\e\\x24\\x42\\x24\\x24\"\n",
+    "\"\\e\\x28\\x42\"\n",
+    "\"\"\n",
+    "\"\"\n",
+    "\"あz\"\n",
+    "\"\"\n",
+    "\"\"\n",
+    "[Encoding::InvalidByteSequenceError, \"incomplete \\\"$\\\" on ISO-2022-JP\"]\n",
+    "[Encoding::InvalidByteSequenceError, \"\\\"\\\\xA4\\\" on ISO-2022-JP\"]\n",
+    "[Encoding::UndefinedConversionError, \"\\\"\\\\x8F\\\\xAB\\\\xB1\\\" to stateless-ISO-2022-JP in conversion from UTF-8 to EUC-JP to stateless-ISO-2022-JP to ISO-2022-JP\"]\n",
+    "[Encoding::UndefinedConversionError, \"U+20AC to EUC-JP in conversion from UTF-8 to EUC-JP to stateless-ISO-2022-JP to ISO-2022-JP\"]\n",
+    "[Encoding::UndefinedConversionError, \"U+3042 to ISO-8859-1 in conversion from Shift_JIS to UTF-8 to ISO-8859-1\"]\n",
+    "\"\\e\\x24\\x42\\x24\\x22\\e\\x28\\x42\\x3F\"\n",
+    "\"\"\n",
+    "[]\n",
+    "[48, 66]\n",
+    "[\"universal_newline\", [#<Encoding:UTF-8>, #<Encoding:UTF-16LE>]]\n",
+    "[97, 0]\n",
+    "[10, 0, 98, 0]\n",
+    "[10, 0]\n",
+    "[164, 162]\n",
+    "\"あ\"\n",
+    "false\n",
+);
+
+#[test]
+fn test_encodings_converting_through_jis_execution() {
+    let output = run_example("encodings/converting_through_jis.rb");
+    assert_eq!(output, CONVERTING_THROUGH_JIS_OUTPUT);
+}
+
+#[test]
+fn test_encodings_converting_through_jis_no_parens_execution() {
+    let output = run_example("encodings/converting_through_jis_no_parens.rb");
+    assert_eq!(output, CONVERTING_THROUGH_JIS_OUTPUT);
+}

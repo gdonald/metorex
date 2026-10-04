@@ -2,6 +2,36 @@
 
 use super::*;
 
+thread_local! {
+    /// The names of the dummy encodings defined while the program runs.
+    static ADDED_DUMMIES: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+    /// The aliases defined while the program runs, each with the name of
+    /// the encoding it stands for.
+    static ADDED_ALIASES: std::cell::RefCell<Vec<(String, String)>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Whether the encoding named `named` is a dummy: one Ruby names and tags
+/// strings with but cannot convert through.
+pub(crate) fn is_dummy_encoding(named: &str) -> bool {
+    crate::vm::init::ENCODING_NAMES
+        .iter()
+        .any(|(_, display, dummy)| *dummy && *display == named)
+        || ADDED_DUMMIES.with(|held| held.borrow().iter().any(|held| held == named))
+}
+
+/// Record `named` as a dummy encoding defined while the program runs.
+pub(crate) fn add_dummy_encoding(named: &str) {
+    ADDED_DUMMIES.with(|held| held.borrow_mut().push(named.to_string()));
+}
+
+/// Record `alias` as a name for the encoding named `display`.
+pub(crate) fn add_encoding_alias(alias: &str, display: &str) {
+    ADDED_ALIASES.with(|held| {
+        held.borrow_mut()
+            .push((alias.to_string(), display.to_string()))
+    });
+}
+
 impl VirtualMachine {
     /// The encodings metorex names, and the settings that say which one is
     /// read and written by default.
@@ -76,20 +106,14 @@ impl VirtualMachine {
         {
             match method_name {
                 "dummy?" => {
-                    return Ok(Answered(Object::Bool(
-                        crate::vm::init::ENCODING_NAMES
-                            .iter()
-                            .any(|(_, display, dummy)| *dummy && *display == class_rc.name()),
-                    )));
+                    return Ok(Answered(Object::Bool(is_dummy_encoding(class_rc.name()))));
                 }
                 // A dummy encoding converts nothing, so nothing it holds
                 // stands for ASCII either. The wide UTF forms are not ASCII
                 // compatible for the plainer reason that their code units are
                 // more than a byte.
                 "ascii_compatible?" => {
-                    let dummy = crate::vm::init::ENCODING_NAMES
-                        .iter()
-                        .any(|(_, display, dummy)| *dummy && *display == class_rc.name());
+                    let dummy = is_dummy_encoding(class_rc.name());
                     return Ok(Answered(Object::Bool(
                         !dummy
                             && !class_rc.name().starts_with("UTF-16")
@@ -99,9 +123,7 @@ impl VirtualMachine {
                 "inspect" => {
                     // Ruby shows ASCII-8BIT under the name BINARY, with the
                     // name it reports alongside.
-                    let dummy = crate::vm::init::ENCODING_NAMES
-                        .iter()
-                        .any(|(_, display, dummy)| *dummy && *display == class_rc.name());
+                    let dummy = is_dummy_encoding(class_rc.name());
                     let shown = if class_rc.name() == "ASCII-8BIT" {
                         "BINARY (ASCII-8BIT)".to_string()
                     } else {
@@ -155,6 +177,11 @@ impl VirtualMachine {
                     seen.push(display);
                 }
             }
+            ADDED_ALIASES.with(|held| {
+                for (alias, display) in held.borrow().iter() {
+                    pairs.insert(alias.clone(), Object::string(display.clone()));
+                }
+            });
             // Ruby lists the settings among the aliases, so "external" and
             // "locale" name the encodings they stand for.
             for named in ["external", "locale"] {
@@ -255,6 +282,9 @@ impl VirtualMachine {
                                     || display.eq_ignore_ascii_case(&wanted)
                             },
                         ) else {
+                            if let Some(found) = self.added_encoding(&wanted) {
+                                return Ok(Answered(found));
+                            }
                             return Err(crate::vm::errors::simple_exception(
                                 "ArgumentError",
                                 &format!("unknown encoding name - {wanted}"),
@@ -271,5 +301,27 @@ impl VirtualMachine {
             ));
         }
         Ok(Unclaimed)
+    }
+}
+
+impl VirtualMachine {
+    /// The encoding defined or aliased while the program runs that `wanted`
+    /// names, ignoring case.
+    fn added_encoding(&self, wanted: &str) -> Option<Object> {
+        let named = ADDED_ALIASES
+            .with(|held| {
+                held.borrow()
+                    .iter()
+                    .find(|(alias, _)| alias.eq_ignore_ascii_case(wanted))
+                    .map(|(_, display)| display.clone())
+            })
+            .unwrap_or_else(|| wanted.to_string());
+        let mut found = None;
+        if let Some(Object::Array(listed)) = self.globals().get("__Encoding_list") {
+            found = listed.borrow().iter().find(|held| {
+                matches!(held, Object::Class(class) if class.name().eq_ignore_ascii_case(&named))
+            }).cloned();
+        }
+        found
     }
 }

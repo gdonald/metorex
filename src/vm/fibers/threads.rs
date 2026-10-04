@@ -194,6 +194,9 @@ impl VirtualMachine {
                 if std::rc::Rc::ptr_eq(a, b))
         });
         self.release_locks_held_by(thread);
+        // A fiber a scheduler holds until the thread ends is let go. The
+        // thread is over, so there is nowhere to raise what that raises.
+        let _ = self.scheduler_unblock_all(thread, Position::new(0, 0, 0));
     }
 
     /// Let go of every lock a thread still holds. Ruby releases a thread's
@@ -232,6 +235,22 @@ impl VirtualMachine {
             return self.deliver_thread_interrupts(false, position);
         }
         self.step_pending_threads(position);
+        Ok(())
+    }
+
+    /// Hand the turn over from the middle of a thread's own code when other
+    /// threads are waiting for one. Code of the interpreter's own written in
+    /// Ruby runs to its end first, as a method written in C does in Ruby.
+    pub(crate) fn share_the_turn(&mut self, position: Position) -> Result<(), MetorexError> {
+        let in_the_program = !self
+            .current_source_file
+            .as_deref()
+            .is_some_and(|file| file.starts_with(crate::vm::INTERNAL_FILE_PREFIX));
+        let threads_waiting = self.running_a_thread_body()
+            || (self.fiber_current_handle() == ROOT_FIBER && !self.pending_threads.is_empty());
+        if in_the_program && threads_waiting {
+            self.pass_to_other_threads(position)?;
+        }
         Ok(())
     }
 

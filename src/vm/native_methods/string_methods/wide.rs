@@ -34,6 +34,11 @@ impl WideShape {
     pub(crate) fn unit(self) -> usize {
         self.unit
     }
+
+    /// Whether the high byte of a code unit comes first.
+    pub(crate) fn big_endian(self) -> bool {
+        self.big_endian
+    }
 }
 
 /// The shape of an encoding that spells a character in more than one byte,
@@ -132,6 +137,28 @@ pub(crate) fn wide_text(bytes: &[u8], shape: WideShape) -> String {
         }
     }
     text
+}
+
+/// The bytes of each character a wide encoding spells, a code unit apiece
+/// except where two UTF-16 units make one character. Bytes too few for a
+/// whole unit at the end are a piece of their own.
+pub(crate) fn wide_characters(bytes: &[u8], shape: WideShape) -> Vec<Vec<u8>> {
+    let mut pieces = Vec::new();
+    let mut at = 0;
+    while at < bytes.len() {
+        let mut width = shape.unit.min(bytes.len() - at);
+        let leading = if shape.big_endian { at } else { at + 1 };
+        if shape.unit == 2
+            && width == 2
+            && at + 4 <= bytes.len()
+            && (0xd8..0xdc).contains(&bytes[leading])
+        {
+            width = 4;
+        }
+        pieces.push(bytes[at..at + width].to_vec());
+        at += width;
+    }
+    pieces
 }
 
 /// A run of bytes held as text, one character to a byte, which is how a

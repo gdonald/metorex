@@ -9,6 +9,7 @@ pub(crate) use corosensei::stack::DefaultStack;
 pub(crate) use corosensei::{Coroutine, CoroutineResult, Yielder};
 
 mod running;
+mod scheduling;
 mod state;
 mod stopping;
 mod threads;

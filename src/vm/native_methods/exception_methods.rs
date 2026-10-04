@@ -690,6 +690,16 @@ impl VirtualMachine {
             // backtrace appears here.
             "to_s" => {
                 let exc = exception.borrow();
+                // The String the message was given as is answered as it was,
+                // encoding and bytes and all, while the message still reads
+                // the same.
+                if exc.message_given
+                    && let Some(given @ Object::String(text)) =
+                        exc.instance_vars.get(crate::vm::MESSAGE_STRING_KEY)
+                    && *text.as_str() == *exc.message
+                {
+                    return Ok(Some(given.clone()));
+                }
                 let rendered = if exc.message_given {
                     exc.message.clone()
                 } else {

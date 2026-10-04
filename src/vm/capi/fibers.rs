@@ -16,13 +16,24 @@ fn fiber_class() -> Object {
 /// A Method that calls the block function at `function` with `data`, taking
 /// any number of values.
 pub(super) fn block_function_method(function: *const (), data: Value) -> Object {
-    let mut method = Method::new("call".to_string(), vec!["values".to_string()], Vec::new());
-    method.variadic_param = Some((0, "values".to_string()));
-    method.c_function = Some(CFunction {
+    method_for_block_function(block_function(function, data))
+}
+
+/// The C function behind a block, `RB_BLOCK_CALL_FUNC_ARGLIST`, handed
+/// `data`.
+pub(super) fn block_function(function: *const (), data: Value) -> CFunction {
+    CFunction {
         address: function as usize,
         arity: BLOCK_FUNCTION_ARITY,
         data,
-    });
+    }
+}
+
+/// A Method that runs the block function `function`.
+pub(super) fn method_for_block_function(function: CFunction) -> Object {
+    let mut method = Method::new("call".to_string(), vec!["values".to_string()], Vec::new());
+    method.variadic_param = Some((0, "values".to_string()));
+    method.c_function = Some(function);
     Object::Method(Rc::new(method))
 }
 

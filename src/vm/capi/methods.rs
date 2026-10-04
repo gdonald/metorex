@@ -173,14 +173,19 @@ impl VirtualMachine {
         // an argument, and `rb_block_given_p` in it speaks for the method
         // that made the Proc rather than for that call.
         let block = self.pending_block.take();
+        let block_from_ampersand = self.pending_block_from_ampersand;
         let (block, block_argument) = if function.arity == BLOCK_FUNCTION_ARITY {
-            (None, block.as_ref().map_or(QNIL, to_value))
+            (
+                super::calls::block_of_block_call(function),
+                block.as_ref().map_or(QNIL, to_value),
+            )
         } else {
             (block, QNIL)
         };
         let caller = super::Caller {
             position,
             block,
+            block_from_ampersand,
             keywords_given,
             method: Some(method),
         };

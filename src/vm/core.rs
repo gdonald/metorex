@@ -227,6 +227,10 @@ pub struct VirtualMachine {
     /// given a turn. A thread that takes enough of them hands the turn over,
     /// so one looping on a lock still lets the others run.
     pub(crate) locks_this_turn: usize,
+    /// How many statements have run since the turn was last handed over. A
+    /// thread that runs enough of them hands the turn over, so one that never
+    /// waits on anything still lets the others run.
+    pub(crate) statements_this_turn: usize,
     /// What a thread that asked for its exceptions to take the program down
     /// died of, waiting to be raised where the program next waits.
     pub(crate) thread_abort: Option<Object>,
@@ -242,9 +246,6 @@ pub struct VirtualMachine {
     /// the lexer counted, which is what lets code counted from a line of its
     /// own report the numbers it was given.
     pub(crate) source_line_shift: i64,
-    /// The scheduler `Fiber.set_scheduler` put in place, which a fiber that
-    /// is not blocking hands its waiting over to.
-    pub(crate) fiber_scheduler: Option<Object>,
     /// The files being loaded right now, each with the thread loading it, so
     /// a thread that asks for a file another is part-way through waits for it.
     pub(crate) loading_paths: Vec<(String, Object)>,
@@ -376,6 +377,9 @@ pub struct VirtualMachine {
     /// Each entry holds the pattern weakly, so a pattern built later at the
     /// same address is not read as the one that was freed.
     pub(crate) pattern_encodings: HashMap<usize, (std::rc::Weak<String>, String)>,
+    /// The encodings C set on patterns with `rb_enc_associate`, which a
+    /// pattern reports whatever it holds.
+    pub(crate) forced_pattern_encodings: HashMap<usize, (std::rc::Weak<String>, String)>,
     /// The instance variables set on an Array, Hash, or Set. A collection has
     /// nowhere of its own to keep them, so the VM records them against the
     /// address it lives at.
@@ -565,10 +569,10 @@ impl VirtualMachine {
             thread_body_fibers: Vec::new(),
             blocking_in_fiber: false,
             locks_this_turn: 0,
+            statements_this_turn: 0,
             thread_abort: None,
             taken_mutexes: Vec::new(),
             source_line_shift: 0,
-            fiber_scheduler: None,
             loading_paths: Vec::new(),
             autoload_loading: Vec::new(),
             pending_block: None,
@@ -604,6 +608,7 @@ impl VirtualMachine {
             written_ranges: HashMap::new(),
             load_call_site: None,
             pattern_encodings: HashMap::new(),
+            forced_pattern_encodings: HashMap::new(),
             collection_variables: HashMap::new(),
             collection_variable_owners: HashMap::new(),
             // The interpreter answers for an interrupt itself, so that one
@@ -964,10 +969,11 @@ impl VirtualMachine {
     }
 
     /// Run a closure with a new call frame pushed onto the stack.
-    pub fn with_call_frame<F, R>(&mut self, frame: CallFrame, action: F) -> R
+    pub fn with_call_frame<F, R>(&mut self, mut frame: CallFrame, action: F) -> R
     where
         F: FnOnce(&mut Self) -> R,
     {
+        frame.entered_from(self.environment.current_scope());
         self.call_stack.push(frame);
         let result = action(self);
         self.call_stack.pop();
@@ -976,7 +982,8 @@ impl VirtualMachine {
 
     /// Push a frame that stays until it is popped, for scopes whose body is
     /// run by a loop rather than a single closure.
-    pub(crate) fn call_stack_push(&mut self, frame: CallFrame) {
+    pub(crate) fn call_stack_push(&mut self, mut frame: CallFrame) {
+        frame.entered_from(self.environment.current_scope());
         self.call_stack.push(frame);
     }
 

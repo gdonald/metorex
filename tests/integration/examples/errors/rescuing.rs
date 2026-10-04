@@ -120,3 +120,17 @@ fn test_errors_rescue_names_in_scope_no_parens_execution() {
     let output = run_example("errors/rescue_names_in_scope_no_parens.rb");
     assert_eq!(output, RESCUE_NAMES_IN_SCOPE_OUTPUT);
 }
+
+#[test]
+fn test_errors_ensure_return_drops_error_execution() {
+    let expected = ":returned\nnil\n:returned\n\"outer\"\n";
+    let output = run_example("errors/ensure_return_drops_error.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_ensure_return_drops_error_no_parens_execution() {
+    let expected = ":returned\nnil\n:returned\n\"outer\"\n";
+    let output = run_example("errors/ensure_return_drops_error_no_parens.rb");
+    assert_eq!(output, expected);
+}

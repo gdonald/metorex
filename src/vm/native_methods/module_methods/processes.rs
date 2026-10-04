@@ -370,7 +370,7 @@ impl VirtualMachine {
                     Some(Object::Int(held)) => *held as libc::c_int,
                     _ => 0,
                 };
-                return Ok(Some(match self.reap_child(requested, flags) {
+                return Ok(Some(match self.reap_child(requested, flags, position)? {
                     Some((0, _)) => Object::Nil,
                     Some((_, status)) => status,
                     None => self.build_process_status(Object::Nil, Object::Nil, -1),
@@ -389,7 +389,8 @@ impl VirtualMachine {
                     Some(Object::Int(held)) => *held as libc::c_int,
                     _ => 0,
                 };
-                let (pid, status) = self.wait_for_child_with(requested, flags, position)?;
+                let (pid, status) =
+                    self.wait_for_child_through_scheduler(requested, flags, position)?;
                 // A child still running answers nothing at all.
                 if pid == 0 {
                     return Ok(Some(Object::Nil));

@@ -178,7 +178,7 @@ impl VirtualMachine {
         flags: libc::c_int,
         position: Position,
     ) -> Result<(i32, Object), MetorexError> {
-        let Some((pid, status)) = self.reap_child(requested, flags) else {
+        let Some((pid, status)) = self.reap_child(requested, flags, position)? else {
             let message = "No child processes".to_string();
             return Err(MetorexError::UncaughtException {
                 exception: Object::exception("Errno::ECHILD", message.clone()),
@@ -192,6 +192,37 @@ impl VirtualMachine {
         Ok((pid, status))
     }
 
+    /// Wait for a child, handing the wait to the scheduler of a fiber that is
+    /// not blocking when the scheduler answers `process_wait`.
+    pub(crate) fn wait_for_child_through_scheduler(
+        &mut self,
+        requested: i32,
+        flags: libc::c_int,
+        position: Position,
+    ) -> Result<(i32, Object), MetorexError> {
+        let scheduler = match self.current_scheduler() {
+            Some(held) if flags & libc::WNOHANG == 0 && self.responds_to(&held, "process_wait") => {
+                held
+            }
+            _ => return self.wait_for_child_with(requested, flags, position),
+        };
+        let status = self.send_to_object(
+            scheduler,
+            "process_wait",
+            vec![
+                Object::Int(i64::from(requested)),
+                Object::Int(i64::from(flags)),
+            ],
+            position,
+        )?;
+        let pid = match self.send_to_object(status.clone(), "pid", Vec::new(), position)? {
+            Object::Int(pid) => pid as i32,
+            _ => 0,
+        };
+        self.globals_mut().set(LAST_STATUS_GLOBAL, status.clone());
+        Ok((pid, status))
+    }
+
     /// Wait for a child without recording `$?`, answering None when there is
     /// no child to wait for. A child still running under `WNOHANG` answers a
     /// pid of zero and a nil status.
@@ -199,15 +230,15 @@ impl VirtualMachine {
         &mut self,
         requested: i32,
         flags: libc::c_int,
-    ) -> Option<(i32, Object)> {
+        position: Position,
+    ) -> Result<Option<(i32, Object)>, MetorexError> {
         let mut raw_status: libc::c_int = 0;
-        // SAFETY: `waitpid` only writes through the status pointer given.
-        let pid = unsafe { libc::waitpid(requested, &mut raw_status, flags) };
+        let pid = self.waitpid_handing_turns(requested, &mut raw_status, flags, position)?;
         if pid == 0 && flags & libc::WNOHANG != 0 {
-            return Some((0, Object::Nil));
+            return Ok(Some((0, Object::Nil)));
         }
         if pid <= 0 {
-            return None;
+            return Ok(None);
         }
         let exited = libc::WIFEXITED(raw_status);
         let (exitstatus, termsig) = if exited {
@@ -221,7 +252,7 @@ impl VirtualMachine {
             (Object::Int(0), Object::Nil)
         };
         let status = self.build_process_status(exitstatus, termsig, pid as i64);
-        Some((pid, status))
+        Ok(Some((pid, status)))
     }
 
     /// A class built once and kept in globals, so every instance of it shares

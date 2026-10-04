@@ -129,3 +129,31 @@ pub(crate) fn objects_from(count: i64, values: *const Value) -> Vec<Object> {
         .map(|held| to_object(*held))
         .collect()
 }
+
+/// Let go of the object behind `value`, which C no longer reaches. The handle
+/// is not given out again.
+pub(crate) fn release(value: Value) {
+    HANDLES.with(|table| {
+        let mut table = table.borrow_mut();
+        let index = value.wrapping_sub(FIRST_HANDLE) / HANDLE_STRIDE;
+        let Some(slot) = table.objects.get_mut(index) else {
+            return;
+        };
+        let released = std::mem::replace(slot, Object::Nil);
+        if let Some(address) = identity(&released) {
+            table.by_identity.remove(&address);
+        }
+    });
+}
+
+/// How many references to the object behind `value` there are besides the
+/// one the handle table holds.
+pub(crate) fn references_besides_the_table(value: Value) -> usize {
+    let held = to_object(value);
+    let count = match &held {
+        Object::Instance(instance) => Rc::strong_count(instance),
+        _ => return usize::MAX,
+    };
+    // The table holds one and `held` is another.
+    count - 2
+}

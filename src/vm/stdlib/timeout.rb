@@ -25,6 +25,11 @@ module Timeout
     end
     raised = klass.nil? ? Timeout::Error : klass
     text = message.nil? ? "execution expired" : message
+    # A fiber that is not blocking leaves the limit to its scheduler.
+    scheduler = Fiber.current_scheduler
+    if !scheduler.nil? && scheduler.respond_to?(:timeout_after)
+      return scheduler.timeout_after(sec, raised, text, &block)
+    end
     __timeout_open__ sec, raised, text
     begin
       block.call sec

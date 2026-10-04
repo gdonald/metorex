@@ -18,7 +18,7 @@
 # since the name is printed before the test runs and the last line without an
 # `ok` after it is the one that stopped:
 #
-#   scripts/linux.sh cargo test --test all_tests -- --test-threads=1
+#   scripts/linux.sh cargo test -- --test-threads=1
 #
 # Each architecture builds into a volume of its own, mounted over target/, so
 # it builds to the same path CI does while leaving the host's own build alone.

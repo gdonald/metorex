@@ -50,12 +50,27 @@ impl VirtualMachine {
                 // Another fiber of this thread holding the lock cannot let it
                 // go while this one waits, since nothing else of the thread
                 // runs until this one does.
-                if held && self.fiber_scheduler.is_none() && self.mutex_held_by_this_thread(&inst) {
+                if held
+                    && self.current_scheduler().is_none()
+                    && self.mutex_held_by_this_thread(&inst)
+                {
                     return Err(crate::vm::errors::simple_exception(
                         "ThreadError",
                         "deadlock; lock already owned by another fiber belonging to the same thread",
                         position,
                     ));
+                }
+                // A fiber that is not blocking waits for the lock through its
+                // scheduler, which holds it until the lock is let go.
+                if let Some(scheduler) = self.current_scheduler() {
+                    while matches!(
+                        inst.borrow().get_var("__mutex_locked"),
+                        Some(Object::Bool(true))
+                    ) {
+                        self.scheduler_block(scheduler.clone(), receiver, Object::Nil, position)?;
+                    }
+                    self.mark_mutex_held(&inst);
+                    return Ok(Some(receiver.clone()));
                 }
                 if !self.thread_current_stack.is_empty() {
                     self.locks_this_turn += 1;
@@ -104,6 +119,7 @@ impl VirtualMachine {
                 }
                 inst.borrow_mut()
                     .set_var("__mutex_locked".to_string(), Object::Bool(false));
+                self.scheduler_unblock(receiver, position)?;
                 Ok(Some(receiver.clone()))
             }
             // `Mutex#sleep` lets the lock go, waits to be woken, and takes

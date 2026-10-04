@@ -623,6 +623,13 @@ impl VirtualMachine {
         if let Some(exception) = ending {
             self.set_current_exception(exception);
         }
+        let mut status = status;
+        // The main thread's scheduler is closed as the main program ends,
+        // which runs whatever it still holds.
+        if let Err(error) = self.close_thread_scheduler(crate::lexer::Position::new(0, 0, 0)) {
+            self.report_ending_error(error);
+            status = 1;
+        }
         // A program that is ending takes its threads with it, and each one
         // unwinds where it stands.
         self.end_live_threads();
@@ -640,7 +647,6 @@ impl VirtualMachine {
             use std::io::Write as _;
             let _ = std::io::stdout().flush();
         }
-        let mut status = status;
         while let Some(handler) = self.at_exit_handlers.pop() {
             let Object::Block(block) = handler else {
                 continue;
@@ -670,24 +676,32 @@ impl VirtualMachine {
                     self.set_current_exception(Object::Exception(std::rc::Rc::clone(&details)));
                 }
                 Err(error) => {
-                    // A handler that raises reports the way the program does,
-                    // naming where it was raised and the class it is.
-                    if let crate::error::MetorexError::UncaughtException { exception, .. } = &error
-                    {
-                        let held = exception.clone();
-                        match self.uncaught_report(&held) {
-                            Some(report) => eprint!("{}", report),
-                            None => eprintln!("{}", error),
-                        }
-                        self.set_current_exception(held);
-                    } else {
-                        eprintln!("{}", error);
-                    }
+                    self.report_ending_error(error);
                     status = 1;
                 }
             }
         }
+        // What C wrapped in an object is freed once nothing else will run.
+        self.free_remaining_data();
         status
+    }
+}
+
+impl VirtualMachine {
+    /// Report what something run as the program ends raised, the way the
+    /// program reports what it ends with: where it was raised and the class
+    /// it is.
+    fn report_ending_error(&mut self, error: crate::error::MetorexError) {
+        if let crate::error::MetorexError::UncaughtException { exception, .. } = &error {
+            let held = exception.clone();
+            match self.uncaught_report(&held) {
+                Some(report) => eprint!("{}", report),
+                None => eprintln!("{}", error),
+            }
+            self.set_current_exception(held);
+        } else {
+            eprintln!("{}", error);
+        }
     }
 }
 

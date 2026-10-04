@@ -295,6 +295,7 @@ impl VirtualMachine {
                     return Ok(Some(Object::Int(self.gc_total_time())));
                 }
                 "start" | "garbage_collect" => {
+                    self.collect_unreached_data(position)?;
                     self.record_gc_run();
                     return Ok(Some(Object::Nil));
                 }

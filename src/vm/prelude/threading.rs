@@ -348,12 +348,13 @@ end
 
 class ThreadGroup
   def initialize
-    @threads = []
     @enclosed = false
   end
 
+  # The living threads in this group, the main thread among them while it is
+  # in the default group.
   def list
-    @threads.dup
+    Thread.list.select { |thread| thread.group.equal?(self) }
   end
 
   def add(thread)
@@ -361,8 +362,6 @@ class ThreadGroup
     if held && held.enclosed? && !held.equal?(self)
       raise ThreadError, "can't move from the enclosed thread group"
     end
-    held.__remove__(thread) if held
-    @threads.push thread unless @threads.include?(thread)
     thread.__set_group__(self)
     self
   end
@@ -374,11 +373,6 @@ class ThreadGroup
 
   def enclosed?
     @enclosed
-  end
-
-  def __remove__(thread)
-    @threads = @threads.reject { |held| held.equal?(thread) }
-    self
   end
 
   Default = new

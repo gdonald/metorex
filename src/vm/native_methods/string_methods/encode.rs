@@ -85,7 +85,7 @@ impl VirtualMachine {
                         &replacement,
                         position,
                     )?,
-                    None if held == "ISO-2022-JP" && reads_bytes => {
+                    None if held == "ISO-2022-JP" => {
                         crate::vm::native_methods::euc_jp_table::iso_2022_jp_text(&binary_bytes(
                             string_value,
                         ))

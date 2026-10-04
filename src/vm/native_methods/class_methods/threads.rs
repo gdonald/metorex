@@ -204,30 +204,33 @@ impl VirtualMachine {
                 // The scheduler a fiber that is not blocking hands its
                 // waiting over to. Setting nil takes it away again.
                 "set_scheduler" if arguments.len() == 1 => {
-                    self.fiber_scheduler = match &arguments[0] {
-                        Object::Nil => None,
-                        held => {
-                            // A scheduler has to answer for everything a
-                            // fiber hands over to it, which Ruby checks here
-                            // rather than when the fiber waits.
-                            for wanted in ["block", "unblock", "kernel_sleep", "io_wait"] {
-                                if !self.responds_to(held, wanted) {
-                                    return Err(crate::vm::errors::simple_exception(
-                                        "ArgumentError",
-                                        &format!("Scheduler must implement #{}", wanted),
-                                        position,
-                                    ));
-                                }
-                            }
-                            Some(held.clone())
-                        }
-                    };
+                    self.set_thread_scheduler(arguments[0].clone(), position)?;
                     return Ok(Answered(arguments[0].clone()));
                 }
                 "scheduler" => {
-                    return Ok(Answered(
-                        self.fiber_scheduler.clone().unwrap_or(Object::Nil),
-                    ));
+                    return Ok(Answered(self.thread_scheduler().unwrap_or(Object::Nil)));
+                }
+                "current_scheduler" => {
+                    return Ok(Answered(self.current_scheduler().unwrap_or(Object::Nil)));
+                }
+                // `Fiber.schedule` asks the thread's scheduler for a fiber
+                // running the block.
+                "schedule" => {
+                    let Some(scheduler) = self.thread_scheduler() else {
+                        return Err(crate::vm::errors::simple_exception(
+                            "RuntimeError",
+                            "No scheduler is available!",
+                            position,
+                        ));
+                    };
+                    // The block stays pending, so the scheduler's `fiber`
+                    // is the method handed it.
+                    return Ok(Answered(self.send_to_object(
+                        scheduler,
+                        "fiber",
+                        arguments.to_vec(),
+                        position,
+                    )?));
                 }
                 // `Fiber.blocking { |f| ... }` runs the block with the
                 // running fiber blocking, and puts back what it was after.

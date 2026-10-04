@@ -34,6 +34,15 @@ VALUE rb_tracepoint_enable(VALUE trace);
 VALUE rb_tracepoint_disable(VALUE trace);
 VALUE rb_tracepoint_enabled_p(VALUE trace);
 
+typedef struct rb_debug_inspector_struct rb_debug_inspector_t;
+typedef VALUE (*rb_debug_inspector_func_t)(const rb_debug_inspector_t *inspector, void *data);
+VALUE rb_debug_inspector_open(rb_debug_inspector_func_t function, void *data);
+VALUE rb_debug_inspector_frame_self_get(const rb_debug_inspector_t *inspector, long index);
+VALUE rb_debug_inspector_frame_class_get(const rb_debug_inspector_t *inspector, long index);
+VALUE rb_debug_inspector_frame_binding_get(const rb_debug_inspector_t *inspector, long index);
+VALUE rb_debug_inspector_frame_iseq_get(const rb_debug_inspector_t *inspector, long index);
+VALUE rb_debug_inspector_backtrace_locations(const rb_debug_inspector_t *inspector);
+
 #ifdef __cplusplus
 }
 #endif

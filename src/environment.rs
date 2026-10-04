@@ -27,6 +27,21 @@ impl Environment {
         }
     }
 
+    /// An environment standing where `scope` is current, for reading the
+    /// locals of a frame further out than the running one.
+    pub fn viewing(&self, scope: Rc<RefCell<Scope>>) -> Self {
+        let global = self.global_scope();
+        let scopes = if Rc::ptr_eq(&global, &scope) {
+            vec![global]
+        } else {
+            vec![global, scope]
+        };
+        Environment {
+            depth: scopes.len() - 1,
+            scopes,
+        }
+    }
+
     /// Pushes a new scope onto the stack
     /// The new scope's parent will be the current top scope
     pub fn push_scope(&mut self) {

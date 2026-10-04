@@ -632,7 +632,7 @@ fn test_stdlib_libraries_log_rotation_parens_execution() {
 /// The expected output of both `stdlib_libraries/time_limits` variants, which show
 /// a block given a limit on how long it may run and differ only in whether the calls are
 /// written with parentheses.
-const TIME_LIMITS_OUTPUT: &str = "42\n[Timeout::Error, \"execution expired\"]\n\"took too long\"\n\"Timeout sec must be a non-negative number\"\ntrue\ntrue\n";
+const TIME_LIMITS_OUTPUT: &str = "42\n[Timeout::Error, \"execution expired\"]\n\"took too long\"\n\"Timeout sec must be a non-negative number\"\n:inside\n0\ntrue\ntrue\n";
 
 #[test]
 fn test_stdlib_libraries_time_limits_execution() {

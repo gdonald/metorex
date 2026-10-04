@@ -39,15 +39,8 @@ impl VirtualMachine {
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::inherit())
             .spawn();
-        let output = match spawned {
-            Ok(child) => {
-                let child_pid = child.id() as i64;
-                child.wait_with_output().map(|output| (output, child_pid))
-            }
-            Err(error) => Err(error),
-        };
-        let (output, child_pid) = match output {
-            Ok(pair) => pair,
+        let mut child = match spawned {
+            Ok(child) => child,
             Err(error) => {
                 let message = format!("No such file or directory - {} ({})", command, error);
                 return Err(MetorexError::UncaughtException {
@@ -57,10 +50,19 @@ impl VirtualMachine {
                 });
             }
         };
-        self.record_last_status(&output.status, Some(child_pid));
+        let child_pid = libc::pid_t::try_from(child.id()).unwrap_or(-1);
+        let written = match child.stdout.take() {
+            Some(stdout) => self.read_handing_turns(stdout, position)?,
+            None => Vec::new(),
+        };
+        let mut held: libc::c_int = 0;
+        self.waitpid_handing_turns(child_pid, &mut held, 0, position)?;
+        use std::os::unix::process::ExitStatusExt as _;
+        let status = std::process::ExitStatus::from_raw(held);
+        self.record_last_status(&status, Some(i64::from(child_pid)));
         // A command the shell could not find ends with status 127,
         // which Ruby reports as Errno::ENOENT from the spawn itself.
-        if output.status.code() == Some(127) {
+        if status.code() == Some(127) {
             let message = format!("No such file or directory - {}", command);
             return Err(MetorexError::UncaughtException {
                 exception: Object::exception("Errno::ENOENT", message.clone()),
@@ -68,7 +70,7 @@ impl VirtualMachine {
                 message,
             });
         }
-        Ok(self.command_output(&output.stdout))
+        Ok(self.command_output(&written))
     }
 
     /// `exec` replaces this process with the command, so nothing after it
@@ -84,7 +86,12 @@ impl VirtualMachine {
         let _ = std::io::stdout().flush();
         let _ = std::io::stderr().flush();
         use std::os::unix::process::CommandExt as _;
+        // `exec` puts SIGPIPE back to its default and clears the signal mask
+        // in this process before it replaces it, so a command that never
+        // starts leaves both to be put back.
+        let held_signals = SignalSettings::current();
         let problem = prepared.command.exec();
+        held_signals.restore();
         drop(prepared.held_open);
         Err(start_error(&prepared.program, &problem, position))
     }
@@ -517,7 +524,7 @@ impl VirtualMachine {
             return Ok(Object::Nil);
         }
         let reached = reached.unwrap_or_else(|| words[0].clone());
-        let (status, pid) = run_to_completion(&reached, &words, &redirects);
+        let (status, pid) = self.run_to_completion(&reached, &words, &redirects, position)?;
         self.record_last_status(&status, Some(pid));
         let code = status.code().unwrap_or(-1);
         if raises && code != 0 {
@@ -544,6 +551,25 @@ impl VirtualMachine {
             return Ok(Object::Nil);
         }
         Ok(Object::Bool(status.success()))
+    }
+
+    /// Run a program to completion, answering how it ended and the process
+    /// id it ran under.
+    fn run_to_completion(
+        &mut self,
+        reached: &str,
+        words: &[String],
+        redirects: &[(i32, String)],
+        position: Position,
+    ) -> Result<(std::process::ExitStatus, i64), MetorexError> {
+        use std::os::unix::process::ExitStatusExt as _;
+        let child = start_program(reached, words, redirects);
+        if child < 0 {
+            return Ok((std::process::ExitStatus::from_raw(127 << 8), 0));
+        }
+        let mut held: libc::c_int = 0;
+        self.waitpid_handing_turns(child, &mut held, 0, position)?;
+        Ok((std::process::ExitStatus::from_raw(held), i64::from(child)))
     }
 
     /// `fork` splits the process through `Process._fork`. The child answers
@@ -1023,4 +1049,32 @@ pub(crate) fn shell_free_words(command: &str) -> Option<Vec<String>> {
         return None;
     }
     Some(words)
+}
+
+/// The SIGPIPE disposition and the signal mask a process has.
+struct SignalSettings {
+    broken_pipe: libc::sighandler_t,
+    mask: libc::sigset_t,
+}
+
+impl SignalSettings {
+    fn current() -> Self {
+        // SAFETY: the disposition is read by setting one and putting the old
+        // one straight back, and the mask is read without being changed.
+        unsafe {
+            let broken_pipe = libc::signal(libc::SIGPIPE, libc::SIG_IGN);
+            libc::signal(libc::SIGPIPE, broken_pipe);
+            let mut mask: libc::sigset_t = std::mem::zeroed();
+            libc::pthread_sigmask(libc::SIG_SETMASK, std::ptr::null(), &mut mask);
+            SignalSettings { broken_pipe, mask }
+        }
+    }
+
+    fn restore(&self) {
+        // SAFETY: both were read from this process by `current`.
+        unsafe {
+            libc::signal(libc::SIGPIPE, self.broken_pipe);
+            libc::pthread_sigmask(libc::SIG_SETMASK, &self.mask, std::ptr::null_mut());
+        }
+    }
 }

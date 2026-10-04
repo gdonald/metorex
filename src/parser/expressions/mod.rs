@@ -651,7 +651,7 @@ impl Parser {
         let body = body?;
         let body_closed_at = self.stream.current_position();
         self.expect(TokenKind::End, "Expected 'end' to close block")?;
-        self.closed_block_spans
+        self.closed_scope_spans
             .push((block_opened_at, self.stream.current_position()));
         let parameters = self.block_parameters_or_refuse(
             parameters,
@@ -1027,7 +1027,7 @@ impl Parser {
         let body_closed_at = self.stream.current_position();
 
         self.expect(TokenKind::RBrace, "Expected '}' to close block")?;
-        self.closed_block_spans
+        self.closed_scope_spans
             .push((block_opened_at, self.stream.current_position()));
         let parameters = self.block_parameters_or_refuse(
             parameters,

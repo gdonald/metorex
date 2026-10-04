@@ -85,17 +85,18 @@ pub struct Parser {
     /// `while` or `until` modifier after `begin ... end` makes that body a
     /// loop, so the refusal waits for the statement to end.
     pub(crate) unlooped_redos: Vec<Position>,
-    /// Names the file binds: assignment targets, method parameters, and
-    /// block parameters, each with the tokens that bind it. `foo [1]`
-    /// indexes a name bound before it and passes an array to any other,
-    /// which is the rule Ruby applies.
+    /// Names the file binds: assignment targets, method parameters, block
+    /// parameters and pattern variables, each with the tokens that bind it.
+    /// `foo [1]` indexes a name bound before it and passes an array to any
+    /// other, which is the rule Ruby applies.
     pub(crate) bound_name_tokens: std::collections::HashMap<String, Vec<usize>>,
-    /// The tokens every block read so far spans, parameters included. A
-    /// name bound inside one is a local of that block alone.
-    pub(crate) closed_block_spans: Vec<(usize, usize)>,
-    /// Names a pattern bound while the walk went, which are variables from
-    /// then on.
-    pub(crate) bound_names: std::collections::HashSet<String>,
+    /// The lexical scope chain: where each `def`, `class` and `module` the
+    /// walk is inside opened, innermost last. A scope of one of those sees
+    /// no local bound before it opened.
+    pub(crate) method_scope_starts: Vec<usize>,
+    /// The tokens every scope read so far spans: blocks, methods, classes
+    /// and modules. A name bound inside one is a local of that scope alone.
+    pub(crate) closed_scope_spans: Vec<(usize, usize)>,
 
     /// For each block the walk is inside, which anonymous parameters that
     /// block declared: `|*|`, `|**|`, `|&|`. Forwarding one of those on from
@@ -181,8 +182,22 @@ fn collect_bound_names(tokens: &[Token]) -> std::collections::HashMap<String, Ve
     // a method rather than a variable, so they are stepped over before the
     // parameter list starts.
     let mut naming_a_method = false;
+    // How many parentheses deep the walk is inside the parameters of a
+    // `->` lambda, which end at the closing parenthesis or, written without
+    // any, at the body's opening.
+    let mut lambda_parameters: Option<usize> = None;
     for (index, token) in tokens.iter().enumerate() {
+        if let Some(depth) = lambda_parameters {
+            lambda_parameters = match token.kind {
+                TokenKind::LParen => Some(depth + 1),
+                TokenKind::RParen if depth <= 1 => None,
+                TokenKind::RParen => Some(depth - 1),
+                TokenKind::LBrace | TokenKind::Do if depth == 0 => None,
+                _ => Some(depth),
+            };
+        }
         match &token.kind {
+            TokenKind::Arrow => lambda_parameters = Some(0),
             TokenKind::Def => {
                 naming_a_method = true;
                 in_parameters = false;
@@ -234,8 +249,25 @@ fn collect_bound_names(tokens: &[Token]) -> std::collections::HashMap<String, Ve
                 );
                 let after_fat_arrow = index > 0
                     && matches!(tokens[index - 1].kind, TokenKind::FatArrow | TokenKind::In);
-                if assigned || after_fat_arrow || in_parameters || in_block_parameters {
+                if assigned
+                    || after_fat_arrow
+                    || in_parameters
+                    || in_block_parameters
+                    || lambda_parameters.is_some()
+                {
                     names.entry(name.clone()).or_default().push(index);
+                }
+            }
+            // A regexp literal matched with `=~` binds a local for each group
+            // it names.
+            TokenKind::Regex(pattern, _)
+                if matches!(
+                    tokens.get(index + 1).map(|next| &next.kind),
+                    Some(TokenKind::Match)
+                ) =>
+            {
+                for name in named_groups(pattern) {
+                    names.entry(name).or_default().push(index);
                 }
             }
             // `lambda` is a method rather than syntax, so a program may name
@@ -268,24 +300,68 @@ fn collect_bound_names(tokens: &[Token]) -> std::collections::HashMap<String, Ve
     names
 }
 
+/// The names a regexp gives its groups with `(?<name>...)` that can be
+/// local variables.
+fn named_groups(pattern: &str) -> Vec<String> {
+    pattern
+        .split("(?<")
+        .skip(1)
+        .filter_map(|after| after.split_once('>').map(|(name, _)| name))
+        .filter(|name| {
+            name.chars()
+                .next()
+                .is_some_and(|first| first.is_lowercase() || first == '_')
+                && name
+                    .chars()
+                    .all(|letter| letter.is_alphanumeric() || letter == '_')
+        })
+        .map(str::to_string)
+        .collect()
+}
+
 impl Parser {
     /// Whether `name` is a local variable where the walk stands: bound by a
     /// pattern already, or bound before this point anywhere but inside a
     /// block that has closed since.
     pub(crate) fn names_a_local(&self, name: &str) -> bool {
-        if self.bound_names.contains(name) {
-            return true;
-        }
         let here = self.stream.current_position();
+        let scope_opened_at = self.method_scope_starts.last().copied().unwrap_or(0);
         self.bound_name_tokens.get(name).is_some_and(|bindings| {
             bindings.iter().any(|bound_at| {
                 *bound_at < here
+                    && *bound_at >= scope_opened_at
                     && !self
-                        .closed_block_spans
+                        .closed_scope_spans
                         .iter()
                         .any(|(from, to)| (*from..*to).contains(bound_at) && *to <= here)
             })
         })
+    }
+
+    /// Open the scope of a `def`, `class` or `module`, which sees no local
+    /// bound outside it.
+    pub(crate) fn open_method_scope(&mut self) {
+        self.method_scope_starts
+            .push(self.stream.current_position());
+    }
+
+    /// Close the scope `open_method_scope` opened, so what it bound is
+    /// nobody else's local.
+    pub(crate) fn close_method_scope(&mut self) {
+        if let Some(opened_at) = self.method_scope_starts.pop() {
+            self.closed_scope_spans
+                .push((opened_at, self.stream.current_position()));
+        }
+    }
+
+    /// Note that a pattern binds `name` at the token just read, so the scope
+    /// it is in reads it as a local from here on.
+    pub(crate) fn note_pattern_binding(&mut self, name: &str) {
+        let bound_at = self.stream.current_position().saturating_sub(1);
+        self.bound_name_tokens
+            .entry(name.to_string())
+            .or_default()
+            .push(bound_at);
     }
 
     /// Create a new parser from a vector of tokens
@@ -330,8 +406,8 @@ impl Parser {
             jump_target_depth: 0,
             unlooped_redos: Vec::new(),
             bound_name_tokens: collect_bound_names(&tokens_for_names),
-            closed_block_spans: Vec::new(),
-            bound_names: std::collections::HashSet::new(),
+            method_scope_starts: Vec::new(),
+            closed_scope_spans: Vec::new(),
             block_anonymous_params: Vec::new(),
             method_anonymous_block: Vec::new(),
             warnings: Vec::new(),

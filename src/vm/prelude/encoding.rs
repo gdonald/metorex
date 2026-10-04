@@ -130,6 +130,7 @@ class Encoding
       @options = options
       @convpath = Encoding::Converter.search_convpath @source, @destination, options
       @replacement = Encoding::Converter.replacement_for @destination, options
+      @newline_decorator = Encoding::Converter.newline_decorator options
     end
 
     # What stands in for a character the destination cannot spell. UTF-8 has
@@ -241,38 +242,258 @@ class Encoding
         raise Encoding::ConverterNotFoundError,
               "code converter not found (#{from.name} to #{to.name})"
       end
-      path = if from == to || from == Encoding::UTF_8 || to == Encoding::UTF_8
+      path = if from == to
         [[from, to]]
       else
-        [[from, Encoding::UTF_8], [Encoding::UTF_8, to]]
+        names = Encoding::Converter.shortest_steps from.name, to.name
+        names.each_cons(2).map { |pair| [Encoding.find(pair[0]), Encoding.find(pair[1])] }
       end
-      path = path + ["crlf_newline"] if Encoding::Converter.crlf_wanted options
-      path
+      decorator = Encoding::Converter.newline_decorator options
+      return path if decorator.nil?
+      # A decorator works on ASCII, so it goes before a last step into an
+      # encoding that is not written in ASCII.
+      last = path.last
+      return path + [decorator] if from == to || last[1].ascii_compatible?
+      path[0..-2] + [decorator, last]
     end
 
-    def self.crlf_wanted options
-      return false unless options.is_a? Hash
-      options[:crlf_newline] ? true : false
+    # The steps between the Japanese encodings that do not pass through
+    # UTF-8, by the name of the encoding each one starts from.
+    JAPANESE_STEPS = {
+      "Shift_JIS" => ["EUC-JP"],
+      "EUC-JP" => ["Shift_JIS", "stateless-ISO-2022-JP"],
+      "stateless-ISO-2022-JP" => ["EUC-JP", "ISO-2022-JP"],
+      "ISO-2022-JP" => ["stateless-ISO-2022-JP"]
+    }
+
+    # The encodings only another Japanese encoding steps to or from.
+    REACHED_THROUGH_EUC_JP = ["stateless-ISO-2022-JP", "ISO-2022-JP"]
+
+    # The encodings one step from `name` on the way to `destination`. Every
+    # encoding steps to and from UTF-8 except the ones reached through EUC-JP.
+    def self.next_steps name, destination
+      found = JAPANESE_STEPS.fetch name, []
+      return found if REACHED_THROUGH_EUC_JP.include? name
+      return found + ["UTF-8"] unless name == "UTF-8"
+      return ["EUC-JP"] if REACHED_THROUGH_EUC_JP.include? destination
+      [destination, "EUC-JP"]
     end
 
-    # Carry text from the source encoding to the destination, refusing what
-    # neither one can spell.
+    # The names of the encodings the fewest steps from `from` to `to` pass
+    # through, both ends included.
+    def self.shortest_steps from, to
+      came_from = { from => nil }
+      waiting = [from]
+      until waiting.empty?
+        name = waiting.shift
+        Encoding::Converter.next_steps(name, to).each do |step|
+          next if came_from.key? step
+          came_from[step] = name
+          waiting.push step
+          next unless step == to
+          names = [to]
+          names.unshift came_from[names.first] until came_from[names.first].nil?
+          return names
+        end
+      end
+    end
+
+    # The decorator that rewrites line endings, by the name the convpath
+    # gives it, or nil when the options ask for none.
+    def self.newline_decorator options
+      if options.is_a? Integer
+        return "universal_newline" if options & UNIVERSAL_NEWLINE_DECORATOR != 0
+        return "crlf_newline" if options & CRLF_NEWLINE_DECORATOR != 0
+        return "cr_newline" if options & CR_NEWLINE_DECORATOR != 0
+        return nil
+      end
+      return nil unless options.is_a? Hash
+      named = options[:newline]
+      return "#{named}_newline" if [:universal, :crlf, :cr].include? named
+      return "universal_newline" if options[:universal_newline]
+      return "crlf_newline" if options[:crlf_newline]
+      return "cr_newline" if options[:cr_newline]
+      nil
+    end
+
+    # Carry text from the source encoding to the destination through each
+    # step of the convpath, refusing what a step cannot read or spell. A
+    # character the text stops part-way through is held for the next piece.
     def convert text
       raise ArgumentError, "converter already finished" if @finished
-      held = text.to_s
-      refuse_invalid held
-      unless @pending.nil? || @pending.empty?
-        held = held.byteslice(0, held.bytesize - @pending.bytesize)
-      end
-      converted = ""
-      held.dup.force_encoding(@source.name).each_char do |character|
-        refuse_undefined character unless spellable? character
-        converted = converted + carried(character)
+      held = text.to_s.b
+      held = @pending.b + held unless @pending.nil? || @pending.empty?
+      @pending = nil
+      converted = "".b
+      read_from_source(held).each_char do |character|
+        newline_decorated(character).each do |piece|
+          converted = converted + written_out(piece).b
+        end
       end
       @errinfo = [:source_buffer_empty, nil, nil, nil, nil]
       @last_error = nil
-      converted.dup.force_encoding @destination.name
+      converted.force_encoding @destination.name
     end
+
+    # A character with the line ending the decorator asks for written in its
+    # place. A carriage return read with universal newlines is held until
+    # the character after it shows whether it ends the line by itself.
+    def newline_decorated character
+      return [character] if @newline_decorator.nil?
+      code = character.ord
+      if @newline_decorator == "universal_newline"
+        held = @carriage_return_held
+        @carriage_return_held = code == 13
+        return held ? ["\n"] : [] if code == 13
+        return ["\n"] if code == 10
+        return held ? ["\n", character] : [character]
+      end
+      return [character] unless code == 10
+      @newline_decorator == "crlf_newline" ? ["\r", "\n"] : ["\r"]
+    end
+    private :newline_decorated
+
+    # The text the first step reads, as characters of the source encoding,
+    # or of EUC-JP when the source is ISO-2022-JP.
+    def read_from_source held
+      return jis_decoded held if @source.name == "ISO-2022-JP"
+      refuse_invalid held.dup.force_encoding(@source.name)
+      unless @pending.nil? || @pending.empty?
+        held = held.byteslice(0, held.bytesize - @pending.bytesize)
+      end
+      held.force_encoding @source.name
+    end
+    private :read_from_source
+
+    # A character carried through the rest of the convpath and written the
+    # way the destination spells it.
+    def written_out character
+      return carried_into_jis(character) if @destination.name == "ISO-2022-JP"
+      return character.encode(@destination.name) if character.encoding.name == "EUC-JP" && @source.name == "ISO-2022-JP"
+      read = character.encoding == Encoding::UTF_8 ? character : character.encode("UTF-8")
+      return read if @destination == Encoding::UTF_8
+      unless spellable? read
+        return @replacement if replacing_undefined?
+        refuse_in_step Encoding::UTF_8, @destination, read
+      end
+      carried read
+    end
+    private :written_out
+
+    # A character carried into ISO-2022-JP, which reaches it through EUC-JP
+    # and the stateless form of ISO-2022-JP that holds only two-byte
+    # characters.
+    def carried_into_jis character
+      euc = character
+      unless euc.encoding.name == "EUC-JP"
+        begin
+          euc = character.encode "EUC-JP"
+        rescue Encoding::UndefinedConversionError
+          return replaced_in_jis if replacing_undefined?
+          refuse_in_step character.encoding, Encoding.find("EUC-JP"), character
+        end
+      end
+      if euc.bytesize > 2 || (euc.bytesize == 2 && euc.getbyte(0) == 0x8e)
+        return replaced_in_jis if replacing_undefined?
+        refuse_in_step Encoding.find("EUC-JP"), Encoding.find("stateless-ISO-2022-JP"), euc
+      end
+      jis_carried euc
+    end
+    private :carried_into_jis
+
+    # The replacement written into ISO-2022-JP, which switches back to ASCII
+    # first when a run of two-byte characters is open.
+    def replaced_in_jis
+      written = ""
+      @replacement.each_char { |character| written = written + jis_carried(character) }
+      written
+    end
+    private :replaced_in_jis
+
+    # Refuse a character the step from `from` to `to` cannot spell, naming
+    # the step the way Ruby does: by itself when it is the whole conversion,
+    # and as part of the convpath otherwise.
+    def refuse_in_step from, to, character
+      spelled = if from == Encoding::UTF_8
+        "U+" + character.ord.to_s(16).upcase.rjust(4, "0")
+      else
+        character.b.dump
+      end
+      message = if from == @source && to == @destination
+        "#{spelled} from #{from.name} to #{to.name}"
+      else
+        steps = @convpath.select { |step| step.is_a? Array }
+        names = [steps.first[0].name] + steps.map { |step| step[1].name }
+        "#{spelled} to #{to.name} in conversion from #{names.join(" to ")}"
+      end
+      @errinfo = [:undefined_conversion, from.name, to.name, character.b, ""]
+      trouble = Encoding::UndefinedConversionError.new message, from, to, character
+      @last_error = trouble
+      raise trouble
+    end
+    private :refuse_in_step
+
+    # The escapes ISO-2022-JP switches sets with: the first two into JIS X
+    # 0208, the last two back into ASCII.
+    JIS_ESCAPES = ["\e$B", "\e$@", "\e(B", "\e(J"].map(&:b)
+
+    # ISO-2022-JP read back into EUC-JP, following the escapes that switch
+    # between ASCII and JIS X 0208. An escape or a character the text stops
+    # part-way through is held back for the next piece.
+    def jis_decoded held
+      bytes = held.bytes
+      written = []
+      at = 0
+      while at < bytes.length
+        byte = bytes[at]
+        if byte == 0x1b
+          rest = held.byteslice(at, 3)
+          found = JIS_ESCAPES.index rest
+          unless found.nil?
+            @reading_jis = found < 2
+            at = at + 3
+            next
+          end
+          if JIS_ESCAPES.any? { |escape| escape.start_with? rest }
+            @pending = rest
+            break
+          end
+          refuse_jis_byte held.byteslice(at, 1), held.byteslice(at + 1, 1) || ""
+        end
+        refuse_jis_byte held.byteslice(at, 1), "" if byte >= 0x80
+        if @reading_jis && byte >= 0x21 && byte <= 0x7e
+          if at + 1 >= bytes.length
+            @pending = held.byteslice(at, 1)
+            break
+          end
+          following = bytes[at + 1]
+          unless following >= 0x21 && following <= 0x7e
+            refuse_jis_byte held.byteslice(at, 2), ""
+          end
+          written.push byte + 0x80, following + 0x80
+          at = at + 2
+          next
+        end
+        written.push byte
+        at = at + 1
+      end
+      written.pack("C*").force_encoding "EUC-JP"
+    end
+    private :jis_decoded
+
+    # Refuse bytes ISO-2022-JP cannot read, which stops the step into its
+    # stateless form.
+    def refuse_jis_byte wrong, rest
+      to = Encoding.find "stateless-ISO-2022-JP"
+      @errinfo = [:invalid_byte_sequence, @source.name, to.name, wrong, rest]
+      @held_back = rest
+      trouble = Encoding::InvalidByteSequenceError.new(
+        "#{wrong.inspect} on #{@source.name}", @source, to, wrong, rest, false
+      )
+      @last_error = trouble
+      raise trouble
+    end
+    private :refuse_jis_byte
 
     # What went wrong the last time text was carried over, or nil when the
     # last attempt made it through.
@@ -389,20 +610,26 @@ class Encoding
       pending = @pending
       @pending = nil
       @finished = true
+      written = "".b
+      if @carriage_return_held
+        @carriage_return_held = false
+        written = written_out("\n").b
+      end
       if @shifted
         @shifted = false
-        return "\e(B".dup.force_encoding(@destination.name)
+        return (written + "\e(B".b).force_encoding(@destination.name)
       end
       unless pending.nil? || pending.empty?
         from, to = stage_for :invalid
+        pending = pending.b
         @errinfo = [:incomplete_input, from.name, to.name, pending, ""]
         trouble = Encoding::InvalidByteSequenceError.new(
-          "#{pending.inspect} on #{from.name}", from, to, pending, "", true
+          "incomplete #{pending.inspect} on #{from.name}", from, to, pending, "", true
         )
         @last_error = trouble
         raise trouble
       end
-      "".dup.force_encoding @destination.name
+      written.force_encoding @destination.name
     end
 
     # The bytes held back after a run the source encoding could not read,
@@ -451,7 +678,7 @@ class Encoding
     # character itself where the two encodings spell it the same way.
     def carried character
       return jis_carried(character) if @destination.name == "ISO-2022-JP"
-      return character if character.ord < 128
+      return character if character.ord < 128 && @destination.ascii_compatible?
       character.encode @destination.name
     rescue StandardError
       character

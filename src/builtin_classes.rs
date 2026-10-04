@@ -589,6 +589,15 @@ pub fn init_integer_methods(integer_class: &Class) {
         ("to_r", &[]),
         ("to_s", &[]),
         ("upto", &[crate::object::UNNAMED_PARAMETER]),
+        ("succ", &[]),
+        ("next", &[]),
+        ("pred", &[]),
+        ("zero?", &[]),
+        ("positive?", &[]),
+        ("negative?", &[]),
+        ("even?", &[]),
+        ("odd?", &[]),
+        ("integer?", &[]),
     ] {
         let method = Rc::new(Method::new(
             name.to_string(),

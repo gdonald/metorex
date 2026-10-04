@@ -251,23 +251,7 @@ impl VirtualMachine {
                     );
                     self.warn_through_warning_module(message, position)?;
                 }
-                let file_class = match self.globals().get("__File_handle_class") {
-                    Some(Object::Class(c)) => c,
-                    _ => {
-                        // An open handle is an instance of a class of its own,
-                        // which stands under the global File so the methods
-                        // written there answer for it.
-                        let global_file = match self.globals().get("File") {
-                            Some(Object::Class(file_class)) => Some(file_class),
-                            _ => None,
-                        };
-                        let cls = crate::class::Class::new("File", global_file);
-                        self.globals_mut()
-                            .set("__File_handle_class", Object::Class(Rc::clone(&cls)));
-                        cls
-                    }
-                };
-                let inst_rc = Instance::new(file_class);
+                let inst_rc = Instance::new(Rc::clone(class_rc));
                 // The name is kept as the program spelled it, tag and all, so
                 // `path` hands back a String in the same encoding.
                 let named = match &held {

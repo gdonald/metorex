@@ -204,3 +204,70 @@ fn test_threads_return_while_another_thread_returns_no_parens_execution() {
     let output = run_example("threads/return_while_another_thread_returns_no_parens.rb");
     assert_eq!(output, ":done\n");
 }
+
+/// The expected output of both `threads/thread_group_list` variants.
+const THREAD_GROUP_LIST_OUTPUT: &str = concat!(
+    "true\n",
+    "true\n",
+    "true\n",
+    "[]\n",
+    "[true, false, true]\n",
+    "[[], false]\n",
+);
+
+#[test]
+fn test_threads_thread_group_list_execution() {
+    let output = run_example("threads/thread_group_list.rb");
+    assert_eq!(output, THREAD_GROUP_LIST_OUTPUT);
+}
+
+#[test]
+fn test_threads_thread_group_list_no_parens_execution() {
+    let output = run_example("threads/thread_group_list_no_parens.rb");
+    assert_eq!(output, THREAD_GROUP_LIST_OUTPUT);
+}
+
+/// The expected output of both `threads/sleeping_hands_turns` variants.
+const SLEEPING_HANDS_TURNS_OUTPUT: &str = "[:sleeper_start, :worker, :sleeper_end]\n0\n";
+
+#[test]
+fn test_threads_sleeping_hands_turns_execution() {
+    let output = run_example("threads/sleeping_hands_turns.rb");
+    assert_eq!(output, SLEEPING_HANDS_TURNS_OUTPUT);
+}
+
+#[test]
+fn test_threads_sleeping_hands_turns_no_parens_execution() {
+    let output = run_example("threads/sleeping_hands_turns_no_parens.rb");
+    assert_eq!(output, SLEEPING_HANDS_TURNS_OUTPUT);
+}
+
+/// The expected output of both `threads/waiting_on_a_child` variants.
+const WAITING_ON_A_CHILD_OUTPUT: &str = "true\n\"seen\\n\"\ntrue\n";
+
+#[test]
+fn test_threads_waiting_on_a_child_execution() {
+    let output = run_example("threads/waiting_on_a_child.rb");
+    assert_eq!(output, WAITING_ON_A_CHILD_OUTPUT);
+}
+
+#[test]
+fn test_threads_waiting_on_a_child_no_parens_execution() {
+    let output = run_example("threads/waiting_on_a_child_no_parens.rb");
+    assert_eq!(output, WAITING_ON_A_CHILD_OUTPUT);
+}
+
+/// The expected output of both `threads/busy_threads_share_turns` variants.
+const BUSY_THREADS_SHARE_TURNS_OUTPUT: &str = "true\nfalse\n:finished\n";
+
+#[test]
+fn test_threads_busy_threads_share_turns_execution() {
+    let output = run_example("threads/busy_threads_share_turns.rb");
+    assert_eq!(output, BUSY_THREADS_SHARE_TURNS_OUTPUT);
+}
+
+#[test]
+fn test_threads_busy_threads_share_turns_no_parens_execution() {
+    let output = run_example("threads/busy_threads_share_turns_no_parens.rb");
+    assert_eq!(output, BUSY_THREADS_SHARE_TURNS_OUTPUT);
+}

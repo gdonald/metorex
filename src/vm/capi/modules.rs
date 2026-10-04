@@ -309,7 +309,7 @@ pub extern "C-unwind" fn rb_class_path(module: Value) -> Value {
 
 /// The class or module `path` names, each segment held by the one before
 /// it, starting from Object. An autoload registered for a segment runs.
-fn class_at_path(path: &str) -> Value {
+pub(super) fn class_at_path(path: &str) -> Value {
     let undefined = || error("ArgumentError", format!("undefined class/module {}", path));
     let mut current = top_level_module("Object");
     let mut walked = String::new();

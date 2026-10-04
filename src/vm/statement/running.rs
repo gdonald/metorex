@@ -2,6 +2,9 @@
 
 use super::*;
 
+/// How many statements a thread runs before it hands the turn to the others.
+const STATEMENTS_PER_TURN: usize = 10_000;
+
 impl VirtualMachine {
     /// Evaluate a statement and produce control-flow information for the caller.
     pub(crate) fn execute_statement(
@@ -40,6 +43,11 @@ impl VirtualMachine {
             self.fire_line_event(statement.position())?;
         }
         self.deliver_pending_signals(statement.position())?;
+        self.statements_this_turn += 1;
+        if self.statements_this_turn >= STATEMENTS_PER_TURN {
+            self.statements_this_turn = 0;
+            self.share_the_turn(statement.position())?;
+        }
         let line = statement.position().line;
         if self.coverage_skip_line.take() != Some(line) && self.coverage.is_some() {
             self.coverage_count(line);

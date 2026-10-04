@@ -81,6 +81,33 @@ impl VirtualMachine {
         Ok(Object::Binding(std::rc::Rc::new(held)))
     }
 
+    /// The binding of the code running `running` frames in from the
+    /// innermost, with the locals and `self` of that code, standing at
+    /// `line` of `path`. Every frame further in is set aside while it is
+    /// made, so it names the method that code runs in.
+    pub(crate) fn frame_binding(&mut self, running: usize, path: String, line: usize) -> Object {
+        let kept = self.call_stack.len() - running;
+        let viewed = match running {
+            0 => None,
+            _ => self.call_stack[kept].entering_scope(),
+        };
+        let inner_frames = self.call_stack.split_off(kept);
+        let outer_environment = viewed.map(|scope| {
+            let view = self.environment.viewing(scope);
+            std::mem::replace(&mut self.environment, view)
+        });
+        let made = self.kernel_binding(Position::default());
+        if let Some(environment) = outer_environment {
+            self.environment = environment;
+        }
+        self.call_stack.extend(inner_frames);
+        let made = made.expect("making a binding raises nothing");
+        if let Object::Binding(held) = &made {
+            *held.source.borrow_mut() = Some((path, line));
+        }
+        made
+    }
+
     pub(crate) fn define_top_level_method(
         &mut self,
         arguments: Vec<Object>,

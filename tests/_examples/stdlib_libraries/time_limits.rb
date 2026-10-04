@@ -21,6 +21,10 @@ rescue ArgumentError => refused
   p(refused.message)
 end
 
+# A limit ends with its block, so a later wait is not cut short by it.
+p(Timeout.timeout(0.01) { :inside })
+p(sleep(0.05))
+
 settings = GC.config
 p(settings[:implementation].is_a?(String))
 p(GC.config(foo: "bar") == settings)

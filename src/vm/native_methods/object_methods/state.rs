@@ -25,35 +25,7 @@ impl VirtualMachine {
             }
             "frozen?" => Ok(Some(Object::Bool(self.object_is_frozen(receiver)))),
             "freeze" => {
-                match receiver {
-                    Object::Class(c) | Object::Module(c) => {
-                        c.freeze();
-                    }
-                    Object::String(text) => text.freeze(),
-                    Object::Instance(inst) => {
-                        inst.borrow_mut().frozen = true;
-                        // Freezing an object freezes its singleton class, so
-                        // no singleton method can be added afterwards.
-                        let singleton = inst.borrow().singleton_class.borrow().clone();
-                        if let Some(sc) = singleton {
-                            sc.freeze();
-                        }
-                    }
-                    // A collection has nowhere of its own to keep the flag,
-                    // so the VM records the one it lives at.
-                    Object::Array(_)
-                    | Object::Dict(_)
-                    | Object::Set(_)
-                    | Object::Method(_)
-                    | Object::Block(_)
-                    | Object::Binding(_)
-                    | Object::Regex(_, _) => {
-                        if let Some(address) = Self::collection_address(receiver) {
-                            self.frozen_collections.insert(address, receiver.clone());
-                        }
-                    }
-                    _ => {}
-                }
+                self.freeze_object(receiver);
                 Ok(Some(receiver.clone()))
             }
             "to_sym" => match receiver {

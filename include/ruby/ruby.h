@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
+#include <unistd.h>
 #include <sys/types.h>
 #include <time.h>
 
@@ -324,6 +325,24 @@ struct RBasic {
   VALUE flags;
   VALUE klass;
 };
+struct RBasic *rb_metorex_rbasic(VALUE object);
+#define RBASIC(v) rb_metorex_rbasic((VALUE)(v))
+#define RB_SPECIAL_CONST_P(v) (FIXNUM_P(v) || (VALUE)(v) < (VALUE)0x40)
+#define SPECIAL_CONST_P(v) RB_SPECIAL_CONST_P(v)
+#define RUBY_FL_SHAREABLE ((VALUE)1 << 8)
+#define RUBY_FL_FREEZE ((VALUE)1 << 11)
+#define RUBY_FL_USHIFT 12
+#define RUBY_FL_USER0 ((VALUE)1 << RUBY_FL_USHIFT)
+#define FL_SHAREABLE RUBY_FL_SHAREABLE
+#define FL_FREEZE RUBY_FL_FREEZE
+#define FL_USHIFT RUBY_FL_USHIFT
+#define FL_USER0 RUBY_FL_USER0
+#define RB_FL_TEST(v, f) (RB_SPECIAL_CONST_P(v) ? (VALUE)0 : (RBASIC(v)->flags & (VALUE)(f)))
+#define RB_FL_SET(v, f) (RB_SPECIAL_CONST_P(v) ? (void)0 : (void)(RBASIC(v)->flags |= (VALUE)(f)))
+#define RB_FL_UNSET(v, f) (RB_SPECIAL_CONST_P(v) ? (void)0 : (void)(RBASIC(v)->flags &= ~(VALUE)(f)))
+#define FL_TEST(v, f) RB_FL_TEST(v, f)
+#define FL_SET(v, f) RB_FL_SET(v, f)
+#define FL_UNSET(v, f) RB_FL_UNSET(v, f)
 struct RData {
   struct RBasic basic;
   RUBY_DATA_FUNC dmark;
@@ -385,6 +404,54 @@ int ruby_native_thread_p(void);
 
 typedef VALUE (*rb_alloc_func_t)(VALUE klass);
 void rb_define_alloc_func(VALUE klass, rb_alloc_func_t allocator);
+rb_alloc_func_t rb_get_alloc_func(VALUE klass);
+void rb_undef_alloc_func(VALUE klass);
+VALUE rb_obj_alloc(VALUE klass);
+VALUE rb_obj_dup(VALUE object);
+void rb_obj_call_init(VALUE object, int count, const VALUE *values);
+VALUE rb_obj_class(VALUE object);
+const char *rb_obj_classname(VALUE object);
+VALUE rb_obj_freeze(VALUE object);
+VALUE rb_obj_frozen_p(VALUE object);
+void rb_check_frozen(VALUE object);
+VALUE rb_obj_id(VALUE object);
+VALUE rb_obj_is_instance_of(VALUE object, VALUE klass);
+VALUE rb_obj_is_kind_of(VALUE object, VALUE klass);
+VALUE rb_obj_method(VALUE object, VALUE name);
+int rb_obj_method_arity(VALUE object, ID name);
+int rb_respond_to(VALUE object, ID name);
+int rb_obj_respond_to(VALUE object, ID name, int include_private);
+int rb_method_boundp(VALUE klass, ID name, int exclude_private);
+VALUE rb_special_const_p(VALUE object);
+ID rb_to_id(VALUE name);
+VALUE rb_to_int(VALUE object);
+VALUE rb_check_to_integer(VALUE object, const char *method);
+VALUE rb_convert_type(VALUE object, int type, const char *type_name, const char *method);
+VALUE rb_check_convert_type(VALUE object, int type, const char *type_name, const char *method);
+VALUE rb_check_array_type(VALUE object);
+VALUE rb_check_string_type(VALUE object);
+void rb_extend_object(VALUE object, VALUE module);
+VALUE rb_obj_instance_eval(int count, const VALUE *values, VALUE object);
+VALUE rb_any_to_s(VALUE object);
+VALUE rb_equal(VALUE first, VALUE second);
+VALUE rb_class_inherited_p(VALUE module, VALUE other);
+VALUE rb_require(const char *feature);
+VALUE rb_f_notimplement(int count, const VALUE *values, VALUE object, VALUE marker);
+VALUE rb_attr_get(VALUE object, ID name);
+VALUE rb_obj_instance_variables(VALUE object);
+VALUE rb_iv_get(VALUE object, const char *name);
+VALUE rb_iv_set(VALUE object, const char *name, VALUE value);
+VALUE rb_ivar_get(VALUE object, ID name);
+VALUE rb_ivar_set(VALUE object, ID name, VALUE value);
+VALUE rb_ivar_defined(VALUE object, ID name);
+size_t rb_ivar_count(VALUE object);
+void rb_ivar_foreach(VALUE object, int (*function)(ID name, VALUE value, VALUE data), VALUE data);
+void rb_copy_generic_ivar(VALUE clone, VALUE object);
+void rb_free_generic_ivar(VALUE object);
+#define BUILTIN_TYPE(v) rb_type((VALUE)(v))
+#define FL_ABLE(v) (!RB_SPECIAL_CONST_P(v))
+#define RB_OBJ_FROZEN(v) (RB_SPECIAL_CONST_P(v) || RB_FL_TEST((v), RUBY_FL_FREEZE))
+#define OBJ_FROZEN(v) RB_OBJ_FROZEN(v)
 VALUE rb_marshal_dump(VALUE object, VALUE port);
 VALUE rb_marshal_load(VALUE port);
 VALUE rb_define_finalizer(VALUE object, VALUE finalizer);
@@ -393,7 +460,77 @@ VALUE rb_undefine_finalizer(VALUE object);
 char *rb_rstring_ptr(VALUE string);
 long rb_rstring_len(VALUE string);
 #define RSTRING_PTR(v) rb_rstring_ptr((VALUE)(v))
+#define RSTRING_END(v) (RSTRING_PTR(v) + RSTRING_LEN(v))
 #define RSTRING_LEN(v) rb_rstring_len((VALUE)(v))
+#define RSTRING_LENINT(v) ((int)RSTRING_LEN(v))
+#define SafeStringValue(v) StringValue(v)
+#define ST2FIX(h) LONG2FIX((long)(h))
+#define PRINTF_ARGS(declaration, format_index, first_index) declaration
+
+VALUE rb_String(VALUE object);
+VALUE rb_str_to_str(VALUE object);
+VALUE rb_str_dup(VALUE string);
+VALUE rb_str_new_shared(VALUE string);
+VALUE rb_str_new_frozen(VALUE string);
+VALUE rb_str_new_with_class(VALUE string, const char *text, long length);
+#define rb_str_new3 rb_str_new_shared
+#define rb_str_new4 rb_str_new_frozen
+#define rb_str_new5 rb_str_new_with_class
+VALUE rb_str_buf_new(long capacity);
+VALUE rb_str_buf_new_cstr(const char *text);
+#define rb_str_buf_new2 rb_str_buf_new_cstr
+VALUE rb_str_tmp_new(long length);
+VALUE rb_obj_reveal(VALUE object, VALUE klass);
+size_t rb_str_capacity(VALUE string);
+void rb_str_modify(VALUE string);
+void rb_str_modify_expand(VALUE string, long expand);
+void rb_str_set_len(VALUE string, long length);
+VALUE rb_str_resize(VALUE string, long length);
+VALUE rb_str_drop_bytes(VALUE string, long length);
+void rb_str_free(VALUE string);
+VALUE rb_str_locktmp(VALUE string);
+VALUE rb_str_unlocktmp(VALUE string);
+VALUE rb_usascii_str_new(const char *text, long length);
+VALUE rb_usascii_str_new_cstr(const char *text);
+VALUE rb_usascii_str_new_static(const char *text, long length);
+#define rb_usascii_str_new_lit(text) rb_usascii_str_new_static((text), (long)(sizeof(text) - 1))
+VALUE rb_utf8_str_new(const char *text, long length);
+VALUE rb_utf8_str_new_cstr(const char *text);
+VALUE rb_utf8_str_new_static(const char *text, long length);
+VALUE rb_external_str_new(const char *text, long length);
+VALUE rb_external_str_new_cstr(const char *text);
+VALUE rb_locale_str_new(const char *text, long length);
+VALUE rb_locale_str_new_cstr(const char *text);
+VALUE rb_interned_str(const char *text, long length);
+VALUE rb_interned_str_cstr(const char *text);
+VALUE rb_str_to_interned_str(VALUE string);
+VALUE rb_str_plus(VALUE first, VALUE second);
+VALUE rb_str_times(VALUE string, VALUE count);
+VALUE rb_str_buf_append(VALUE string, VALUE added);
+VALUE rb_str_buf_cat(VALUE string, const char *text, long length);
+VALUE rb_str_cat(VALUE string, const char *text, long length);
+VALUE rb_str_cat_cstr(VALUE string, const char *text);
+#define rb_str_cat2 rb_str_cat_cstr
+int rb_str_cmp(VALUE first, VALUE second);
+VALUE rb_str_equal(VALUE first, VALUE second);
+VALUE rb_str_length(VALUE string);
+long rb_str_strlen(VALUE string);
+long rb_str_sublen(VALUE string, long byte_offset);
+char *rb_str_subpos(VALUE string, long start, long *length);
+VALUE rb_str_subseq(VALUE string, long start, long length);
+VALUE rb_str_substr(VALUE string, long start, long length);
+void rb_str_update(VALUE string, long start, long length, VALUE replacement);
+VALUE rb_str_split(VALUE string, const char *separator);
+VALUE rb_str_inspect(VALUE string);
+VALUE rb_str_intern(VALUE string);
+VALUE rb_str_freeze(VALUE string);
+st_index_t rb_str_hash(VALUE string);
+VALUE rb_str2inum(VALUE string, int base);
+VALUE rb_cstr2inum(const char *text, int base);
+VALUE rb_cstr_to_inum(const char *text, int base, int strict);
+VALUE rb_str_encode(VALUE string, VALUE encoding, int flags, VALUE options);
+VALUE rb_str_export(VALUE string);
+VALUE rb_str_export_locale(VALUE string);
 
 long rb_rarray_len(VALUE array);
 const VALUE *rb_rarray_ptr(VALUE array);
@@ -409,6 +546,31 @@ VALUE rb_ary_push(VALUE array, VALUE element);
 VALUE rb_ary_pop(VALUE array);
 void rb_ary_store(VALUE array, long index, VALUE element);
 VALUE rb_ary_dup(VALUE array);
+#define RARRAY_AREF(v, i) rb_ary_entry((VALUE)(v), (long)(i))
+#define RARRAY_ASET(v, i, value) rb_ary_store((VALUE)(v), (long)(i), (VALUE)(value))
+#define rb_ary_new3 rb_ary_new_from_args
+#define rb_ary_new4 rb_ary_new_from_values
+VALUE rb_Array(VALUE object);
+VALUE rb_ary_aref(int count, const VALUE *values, VALUE array);
+VALUE rb_ary_cat(VALUE array, const VALUE *values, long count);
+VALUE rb_ary_clear(VALUE array);
+VALUE rb_ary_concat(VALUE array, VALUE other);
+VALUE rb_ary_delete(VALUE array, VALUE element);
+VALUE rb_ary_delete_at(VALUE array, long index);
+VALUE rb_ary_freeze(VALUE array);
+VALUE rb_ary_includes(VALUE array, VALUE element);
+VALUE rb_ary_join(VALUE array, VALUE separator);
+VALUE rb_ary_plus(VALUE array, VALUE other);
+VALUE rb_ary_reverse(VALUE array);
+VALUE rb_ary_rotate(VALUE array, long count);
+VALUE rb_ary_shift(VALUE array);
+VALUE rb_ary_sort(VALUE array);
+VALUE rb_ary_sort_bang(VALUE array);
+VALUE rb_ary_subseq(VALUE array, long start, long length);
+VALUE rb_ary_to_ary(VALUE object);
+VALUE rb_ary_to_s(VALUE array);
+VALUE rb_assoc_new(VALUE first, VALUE second);
+void rb_mem_clear(VALUE *values, long count);
 
 typedef VALUE rb_enumerator_size_func(VALUE object, VALUE arguments, VALUE enumerator);
 VALUE rb_enumeratorize(VALUE object, VALUE method, int count, const VALUE *arguments);
@@ -457,6 +619,48 @@ VALUE rb_rational_den(VALUE rational);
   VALUE yielded_arg, VALUE callback_arg, int argc, const VALUE *argv, VALUE blockarg
 typedef VALUE rb_block_call_func(RB_BLOCK_CALL_FUNC_ARGLIST(yielded_arg, callback_arg));
 typedef rb_block_call_func *rb_block_call_func_t;
+VALUE rb_block_call(VALUE receiver, ID name, int count, const VALUE *values, rb_block_call_func_t function, VALUE data);
+VALUE rb_block_lambda(void);
+void rb_need_block(void);
+ID rb_frame_this_func(void);
+VALUE rb_protect(VALUE (*function)(VALUE), VALUE data, int *state);
+NORETURN(void rb_jump_tag(int state));
+VALUE rb_rescue(VALUE (*body)(VALUE), VALUE data, VALUE (*rescue)(VALUE, VALUE), VALUE rescue_data);
+VALUE rb_metorex_rescue2(VALUE (*body)(VALUE), VALUE data, VALUE (*rescue)(VALUE, VALUE), VALUE rescue_data,
+                         int count, const VALUE *classes);
+static inline VALUE rb_rescue2(VALUE (*body)(VALUE), VALUE data, VALUE (*rescue)(VALUE, VALUE), VALUE rescue_data,
+                               ...) {
+  VALUE classes[64];
+  int count = 0;
+  va_list held;
+  va_start(held, rescue_data);
+  for (VALUE klass = va_arg(held, VALUE); klass != 0 && count < 64; klass = va_arg(held, VALUE)) {
+    classes[count++] = klass;
+  }
+  va_end(held);
+  return rb_metorex_rescue2(body, data, rescue, rescue_data, count, classes);
+}
+VALUE rb_ensure(VALUE (*body)(VALUE), VALUE data, VALUE (*ensure)(VALUE), VALUE ensure_data);
+VALUE rb_catch(const char *tag, rb_block_call_func_t function, VALUE data);
+VALUE rb_catch_obj(VALUE tag, rb_block_call_func_t function, VALUE data);
+NORETURN(void rb_throw(const char *tag, VALUE value));
+NORETURN(void rb_throw_obj(VALUE tag, VALUE value));
+VALUE rb_eval_string(const char *source);
+VALUE rb_eval_string_protect(const char *source, int *state);
+VALUE rb_exec_recursive(VALUE (*function)(VALUE, VALUE, int), VALUE object, VALUE data);
+void rb_set_end_proc(void (*function)(VALUE), VALUE data);
+VALUE rb_f_sprintf(int count, const VALUE *values);
+VALUE rb_str_format(int count, const VALUE *values, VALUE format);
+VALUE rb_make_backtrace(void);
+VALUE rb_funcallv_kw(VALUE receiver, ID name, int count, const VALUE *arguments, int keywords);
+VALUE rb_funcallv_public(VALUE receiver, ID name, int count, const VALUE *arguments);
+VALUE rb_funcall_with_block(VALUE receiver, ID name, int count, const VALUE *arguments, VALUE block);
+VALUE rb_funcall_with_block_kw(VALUE receiver, ID name, int count, const VALUE *arguments, VALUE block,
+                               int keywords);
+VALUE rb_check_funcall(VALUE receiver, ID name, int count, const VALUE *arguments);
+NORETURN(void rb_sys_fail(const char *message));
+NORETURN(void rb_syserr_fail(int number, const char *message));
+NORETURN(void rb_syserr_fail_str(int number, VALUE message));
 
 VALUE rb_fiber_new(rb_block_call_func_t function, VALUE data);
 VALUE rb_fiber_current(void);
@@ -535,6 +739,13 @@ VALUE rb_obj_as_string(VALUE object);
 VALUE rb_inspect(VALUE object);
 void rb_metorex_adopt_encoding(VALUE string, VALUE source);
 void rb_warn_message(VALUE message, int verbose_only);
+typedef enum {
+  RB_WARN_CATEGORY_NONE,
+  RB_WARN_CATEGORY_DEPRECATED,
+  RB_WARN_CATEGORY_EXPERIMENTAL,
+  RB_WARN_CATEGORY_PERFORMANCE
+} rb_warning_category_t;
+void rb_metorex_category_warn(rb_warning_category_t category, VALUE message);
 
 VALUE rb_class_new_instance(int count, const VALUE *values, VALUE klass);
 VALUE rb_class_new_instance_kw(int count, const VALUE *values, VALUE klass, int keywords);
@@ -629,6 +840,11 @@ VALUE rb_proc_call_with_block(VALUE procedure, int count, const VALUE *values, V
 VALUE rb_proc_call_with_block_kw(VALUE procedure, int count, const VALUE *values, VALUE block, int keywords);
 
 void rb_gc_register_address(VALUE *address);
+void rb_gc_mark(VALUE object);
+void rb_gc_mark_movable(VALUE object);
+void rb_gc_mark_maybe(VALUE object);
+void rb_gc_mark_locations(const VALUE *start, const VALUE *end);
+VALUE rb_gc_location(VALUE object);
 void rb_gc_unregister_address(VALUE *address);
 void rb_global_variable(VALUE *address);
 void rb_gc_register_mark_object(VALUE object);

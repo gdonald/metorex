@@ -355,9 +355,8 @@ fn run_exc_err(code: &str) -> String {
 
 #[test]
 fn raise_with_non_exception_value_errors() {
-    // Raising an Integer (or any non-exception) should error.
     let err = run_exc_err("raise 5");
-    assert!(err.contains("Exception must be"));
+    assert!(err.contains("exception class/object expected"));
 }
 
 #[test]

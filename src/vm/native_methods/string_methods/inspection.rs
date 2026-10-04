@@ -186,6 +186,22 @@ impl VirtualMachine {
                     && !holds_valid_text(string_value);
                 let mut out = String::with_capacity(string_value.as_str().len() + 2);
                 out.push('"');
+                // A dummy encoding reads no characters, so every byte is
+                // named by its value except the controls with names of their
+                // own.
+                if dummy_encoding(&string_value.encoding_name()) {
+                    for byte in binary_bytes(string_value) {
+                        match named_escape(byte as char) {
+                            Some(named) => {
+                                out.push('\\');
+                                out.push(named);
+                            }
+                            None => out.push_str(&format!("\\x{byte:02X}")),
+                        }
+                    }
+                    out.push('"');
+                    return Ok(Some(Object::string(out)));
+                }
                 if binary || spells_nothing {
                     let bytes = binary_bytes(string_value);
                     let mut at = 0;
@@ -206,12 +222,15 @@ impl VirtualMachine {
                             at += width;
                             continue;
                         }
+                        if let Some(named) = named_escape(byte as char) {
+                            out.push('\\');
+                            out.push(named);
+                            at += 1;
+                            continue;
+                        }
                         match byte {
                             b'"' => out.push_str("\\\""),
                             b'\\' => out.push_str("\\\\"),
-                            b'\n' => out.push_str("\\n"),
-                            b'\r' => out.push_str("\\r"),
-                            b'\t' => out.push_str("\\t"),
                             0x20..=0x7e => out.push(byte as char),
                             _ => out.push_str(&format!("\\x{byte:02X}")),
                         }

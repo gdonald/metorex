@@ -219,7 +219,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.6.6. core/class/new_spec - 1 file, 15 examples, 29 expectations, 0 failures, 0 errors
   - [x] 4.6.7. core/class/subclasses_spec - 1 file, 8 examples, 16008 expectations, 0 failures, 0 errors
   - [x] 4.6.8. core/class/superclass_spec - 1 file, 3 examples, 8 expectations, 0 failures, 0 errors
-- [ ] 4.7. core/module
+- [x] 4.7. core/module - 84 files, 1062 examples, 2273 expectations, 0 failures, 0 errors
   - [x] 4.7.1. core/module/alias_method_spec - 1 file, 23 examples, 39 expectations, 0 failures, 0 errors
   - [x] 4.7.2. core/module/ancestors_spec - 1 file, 9 examples, 14 expectations, 0 failures, 0 errors
   - [x] 4.7.3. core/module/append_features_spec - 1 file, 6 examples, 8 expectations, 0 failures, 0 errors
@@ -291,7 +291,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.7.69. core/module/public_instance_methods_spec - 1 file, 7 examples, 17 expectations, 0 failures, 0 errors
   - [x] 4.7.70. core/module/public_method_defined_spec - 1 file, 10 examples, 20 expectations, 0 failures, 0 errors
   - [x] 4.7.71. core/module/public_spec - 1 file, 19 examples, 28 expectations, 0 failures, 0 errors
-  - [ ] 4.7.72. core/module/refine_spec - 21 of its 38 examples pass; the rest need refinement-aware dispatch through send, Symbol#to_proc, interpolation, method objects, respond_to?, and refining a module a class includes
+  - [x] 4.7.72. core/module/refine_spec - 1 file, 38 examples, 46 expectations, 0 failures, 0 errors
   - [x] 4.7.73. core/module/refinements_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
   - [x] 4.7.74. core/module/remove_class_variable_spec - 1 file, 8 examples, 9 expectations, 0 failures, 0 errors
   - [x] 4.7.75. core/module/remove_const_spec - 1 file, 12 examples, 26 expectations, 0 failures, 0 errors
@@ -306,7 +306,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.7.84. core/module/using_spec - 1 file, 20 examples, 20 expectations, 0 failures, 0 errors
   - [x] 4.7.85. core/module/ruby2_keywords_spec - 1 file, 14 examples, 52 expectations, 0 failures, 0 errors
   - [x] 4.7.86. core/module/refine_spec - 1 file, 38 examples, 46 expectations, 0 failures, 0 errors
-- [ ] 4.8. core/kernel - 119 pass, and the rest are enabled in the runner one file at a time
+- [x] 4.8. core/kernel - 118 files, 2832 examples, 24594 expectations, 0 failures, 0 errors
   - [x] 4.8.1. core/kernel/Array_spec - 1 file, 25 examples, 45 expectations, 0 failures, 0 errors
   - [x] 4.8.2. core/kernel/Complex_spec - 1 file, 66 examples, 126 expectations, 0 failures, 0 errors
   - [x] 4.8.3. core/kernel/Float_spec - 1 file, 193 examples, 297 expectations, 0 failures, 0 errors
@@ -426,7 +426,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.8.117. core/kernel/warn_spec - 1 file, 33 examples, 51 expectations, 0 failures, 0 errors
   - [x] 4.8.118. core/kernel/yield_self_spec - 1 file, 3 examples, 6 expectations, 0 failures, 0 errors
   - [x] 4.8.119. core/kernel/singleton_class_spec - 1 file, 10 examples, 14 expectations, 0 failures, 0 errors
-- [ ] 4.9. core/basicobject
+- [x] 4.9. core/basicobject - 14 files, 178 examples, 229 expectations, 0 failures, 0 errors
   - [x] 4.9.1. core/basicobject/__id__spec - 1 file, 13 examples, 13 expectations, 0 failures, 0 errors
   - [x] 4.9.2. core/basicobject/__send___spec - 1 file, 15 examples, 22 expectations, 0 failures, 0 errors
   - [x] 4.9.3. core/basicobject/basicobject_spec - 1 file, 14 examples, 15 expectations, 0 failures, 0 errors
@@ -444,7 +444,7 @@ Parser fixes during Phase 4 work:
 
 ### Exceptions and Signals
 
-- [ ] 4.10. core/exception - 39 files; 38 pass, the other 3 are enabled one at a time in the runner with a reason each
+- [x] 4.10. core/exception - 39 files, 248 examples, 685 expectations, 0 failures, 0 errors
   - [x] 4.10.1. core/exception/backtrace_locations_spec - 1 file, 5 examples, 22 expectations, 0 failures, 0 errors
   - [x] 4.10.2. core/exception/backtrace_spec - 1 file, 13 examples, 47 expectations, 0 failures, 0 errors
   - [x] 4.10.3. core/exception/case_compare_spec - 1 file, 6 examples, 6 expectations, 0 failures, 0 errors
@@ -488,11 +488,11 @@ Parser fixes during Phase 4 work:
 - [x] 4.11. core/systemexit - 2 files, 6 examples, 9 expectations, 0 failures, 0 errors
   - [x] 4.11.1. core/systemexit/initialize_spec - 1 file, 4 examples, 7 expectations, 0 failures, 0 errors
   - [x] 4.11.2. core/systemexit/success_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
-- [ ] 4.12. core/signal - 3 files; 2 pass, and trap_spec is enabled in the runner once Thread#group and IO.pipe land
+- [x] 4.12. core/signal - 3 files, 52 examples, 73 expectations, 0 failures, 0 errors
   - [x] 4.12.1. core/signal/list_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
   - [x] 4.12.2. core/signal/signame_spec - 1 file, 6 examples, 9 expectations, 0 failures, 0 errors
   - [x] 4.12.3. core/signal/trap_spec - 1 file, 42 examples, 60 expectations, 0 failures, 0 errors
-- [ ] 4.13. core/warning - 5 files; 4 pass, and performance_warning_spec is enabled in the runner once `1 + 2` dispatches to a user-defined Integer#+
+- [x] 4.13. core/warning - 5 files, 31 examples, 41 expectations, 0 failures, 0 errors
   - [x] 4.13.1. core/warning/categories_spec - 1 file, 1 example, 3 expectations, 0 failures, 0 errors
   - [x] 4.13.2. core/warning/element_reference_spec - 1 file, 4 examples, 8 expectations, 0 failures, 0 errors
   - [x] 4.13.3. core/warning/element_set_spec - 1 file, 5 examples, 9 expectations, 0 failures, 0 errors
@@ -4021,7 +4021,7 @@ different reported release would open, without committing metorex to it.
   - [x] 5.4.12. security/cve_2019_8323_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
   - [x] 5.4.13. security/cve_2019_8325_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
   - [x] 5.4.14. security/cve_2019_8322_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
-- [ ] 5.5. optional - 38 pass, and the other 9 capi files are enabled one at a time as the C API in 6.4 covers what each one calls
+- [x] 5.5. optional - 47 files, all passing
   - [x] 5.5.1. optional/capi/data_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors (all examples guarded under ruby_version_is ""..."3.4")
   - [x] 5.5.2. optional/thread_safety/hash_spec - 1 file, 4 examples, 63008 expectations, 0 failures, 0 errors
   - [x] 5.5.3. optional/capi/basic_object_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
@@ -4060,6 +4060,15 @@ different reported release would open, without committing metorex to it.
   - [x] 5.5.36. optional/capi/typed_data_spec - 1 file, 14 examples, 15 expectations, 0 failures, 0 errors
   - [x] 5.5.37. optional/capi/thread_spec - 1 file, 18 examples, 24 expectations, 0 failures, 0 errors
   - [x] 5.5.38. optional/capi/hash_spec - 1 file, 50 examples, 70 expectations, 0 failures, 0 errors
+  - [x] 5.5.39. optional/capi/array_spec - 1 file, 74 examples, 97 expectations, 0 failures, 0 errors
+  - [x] 5.5.40. optional/capi/rbasic_spec - 1 file, 3 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 5.5.41. optional/capi/debug_spec - 1 file, 7 examples, 75 expectations, 0 failures, 0 errors
+  - [x] 5.5.42. optional/capi/kernel_spec - 1 file, 115 examples, 293 expectations, 0 failures, 0 errors
+  - [x] 5.5.43. optional/capi/object_spec - 1 file, 132 examples, 249 expectations, 0 failures, 0 errors
+  - [x] 5.5.44. optional/capi/io_spec - 1 file, 71 examples, 92 expectations, 0 failures, 0 errors
+  - [x] 5.5.45. optional/capi/encoding_spec - 1 file, 113 examples, 283 expectations, 0 failures, 0 errors
+  - [x] 5.5.46. optional/capi/string_spec - 1 file, 230 examples, 612 expectations, 0 failures, 0 errors
+  - [x] 5.5.47. optional/capi/digest_spec - 1 file, 9 examples, 17 expectations, 0 failures, 0 errors
 
 ## Phase 6: What the remaining specs need
 
@@ -4067,16 +4076,16 @@ Every spec still commented out in `scripts/run_ruby_spec.sh` needs one of the
 three pieces below. Each item names the specs it would unlock and the
 acceptance criterion for calling it done.
 
-- [ ] 6.1. Threads that run alongside each other, and a Fiber class
-  - [ ] 6.1.1. A Thread that runs its block on a thread of its own, with `join`, `value`, `status`, `alive?`, `wakeup`, `run`, and `kill` answering from that thread's real state
-  - [ ] 6.1.2. `Thread.pass`, `Kernel#sleep` and `Mutex#lock` yielding to other threads rather than blocking the interpreter
-  - [ ] 6.1.3. Thread-local storage: `Thread#[]`, `#[]=`, `#keys`, `#thread_variable_get`, `#thread_variable_set`, kept per thread and separate per fiber
+- [x] 6.1. Threads that run alongside each other, and a Fiber class
+  - [x] 6.1.1. A Thread that runs its block on a thread of its own, with `join`, `value`, `status`, `alive?`, `wakeup`, `run`, and `kill` answering from that thread's real state. Each thread runs on a stack of its own, hands the turn over after 10,000 statements, and hands it over while it waits on a child process or a pipe
+  - [x] 6.1.2. `Thread.pass`, `Kernel#sleep` and `Mutex#lock` yielding to other threads rather than blocking the interpreter
+  - [x] 6.1.3. Thread-local storage: `Thread#[]`, `#[]=`, `#keys`, `#thread_variable_get`, `#thread_variable_set`, kept per thread and separate per fiber
     - [x] 6.1.3.1. `Thread#[]`, `#[]=`, `#key?` and `#keys` reading a key through `to_str` and refusing anything that names none, with the fiber-local store kept apart from the thread-wide one
     - [x] 6.1.3.2. `Thread#thread_variable_get`, `#thread_variable_set`, `#thread_variable?` and `#thread_variables`, where setting nil drops the name
     - [x] 6.1.3.3. A write to a frozen thread refused with `can't modify frozen thread locals`
-    - [ ] 6.1.3.4. The fiber-local store separated per fiber, which needs 6.1.5
-  - [ ] 6.1.4. `ThreadGroup` with `Thread.main.group` and `#list`
-  - [ ] 6.1.5. A `Fiber` class with `resume`, `yield`, `alive?`, `Fiber.current`, and the transfer form
+    - [x] 6.1.3.4. The fiber-local store separated per fiber, so a value set in a fiber is not seen outside it and one set outside is not seen inside
+  - [x] 6.1.4. `ThreadGroup` with `Thread.main.group` and `#list`, which answers the living threads in the group, the main thread among them
+  - [x] 6.1.5. A `Fiber` class with `resume`, `yield`, `alive?`, `Fiber.current`, and the transfer form
     - [x] 6.1.5.1. A fiber runs its block on a stack of its own, through corosensei, with `resume` and `Fiber.yield` handing values both ways
     - [x] 6.1.5.2. Each fiber carries its own scopes and call frames, swapped in on resume, so a suspended one leaves the interpreter as it found it
     - [x] 6.1.5.3. `Fiber#alive?`, `Fiber.current`, the root fiber, and a subclass answering the same methods
@@ -4084,78 +4093,80 @@ acceptance criterion for calling it done.
     - [x] 6.1.5.5. `Fiber#kill` unwinding a suspended fiber through its own `ensure` blocks, deferred when the fiber is the one running, and `Fiber#inspect` reporting created, resumed, suspended or terminated
     - [x] 6.1.5.6. `Fiber.blocking?`, `Fiber#blocking?`, `Fiber.blocking`, `Fiber#storage`, `Fiber#storage=`, `Fiber.[]` and `Fiber.[]=`, with a fiber inheriting a copy of what the one making it kept
     - [x] 6.1.5.7. A fiber belongs to the thread that made it, a fiber cannot resume itself or a fiber part-way through resuming another, and a stray `break` in a fiber's block is a LocalJumpError
-    - [ ] 6.1.5.8. `Fiber#raise` matching Kernel#raise across the whole shared spec, and the scheduler hooks
+    - [x] 6.1.5.8. `Fiber#raise` matching Kernel#raise across the whole shared spec, and the scheduler hooks: each thread keeps its own scheduler and closes it when replaced or when the thread ends, `Fiber.schedule` and `Fiber.current_scheduler`, `block` and `unblock` for Mutex, Queue and Thread#join, `io_wait` for a read with nothing ready, `kernel_sleep`, `process_wait` and `timeout_after`
   - [x] 6.1.6. `Enumerator#next`, `#peek` and `#feed` suspending the walk instead of collecting every value up front: the walk runs on a fiber, so an endless source can be stepped through, a fed value reaches the `yield` the walk is parked at, and a walk that raised starts again. `Enumerator::Lazy#zip` pulls one value at a time for the same reason
   - [x] 6.1.9. Backtrace labels: a block's `base_label` names the method holding it, a class or module body names itself unqualified, and a singleton class body reports `singleton class`
-  - [ ] 6.1.7. Acceptance: `core/thread`, `core/fiber`, `core/mutex`, `core/queue`, `core/sizedqueue`, `core/conditionvariable`, `core/threadgroup`, `library/monitor`, `core/enumerator/feed_spec` and `core/enumerator/rewind_spec` enabled in the runner, roughly 45 files
+  - [x] 6.1.7. Acceptance: `core/thread`, `core/fiber`, `core/mutex`, `core/queue`, `core/sizedqueue`, `core/conditionvariable`, `core/threadgroup`, `library/monitor`, `core/enumerator/feed_spec` and `core/enumerator/rewind_spec` enabled in the runner: 121 files, 871 examples, 2249 expectations, 0 failures, 0 errors
   - [x] 6.1.8. The integer specs that call mspec's `fixnum_max`/`fixnum_min` now run: `RUBY_ENGINE` reports `ruby`, which is the engine metorex runs, so the vendored helper answers. `pred_spec`, `uminus_spec`, `next_spec`, `succ_spec`, `bit_length_spec` and `core/array/fill_spec` are enabled; `div_spec`, `exponent_spec`, `pow_spec`, `element_reference_spec` and `left_shift_spec` still have failures of their own
 
-- [ ] 6.2. Encoding conversion that reads and writes real bytes
+- [x] 6.2. Encoding conversion that reads and writes real bytes
   - [x] 6.2.1. Transcoding tables for the encodings the specs name: Shift_JIS, EUC-JP, ISO-2022-JP, ISO-8859-1 and -15, IBM437, IBM720, macCyrillic, and the UTF-16 and UTF-32 pairs
   - [x] 6.2.2. `String#encode` rewriting the bytes rather than re-tagging them, so a transcoded string reads as the new encoding
-  - [ ] 6.2.3. `Encoding::Converter#convert` and `#finish` carrying text through the convpath, including the escape runs ISO-2022-JP needs
+  - [x] 6.2.3. `Encoding::Converter#convert` and `#finish` carrying text through the convpath, including the escape runs ISO-2022-JP needs. The convpath is the shortest run of steps, with Shift_JIS, EUC-JP, stateless-ISO-2022-JP and ISO-2022-JP stepping between each other directly, and the newline decorators sit where Ruby puts them
   - [x] 6.2.4. Character splitting per encoding for `String#chars`, `#each_char`, `#grapheme_clusters` and `Dir#read`
   - [x] 6.2.5. Symbol encodings: `String#intern` and `#to_sym` keeping the string's encoding, and refusing a string whose bytes are invalid in it
   - [x] 6.2.6. Chilled string literals: a literal with no `frozen_string_literal` comment answers `+@` with a mutable copy, and warns when written to
-  - [ ] 6.2.7. Acceptance: `core/string/chars_spec`, `each_char_spec`, `intern_spec`, `to_sym_spec`, `uplus_spec`, `chilled_string_spec`, `valid_encoding_spec`, `core/encoding/converter/convert_spec`, `finish_spec`, `putback_spec`, `core/dir/read_spec`, `core/io/ungetc_spec` and `language/symbol_spec` enabled, roughly 13 files
+  - [x] 6.2.7. Acceptance: `core/string/chars_spec`, `each_char_spec`, `intern_spec`, `to_sym_spec`, `uplus_spec`, `chilled_string_spec`, `valid_encoding_spec`, `core/encoding/converter/convert_spec`, `finish_spec`, `putback_spec`, `core/dir/read_spec`, `core/io/ungetc_spec` and `language/symbol_spec` enabled: 13 files, 125 examples, 377 expectations, 0 failures, 0 errors
 
-- [ ] 6.3. Scope-aware parsing, and identity for the value types that need it
-  - [ ] 6.3.1. A lexical scope chain in the parser, replacing the file-wide `bound_names` set, so a name can be answered as local or method at the point it is written
+- [x] 6.3. Scope-aware parsing, and identity for the value types that need it
+  - [x] 6.3.1. A lexical scope chain in the parser, replacing the file-wide `bound_names` set, so a name can be answered as local or method at the point it is written. A `def`, `class` or `module` sees no local bound outside it, a block's locals end with it, and patterns, named regexp groups and `->` parameters bind locals
   - [x] 6.3.2. `it` resolving to an enclosing local when one is in scope, and to the implicit parameter otherwise
   - [x] 6.3.3. Empty block pipes told apart from no pipes, so `proc { || it }` is refused where `proc { it }` is not
   - [x] 6.3.4. `Range` carrying identity, so `dup` and `clone` answer a different object and `equal?` reports it
   - [x] 6.3.5. Anonymous parameter forwarding refused inside a block that declares its own, which is the `def m(*); proc { |*| n(*) } end` form
   - [x] 6.3.6. Acceptance: `language/it_parameter_spec`, `language/delegation_spec`, `core/range/dup_spec` and `core/range/clone_spec` enabled, 4 files
 
-- [ ] 6.4. A C extension API, for the 9 `optional/capi` files still out of the runner. Their C sources use 653 distinct `rb_*` names over 6552 lines
-  - [ ] 6.4.1. Headers metorex ships and names in `RbConfig::CONFIG["rubyhdrdir"]`: `ruby.h`, `ruby/encoding.h`, `ruby/io.h`, `ruby/st.h`, `ruby/thread.h`, `ruby/debug.h`, `ruby/util.h` and `ruby/digest.h`, with `VALUE` as a tagged handle, fixnums and `Qnil`/`Qtrue`/`Qfalse`/`Qundef` decoded by macro, and every other macro (`RSTRING_PTR`, `RARRAY_LEN`, `TYPE`, `RTEST`) calling into metorex
+- [x] 6.4. A C extension API, for the `optional/capi` files still out of the runner. Their C sources use 653 distinct `rb_*` names over 6552 lines
+  - [x] 6.4.1. Headers metorex ships and names in `RbConfig::CONFIG["rubyhdrdir"]`: `ruby.h`, `ruby/encoding.h`, `ruby/io.h`, `ruby/st.h`, `ruby/thread.h`, `ruby/debug.h`, `ruby/util.h` and `ruby/digest.h`, with `VALUE` as a tagged handle, fixnums and `Qnil`/`Qtrue`/`Qfalse`/`Qundef` decoded by macro, and every other macro (`RSTRING_PTR`, `RARRAY_LEN`, `TYPE`, `RTEST`) calling into metorex
     - [x] 6.4.1.1. `ruby.h`, `ruby/ruby.h` and `ruby/version.h` under `include/`, with the VALUE encoding, the fixnum macros, `RTEST`, `NIL_P`, `CLASS_OF`, `RBASIC_CLASS`, `rb_cObject`, `rb_define_class` and `rb_define_method`
-    - [ ] 6.4.1.2. The rest of the declarations and macros, and the other headers
+    - [x] 6.4.1.2. The rest of the declarations and macros every `optional/capi` spec's C source uses, and `ruby/io.h`, `ruby/vm.h` and `ruby/digest.h`
+    - [x] 6.4.1.4. `RBASIC` answering a `struct RBasic` per object with its class and flags, the FREEZE flag read from the object and carried back into it whenever control leaves C, and `FL_TEST`, `FL_SET`, `FL_UNSET` and `SPECIAL_CONST_P`
     - [x] 6.4.1.3. The `rb_c*`, `rb_m*` and `rb_e*` globals for the core classes, modules and exceptions, `rb_eFatal` among them, set before each extension's `Init` runs
   - [x] 6.4.2. `mkmf`'s `create_makefile` and `append_cflags` writing a Makefile that compiles the extension against those headers into a `.bundle` or `.so` whose `rb_*` references resolve against the host at load time
   - [x] 6.4.3. The metorex binary exporting its `rb_*` functions (`-export_dynamic` on macOS, `-rdynamic` on Linux), and `require` of a `.bundle` or `.so` opening it with `dlopen` and calling `Init_<name>`
-  - [ ] 6.4.4. A handle table mapping `VALUE` to metorex objects, kept alive while C holds them, and `ID` mapped to symbols
+  - [x] 6.4.4. A handle table mapping `VALUE` to metorex objects, kept alive while C holds them, and `ID` mapped to symbols
     - [x] 6.4.4.1. The handle table: one handle per object, so C comparing two VALUEs compares the objects, with every object handed to C kept alive
     - [x] 6.4.4.2. `ID` mapped to symbols through `rb_intern`, `rb_id2sym`, `rb_sym2id` and `rb_id2name`, an ID being the VALUE of its Symbol
     - [x] 6.4.4.3. `rb_intern2`, `rb_intern3`, `rb_intern_str`, `rb_id2str`, `rb_sym2str`, `rb_to_symbol`, `rb_check_symbol_cstr` that makes no symbol, `SYMBOL_P` and `rb_is_const_id`, `rb_is_instance_id` and `rb_is_class_id`
-  - [ ] 6.4.5. `rb_define_class`, `rb_define_module`, `rb_define_method` for arities -2 to 15, `rb_funcall`, `rb_call_super`, `rb_yield`, `rb_block_call`, and the `_under` and singleton forms
+  - [x] 6.4.5. `rb_define_class`, `rb_define_module`, `rb_define_method` for arities -2 to 15, `rb_funcall`, `rb_call_super`, `rb_yield`, `rb_block_call`, and the `_under` and singleton forms
     - [x] 6.4.5.1. `rb_define_class` at the top level, reopening a class with the same superclass and refusing another, and `rb_define_method` for arities -2 to 15, checking the argument count of a fixed arity
     - [x] 6.4.5.2. `rb_funcall`, `rb_funcallv`, `rb_const_get`, `rb_define_class_under`, `rb_define_class_id_under`, `rb_define_module` and `rb_define_module_under`, the last four reaching a constant through `const_defined?` so an autoload for it runs, and `Kernel#binding` refused when C calls it
     - [x] 6.4.5.3. `rb_define_private_method`, `rb_define_protected_method`, `rb_define_singleton_method`, `rb_define_module_function` and `rb_define_global_function`, with Method#arity reporting a C method's arity
-    - [ ] 6.4.5.7. `rb_call_super` and `rb_block_call`
+    - [x] 6.4.5.7. `rb_call_super` and `rb_block_call`, whose block function yields to the block of the C method that called it
     - [x] 6.4.5.9. Classes: `rb_call_super` continuing past the C method running now, `rb_class_new`, `rb_class_new_instance_kw`, `rb_class_real`, `rb_class_superclass`, `rb_class_get_superclass`, `rb_class_path`, `rb_path2class`, `rb_path_to_class`, the `rb_class_*instance_methods` functions, `rb_cvar_defined`, `rb_cvar_get`, `rb_cvar_set`, `rb_cv_get`, `rb_cv_set`, `rb_define_class_variable`, `rb_define_attr`, `rb_include_module`, `rb_type` with the `T_*` tags, and `rb_define_class_under` making the checks and giving the messages MRI's does, including a name Ruby code could not spell
     - [x] 6.4.5.8. Constants by any name with `rb_const_get`, `rb_const_get_at`, `rb_const_get_from`, `rb_const_defined`, `rb_const_defined_at`, `rb_const_set` and `rb_define_global_const`, `rb_define_alias`, `rb_alias`, `rb_undef_method`, `rb_undef`, `rb_class2name`, `rb_mod_name`, `rb_class_name` and `rb_mod_ancestors`, and an extension autoloaded or required by a path written without its ending
     - [x] 6.4.5.4. `rb_scan_args` with leading, optional, splat and trailing counts, raising the ArgumentError `rb_error_arity` gives for a wrong count
     - [x] 6.4.5.5. The `:` keyword and `&` block parts of an `rb_scan_args` format, `rb_scan_args_kw` with each keyword flag, `rb_keyword_given_p`, `rb_block_proc` and `rb_get_kwargs`
     - [x] 6.4.5.6. A C method handed the block it was called with: `rb_block_given_p`, `rb_yield`, `rb_yield_values`, `rb_yield_values2` and `rb_yield_splat`, with `break` from the block returning from the C method
-  - [ ] 6.4.6. `rb_raise`, `rb_protect`, `rb_rescue`, `rb_rescue2`, `rb_ensure`, `rb_jump_tag` and `rb_throw` carrying a Ruby exception across C frames without returning to the caller of `rb_raise`
+  - [x] 6.4.6. `rb_raise`, `rb_protect`, `rb_rescue`, `rb_rescue2`, `rb_ensure`, `rb_jump_tag` and `rb_throw` carrying a Ruby exception across C frames without returning to the caller of `rb_raise`
     - [x] 6.4.6.1. An error raised inside an `rb_*` function unwinding through the C frames to the call into C waiting for it, which hands it on as the error it was
     - [x] 6.4.6.2. `rb_exc_new`, `rb_exc_new_cstr`, `rb_exc_new_str`, `rb_exc_raise`, `rb_errinfo` cleared on entry to each C method, `rb_set_errinfo`, `rb_error_frozen_object`, `rb_syserr_new`, `rb_syserr_new_str` and `rb_make_exception`
     - [x] 6.4.6.3. `rb_raise`, `rb_sprintf`, `rb_vsprintf`, `rb_str_catf`, `rb_warn` and `rb_warning` formatting with printf conversions and `PRIsVALUE`, which writes a VALUE's `to_s`, or its `inspect` with the `+` flag
-    - [ ] 6.4.6.4. `rb_protect`, `rb_rescue`, `rb_rescue2`, `rb_ensure`, `rb_jump_tag` and `rb_throw`
-  - [ ] 6.4.7. Strings with a `char *` from `RSTRING_PTR` that C can write through and that stays valid until the string is resized, plus `rb_str_*`, `rb_enc_*` and `StringValue`
+    - [x] 6.4.6.4. `rb_protect`, `rb_rescue`, `rb_rescue2`, `rb_ensure`, `rb_jump_tag`, `rb_catch`, `rb_catch_obj`, `rb_throw` and `rb_throw_obj`, with `$!` and `rb_errinfo` naming the exception while a rescue or ensure function runs, and `rb_errinfo` kept until C changes it
+  - [x] 6.4.7. Strings with a `char *` from `RSTRING_PTR` that C can write through and that stays valid until the string is resized, plus `rb_str_*`, `rb_enc_*` and `StringValue`
     - [x] 6.4.7.1. `RSTRING_PTR` and `RSTRING_LEN` reading a NUL-terminated copy of the string's bytes
     - [x] 6.4.7.2. A pointer C can write through, carried back into the string whenever control leaves C, and staying where it is until the string changes length
     - [x] 6.4.7.3. `StringValue`, `StringValuePtr` and `StringValueCStr`, the last refusing a string that holds a NUL byte, or a NUL code unit in a wide encoding
     - [x] 6.4.7.4. `rb_str_new`, `rb_str_new_cstr`, `rb_str_append`, `rb_obj_as_string` and `rb_inspect`
-    - [ ] 6.4.7.5. The other `rb_str_*` functions and `rb_enc_*`
+    - [x] 6.4.7.5. The other `rb_str_*` functions: a buffer with room beyond the string that `rb_str_set_len`, `rb_str_resize`, `rb_str_modify_expand` and `rb_str_capacity` work on, ended with as many NUL bytes as a code unit of the encoding takes, what Ruby code changes carried into it when control comes back to C, static C memory as the `RSTRING_PTR` of `rb_utf8_str_new_static` and `rb_usascii_str_new_lit`, `rb_str_locktmp` and `rb_str_unlocktmp`, `rb_str_tmp_new` hidden until `rb_obj_reveal`, the `rb_*_str_new` constructors for each encoding, interning, appending, comparing, slicing, `rb_str_subpos`, `rb_cstr_to_inum`, `rb_str_encode` and `rb_str_conv_enc`, and `PRIsVALUE` taking a width and precision
     - [x] 6.4.7.6. `ruby/encoding.h` with an `rb_encoding` per encoding naming it, `rb_enc_get` reading a String, Symbol, Regexp or IO's encoding by type, `rb_enc_name`, `rb_enc_from_encoding` and the UTF-8, US-ASCII and ASCII-8BIT encodings
-  - [ ] 6.4.8. Arrays, hashes and `st_table`: `rb_ary_*`, `RARRAY_PTR`, `rb_hash_*`, `st_init_*`, `st_insert`, `st_lookup`, `st_foreach`
+    - [x] 6.4.7.7. Encodings by index in `Encoding.list` order, with ASCII-8BIT, UTF-8 and US-ASCII first as in MRI, `rb_enc_find`, `rb_enc_find_index`, `rb_enc_from_index`, `rb_enc_to_index`, `rb_to_encoding_index`, the `_encindex` and `_encoding` functions for the settings, `rb_enc_alias` and `rb_define_dummy_encoding` adding to what `Encoding.find`, `aliases` and `list` answer up to MRI's limit of 256, `rb_enc_get_index`, `rb_enc_set_index`, `rb_enc_associate`, `rb_enc_copy`, `rb_enc_compatible`, `rb_enc_check`, `rb_enc_str_new` and its forms, `rb_enc_str_coderange`, and the character readers `rb_enc_codelen`, `rb_enc_mbcput`, `rb_enc_strlen`, `rb_enc_mbc_to_codepoint`, `rb_enc_precise_mbclen`, `rb_enc_nth`, `rb_enc_codepoint_len`, `rb_enc_left_char_head`, `rb_enc_isalnum`, `rb_enc_isspace`, `rb_uv_to_utf8`, `rb_enc_raise`, `ONIGENC_MBC_CASE_FOLD` and `ONIGENC_IS_UNICODE`
+  - [x] 6.4.8. Arrays, hashes and `st_table`: `rb_ary_*`, `RARRAY_PTR`, `rb_hash_*`, `st_init_*`, `st_insert`, `st_lookup`, `st_foreach`
     - [x] 6.4.8.1. `RARRAY_PTR` and `RARRAY_LEN` reading a copy of the elements' VALUEs, `rb_ary_new`, `rb_ary_new_from_values`, `rb_ary_entry`, `rb_ary_push` and `rb_ary_store`
-    - [ ] 6.4.8.2. A `RARRAY_PTR` C can write through and the other `rb_ary_*` functions
+    - [x] 6.4.8.2. A `RARRAY_PTR` C can write through, carried back into the Array whenever control leaves C, `RARRAY_AREF`, `RARRAY_ASET`, `rb_Array`, `rb_ary_aref`, `rb_ary_cat`, `rb_ary_clear`, `rb_ary_concat`, `rb_ary_delete`, `rb_ary_delete_at`, `rb_ary_freeze`, `rb_ary_includes`, `rb_ary_join`, `rb_ary_new3`, `rb_ary_new4`, `rb_ary_plus`, `rb_ary_reverse`, `rb_ary_rotate`, `rb_ary_shift`, `rb_ary_sort`, `rb_ary_sort_bang`, `rb_ary_subseq`, `rb_ary_to_ary`, `rb_ary_to_s`, `rb_assoc_new` and `rb_mem_clear`, and `rb_ary_new_capa` refusing a negative size
     - [x] 6.4.8.4. Hashes: `rb_hash`, `rb_Hash`, `rb_hash_new`, `rb_hash_new_capa`, `rb_ident_hash_new`, `rb_hash_freeze`, `rb_hash_aref`, `rb_hash_aset`, `rb_hash_clear`, `rb_hash_delete`, `rb_hash_delete_if`, `rb_hash_fetch`, `rb_hash_lookup`, `rb_hash_lookup2`, `rb_hash_size`, `rb_hash_set_ifnone`, `rb_hash_bulk_insert`, `rb_hash_foreach` with each `st_retval`, and `rb_hash_start`, `rb_hash_uint32`, `rb_hash_uint` and `rb_hash_end` mixing as MRI's tables do
     - [x] 6.4.8.3. `st_table` keyed by number, by string, by string without case, or by a C `st_hash_type`, with `st_insert`, `st_add_direct`, `st_lookup`, `st_delete`, `st_foreach`, `st_clear` and `st_free_table`
-  - [ ] 6.4.9. `Data_Wrap_Struct`, `TypedData_Wrap_Struct`, `rb_data_type_t` with mark and free callbacks run at finalization
+  - [x] 6.4.9. `Data_Wrap_Struct`, `TypedData_Wrap_Struct`, `rb_data_type_t` with mark and free callbacks run at finalization
     - [x] 6.4.9.1. `rb_data_type_t` and `struct RData` and `struct RTypedData` as MRI lays them out, `Data_Wrap_Struct`, `Data_Make_Struct`, `Data_Get_Struct`, `TypedData_Wrap_Struct`, `TypedData_Make_Struct`, `TypedData_Get_Struct`, `RDATA`, `RTYPEDDATA`, `DATA_PTR`, `RTYPEDDATA_P`, `RTYPEDDATA_TYPE`, `rb_check_typeddata` accepting a parent type, `rb_typeddata_is_kind_of`, `rb_check_type`, `rb_define_alloc_func` behind `new` and `allocate`, and `ObjectSpace.memsize_of` adding what a type's size function reports
-    - [ ] 6.4.9.2. Mark and free functions run when the object is collected or the program ends
-  - [ ] 6.4.10. Numbers: `rb_int2inum`, `NUM2LONG` and the other conversions with their range errors, bignums, floats, `rb_Rational`, `rb_Complex`
+    - [x] 6.4.9.2. Mark and free functions run when the object is collected or the program ends: `GC.start` frees a Data object that neither Ruby, a reached mark function, nor a registered address reaches, and the program frees the rest as it ends
+  - [x] 6.4.10. Numbers: `rb_int2inum`, `NUM2LONG` and the other conversions with their range errors, bignums, floats, `rb_Rational`, `rb_Complex`
     - [x] 6.4.10.1. `NUM2LONG`, `NUM2ULONG`, `NUM2INT`, `NUM2UINT`, `FIX2INT` and `FIX2UINT` taking an Integer, a Float, or what `to_int` answers, with the RangeError for each type's bounds, and `UINT2NUM`
     - [x] 6.4.10.2. `rb_integer_pack` with every word and byte order, nails and two's complement, and `rb_int_positive_pow`
     - [x] 6.4.10.3. `rb_float_new`, `RFLOAT_VALUE`, `RB_FLOAT_TYPE_P`, `rb_Float`, `rb_Rational`, `rb_rational_new`, `rb_rational_num`, `rb_rational_den`, `rb_Complex` and `rb_complex_new`, with their `1` and `2` forms
     - [x] 6.4.10.4. `rb_int2inum`, `rb_uint2inum`, `rb_ll2inum` and `rb_ull2inum`, behind `LONG2NUM`, `ULONG2NUM`, `LL2NUM`, `ULL2NUM`, `SIZET2NUM` and `SSIZET2NUM`
     - [x] 6.4.10.5. Bignums: `rb_big2long`, `rb_big2ll`, `rb_big2ulong`, `rb_big2dbl`, `rb_dbl2big`, `rb_big2str`, `RBIGNUM_SIGN`, `rb_big_cmp`, `rb_big_pack` and `rb_absint_size`, and `NUM2DBL`
     - [x] 6.4.10.6. `NUM2SHORT`, `NUM2CHR`, `rb_Integer`, `rb_cmpint`, `rb_cmperr`, `rb_num_zerodiv`, `rb_num_coerce_bin`, `rb_num_coerce_cmp`, `rb_num_coerce_relop` and `rb_absint_singlebit_p`
-  - [ ] 6.4.11. The rest each spec names: globals, constants, IO, files, Time, Range, Struct, Proc, Thread and mutex, Fiber, TracePoint, GC, Enumerator, Regexp, Set, Kernel and the debug inspector
+  - [x] 6.4.11. The rest each spec names: globals, constants, IO, files, Time, Range, Struct, Proc, Thread and mutex, Fiber, TracePoint, GC, Enumerator, Regexp, Set, Kernel and the debug inspector
     - [x] 6.4.11.1. `ruby/debug.h` with the `RUBY_EVENT_*` bits, and `rb_tracepoint_new` with a C hook, `rb_tracepoint_enable`, `rb_tracepoint_disable` and `rb_tracepoint_enabled_p`
     - [x] 6.4.11.2. Files: `FilePathValue` through `rb_get_path`, `rb_file_open` and `rb_file_open_str`
     - [x] 6.4.11.3. Enumerators: `rb_enumeratorize` and `rb_enumeratorize_with_size`, whose size function answers `Enumerator#size`
@@ -4171,8 +4182,12 @@ acceptance criterion for calling it done.
     - [x] 6.4.11.14. The collector: `rb_gc_register_address`, `rb_gc_unregister_address`, `rb_global_variable` and `rb_gc_register_mark_object` kept by the handle table, `rb_gc_enable`, `rb_gc_disable`, `rb_gc`, `rb_gc_start`, `rb_gc_count`, `rb_gc_latest_gc_info` with `GC.latest_gc_info`, and `rb_gc_adjust_memory_usage`
     - [x] 6.4.11.15. Globals: `rb_define_variable`, `rb_define_readonly_variable`, `rb_define_hooked_variable` and `rb_define_virtual_variable` read and written through C memory or C functions, `rb_gv_get`, `rb_gv_set`, `rb_f_global_variables`, `rb_lastline_get` and `rb_lastline_set`, and `rb_fs`, `rb_rs`, `rb_output_fs`, `rb_output_rs`, `rb_default_rs`, `rb_stdin`, `rb_stdout`, `rb_stderr` and `rb_defout` following the globals they name
     - [x] 6.4.11.16. Threads: `ruby/thread.h`, `rb_thread_current`, `rb_thread_alone`, `rb_thread_local_aref`, `rb_thread_local_aset`, `rb_thread_wakeup`, `rb_thread_create` around a C function, `rb_thread_wait_for` giving the other threads turns, `ruby_native_thread_p`, `ruby_thread_has_gvl_p`, and `rb_thread_call_without_gvl` running its function on an operating system thread of its own while the calling thread reads as asleep, ended by its unblock function when the thread is woken, killed or signaled, or by an interrupting signal for `RUBY_UBF_IO`
-    - [ ] 6.4.11.11. The debug inspector, `rb_debug_inspector_open` and the frame readers, which needs each call frame to record the `self` and scope it called from so a binding can be made for any frame
-  - [ ] 6.4.12. Acceptance: every `optional/capi/*_spec.rb` enabled, and the `library`, `command_line`, `security` and `optional/capi/digest_spec` lines in the runner removed or uncommented
+    - [x] 6.4.11.17. Kernel: `ruby/vm.h` with `ruby_vm_at_exit`, `rb_set_end_proc`, `rb_eval_string`, `rb_eval_string_protect`, `rb_exec_recursive`, `rb_need_block`, `rb_block_lambda`, `rb_frame_this_func`, `rb_category_warn` with `Warning[]`, `rb_f_sprintf`, `rb_str_format`, `rb_make_backtrace`, `rb_funcallv_kw`, `rb_funcallv_public`, `rb_funcall_with_block`, `rb_funcall_with_block_kw`, `rb_check_funcall`, `rb_sys_fail`, `rb_syserr_fail` and `rb_syserr_fail_str`, and `rb_block_call` with no function passing on the C method's own block
+    - [x] 6.4.11.18. Objects: `rb_obj_alloc`, `rb_obj_dup`, `rb_obj_call_init`, `rb_obj_class`, `rb_obj_classname`, `rb_obj_freeze`, `rb_obj_frozen_p`, `RB_OBJ_FROZEN`, `rb_check_frozen`, `rb_obj_id`, `rb_obj_is_instance_of`, `rb_obj_is_kind_of`, `rb_obj_method`, `rb_obj_method_arity`, `rb_respond_to`, `rb_obj_respond_to`, `rb_method_boundp`, `rb_special_const_p`, `FL_ABLE`, `BUILTIN_TYPE`, `rb_to_id`, `rb_to_int`, `rb_check_to_integer`, `rb_convert_type`, `rb_check_convert_type`, `rb_check_array_type`, `rb_check_string_type`, `rb_extend_object`, `rb_obj_instance_eval`, `rb_any_to_s`, `rb_equal`, `rb_class_inherited_p`, `rb_require`, `rb_f_notimplement` answering false to `respond_to?`, `rb_get_alloc_func` and `rb_undef_alloc_func`, and the instance variable functions, with a name lacking `@` kept where Ruby code cannot see it. `TYPE` names the core class an Array, String or Hash subclass descends from, `T_FILE` an IO and `T_DATA` a Time
+    - [x] 6.4.11.19. IO: `ruby/io.h` with the `FMODE_*` flags, `rb_io_t` through `GetOpenFile`, `rb_io_descriptor`, `rb_io_mode`, `rb_io_path`, `rb_io_closed_p`, `rb_io_check_io`, `rb_io_check_closed`, `rb_io_check_readable`, `rb_io_check_writable`, `rb_io_taint_check`, `rb_io_set_nonblock`, `rb_io_addstr`, `rb_io_printf`, `rb_io_print`, `rb_io_puts`, `rb_io_write`, `rb_io_close`, `rb_io_binmode`, `rb_fd_fix_cloexec`, `rb_cloexec_open`, `rb_cloexec_dup`, `rb_cloexec_fcntl_dupfd`, `rb_io_open_descriptor` and `rb_to_encoding`, and `rb_io_wait`, `rb_io_maybe_wait`, `rb_io_maybe_wait_readable`, `rb_io_maybe_wait_writable`, `rb_thread_wait_fd`, `rb_thread_fd_writable` and `rb_thread_fd_select` waiting on a descriptor while the other threads take turns
+    - [x] 6.4.11.20. Digest plugins: `ruby/digest.h` with `rb_digest_metadata_t`, `rb_digest_make_metadata` and `rb_digest_namespace`, Digest::Base a class of its own between Digest::Class and the algorithms, running the init, update and finish functions a subclass names on a context each instance keeps, and `Fiddle::Pointer` reading the memory at an address
+    - [x] 6.4.11.11. The debug inspector, `rb_debug_inspector_open`, `rb_debug_inspector_frame_self_get`, `rb_debug_inspector_frame_class_get`, `rb_debug_inspector_frame_binding_get`, `rb_debug_inspector_frame_iseq_get` and `rb_debug_inspector_backtrace_locations`, with each call frame recording the scope it was entered from so a binding can be made for any frame
+  - [x] 6.4.12. Acceptance: every `optional/capi/*_spec.rb` enabled, and the `library`, `command_line`, `security` and `optional/capi/digest_spec` lines in the runner removed or uncommented
 
 
 Fixes during Phase 4 work:

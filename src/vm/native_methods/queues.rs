@@ -127,6 +127,7 @@ impl VirtualMachine {
                 if let Some(item) = positional.first() {
                     items_arr.borrow_mut().push(item.clone());
                 }
+                self.scheduler_unblock(receiver, _position)?;
                 Ok(Some(receiver.clone()))
             }
             "pop" | "deq" | "shift" => {
@@ -167,6 +168,36 @@ impl VirtualMachine {
                         "queue empty",
                         _position,
                     ));
+                }
+                // A fiber that is not blocking waits through its scheduler,
+                // which holds it until something is put on the queue or the
+                // queue is closed.
+                if items_arr.borrow().is_empty()
+                    && let Some(scheduler) = self.current_scheduler()
+                {
+                    let timeout = limit.map_or(Object::Nil, Object::Float);
+                    while items_arr.borrow().is_empty()
+                        && !matches!(
+                            inst.borrow().get_var("__queue_closed"),
+                            Some(Object::Bool(true))
+                        )
+                    {
+                        self.scheduler_block(
+                            scheduler.clone(),
+                            receiver,
+                            timeout.clone(),
+                            _position,
+                        )?;
+                        if limit.is_some() {
+                            break;
+                        }
+                    }
+                    let taken = if items_arr.borrow().is_empty() {
+                        Object::Nil
+                    } else {
+                        items_arr.borrow_mut().remove(0)
+                    };
+                    return Ok(Some(taken));
                 }
                 // Taking from an empty queue waits for something to be put
                 // there, so every other waiting thread gets a turn until one
@@ -245,6 +276,7 @@ impl VirtualMachine {
             "close" => {
                 inst.borrow_mut()
                     .set_var("__queue_closed".to_string(), Object::Bool(true));
+                self.scheduler_unblock_all(receiver, _position)?;
                 Ok(Some(receiver.clone()))
             }
             "closed?" => Ok(Some(Object::Bool(matches!(

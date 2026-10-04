@@ -6,8 +6,16 @@ use crate::lexer::{Position, TokenKind};
 use crate::parser::Parser;
 
 impl Parser {
-    /// Parse a class definition
+    /// Parse a class definition, whose body is a scope of its own that sees
+    /// no local written outside it.
     pub(crate) fn parse_class_def(&mut self) -> Result<Statement, MetorexError> {
+        self.open_method_scope();
+        let parsed = self.parse_class_def_in_scope();
+        self.close_method_scope();
+        parsed
+    }
+
+    fn parse_class_def_in_scope(&mut self) -> Result<Statement, MetorexError> {
         let start_pos = self.expect(TokenKind::Class, "Expected 'class'")?.position;
         self.skip_whitespace();
 
@@ -193,6 +201,16 @@ impl Parser {
         &mut self,
         start_pos: Position,
     ) -> Result<Expression, MetorexError> {
+        self.open_method_scope();
+        let parsed = self.parse_singleton_class_in_scope(start_pos);
+        self.close_method_scope();
+        parsed
+    }
+
+    fn parse_singleton_class_in_scope(
+        &mut self,
+        start_pos: Position,
+    ) -> Result<Expression, MetorexError> {
         self.skip_whitespace();
         let target = self.parse_expression()?;
         self.skip_whitespace();
@@ -233,8 +251,16 @@ impl Parser {
         })
     }
 
-    /// Parse a module definition
+    /// Parse a module definition, whose body is a scope of its own that sees
+    /// no local written outside it.
     pub(crate) fn parse_module_def(&mut self) -> Result<Statement, MetorexError> {
+        self.open_method_scope();
+        let parsed = self.parse_module_def_in_scope();
+        self.close_method_scope();
+        parsed
+    }
+
+    fn parse_module_def_in_scope(&mut self) -> Result<Statement, MetorexError> {
         let start_pos = self
             .expect(TokenKind::Module, "Expected 'module'")?
             .position;

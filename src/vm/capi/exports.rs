@@ -31,6 +31,9 @@ pub(super) fn class_from(value: Value) -> Rc<Class> {
 
 #[unsafe(no_mangle)]
 pub extern "C-unwind" fn rb_class_of(object: Value) -> Value {
+    if super::string_functions::is_hidden(object) {
+        return super::handles::QFALSE;
+    }
     let machine = interpreter();
     let object = to_object(object);
     // Every class and module has a singleton class from the start in Ruby,

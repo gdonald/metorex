@@ -91,6 +91,16 @@ impl VirtualMachine {
                 let closed = unsafe { libc::dlclose(number(1) as *mut libc::c_void) };
                 Ok(Object::Int(closed as i64))
             }
+            "read" => {
+                let length = number(2).max(0) as usize;
+                // SAFETY: Fiddle::Pointer reads the memory at an address the
+                // program handed it, which is the use Fiddle is for.
+                let bytes = unsafe { std::slice::from_raw_parts(number(1) as *const u8, length) };
+                let characters = bytes.iter().map(|byte| *byte as char).collect::<String>();
+                Ok(Object::String(std::rc::Rc::new(
+                    crate::object::StringValue::from_bytes(characters),
+                )))
+            }
             "flags" => Ok(Object::array(vec![
                 Object::Int(libc::RTLD_GLOBAL as i64),
                 Object::Int(libc::RTLD_LAZY as i64),

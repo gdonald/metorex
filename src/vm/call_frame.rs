@@ -2,6 +2,10 @@
 //!
 //! This module provides call frame information used for debugging and stack traces.
 
+use crate::scope::Scope;
+use std::cell::RefCell;
+use std::rc::Rc;
+
 /// What kind of code a frame is running, which is what `__callee__` and
 /// `__method__` walk the stack to find.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,7 +20,7 @@ pub enum FrameKind {
 }
 
 /// Call frame information stored on the VM call stack for debugging.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct CallFrame {
     /// Human-readable frame identifier (method/function name).
     name: String,
@@ -37,6 +41,8 @@ pub struct CallFrame {
     /// a method frame or a block written in one. None for a singleton
     /// method.
     owner_path: Option<String>,
+    /// The scope that was current when the frame was pushed.
+    entering_scope: Option<Rc<RefCell<Scope>>>,
 }
 
 impl CallFrame {
@@ -50,6 +56,7 @@ impl CallFrame {
             block_depth: 1,
             written_in: None,
             owner_path: None,
+            entering_scope: None,
         }
     }
 
@@ -71,6 +78,7 @@ impl CallFrame {
             block_depth: 0,
             written_in: None,
             owner_path: None,
+            entering_scope: None,
         }
     }
 
@@ -84,6 +92,7 @@ impl CallFrame {
             block_depth: 0,
             written_in: None,
             owner_path: None,
+            entering_scope: None,
         }
     }
 
@@ -152,5 +161,16 @@ impl CallFrame {
     /// The class path of the module the running method was defined in.
     pub fn owner_path(&self) -> Option<&str> {
         self.owner_path.as_deref()
+    }
+
+    /// Record the scope that was current when the frame was pushed.
+    pub(crate) fn entered_from(&mut self, scope: Rc<RefCell<Scope>>) {
+        self.entering_scope = Some(scope);
+    }
+
+    /// The scope that was current when the frame was pushed, which is the
+    /// scope of the code that made the call.
+    pub(crate) fn entering_scope(&self) -> Option<Rc<RefCell<Scope>>> {
+        self.entering_scope.clone()
     }
 }

@@ -31,9 +31,8 @@ impl VirtualMachine {
     ) -> Result<Object, MetorexError> {
         // A fiber that is not blocking hands its waiting to the
         // scheduler in place rather than waiting itself.
-        if let Some(scheduler) = self.fiber_scheduler.clone() {
-            let running = self.fiber_current_handle();
-            if !self.fiber_is_blocking(running) {
+        if let Some(scheduler) = self.current_scheduler() {
+            {
                 let given: Vec<Object> = arguments
                     .iter()
                     .filter(|held| !matches!(held, Object::Nil))
@@ -84,16 +83,40 @@ impl VirtualMachine {
         // Sleeping hands the turn over, so whatever else the program
         // has to run gets one while this waits. With no length at all
         // the wait lasts until something wakes the thread.
-        if wanted.is_none() {
-            self.sleep_until_woken(position)?;
-        } else {
-            self.wait_for_other_threads(position);
-            self.raise_if_thread_killed(position)?;
+        let started = std::time::Instant::now();
+        match wanted {
+            None => self.sleep_until_woken(position)?,
+            Some(seconds) => {
+                self.sleep_for_length(std::time::Duration::from_secs_f64(seconds), position)?
+            }
         }
         // A signal that arrived while the program waited is handled before
         // the wait answers.
         self.deliver_pending_signals(position)?;
-        Ok(Object::Int(wanted.unwrap_or(0.0) as i64))
+        // The answer is how many whole seconds passed, which is less than
+        // asked for when something woke the thread early.
+        Ok(Object::Int(started.elapsed().as_secs_f64().round() as i64))
+    }
+
+    /// Wait until `length` passes or something wakes the thread, giving
+    /// every other thread turns until then.
+    fn sleep_for_length(
+        &mut self,
+        length: std::time::Duration,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        if self.running_a_thread_body() {
+            return self.sleep_until_woken_within(length, position);
+        }
+        let deadline = std::time::Instant::now() + length;
+        loop {
+            self.wait_for_other_threads(position);
+            self.raise_if_thread_killed(position)?;
+            self.deliver_pending_signals(position)?;
+            if std::time::Instant::now() >= deadline {
+                return Ok(());
+            }
+        }
     }
 
     /// `Timeout.timeout` opens a limit around the block it runs, and

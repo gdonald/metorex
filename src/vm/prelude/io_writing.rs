@@ -296,7 +296,7 @@ pub(super) const SOURCE: &str = r##"
     raise IOError, "not opened for reading" if @read_closed
     raise IOError, "not opened for reading" if __opened_for__("w") && !__both_ways__
     return false unless @peeked.nil?
-    held = IO.__stream__ "read", __stream_handle__, "", 1
+    held = __stream_read__ 1
     return true if held.nil? || held.empty?
     @peeked = held
     false

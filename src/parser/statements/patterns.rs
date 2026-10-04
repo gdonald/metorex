@@ -520,10 +520,10 @@ impl Parser {
 }
 
 impl Parser {
-    /// Say that a pattern binds this name, so the rest of the file reads it
+    /// Say that a pattern binds this name, so the rest of its scope reads it
     /// as a local rather than as a call.
     pub(crate) fn note_bound_name(&mut self, name: &str) -> Result<(), MetorexError> {
-        self.bound_names.insert(name.to_string());
+        self.note_pattern_binding(name);
         // One pattern names each of its parts once, so a repeat has nothing
         // of its own to hold. A name opening with an underscore says it is
         // not read, so it may stand as often as the pattern needs it.

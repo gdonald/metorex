@@ -232,6 +232,19 @@ impl VirtualMachine {
                 }
                 let method_query = self.coerce_method_name(&arguments[0], method_name, position)?;
                 let include_private = matches!(arguments.get(1), Some(value) if value.is_truthy());
+                // A method a C extension defined as unimplemented on this
+                // platform is there, and still answers false.
+                let unimplemented =
+                    self.lookup_method(receiver, &method_query)
+                        .is_some_and(|(_, method)| {
+                            method
+                                .c_function
+                                .as_ref()
+                                .is_some_and(crate::vm::capi::is_not_implemented)
+                        });
+                if unimplemented {
+                    return Ok(Some(Object::Bool(false)));
+                }
                 if self.responds_to(receiver, &method_query)
                     && (include_private || !self.method_is_restricted(receiver, &method_query))
                 {

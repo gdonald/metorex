@@ -13,9 +13,9 @@ fn yield_objects(arguments: Vec<Object>) -> Value {
             position,
         ))
     };
-    to_value(&or_raise(
-        interpreter().execute_block_callable(&block, arguments, position),
-    ))
+    let answered = or_raise(interpreter().execute_block_callable(&block, arguments, position));
+    super::strings::carry_changes_in();
+    to_value(&answered)
 }
 
 #[unsafe(no_mangle)]

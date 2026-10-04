@@ -103,8 +103,16 @@ impl Parser {
             && self.peek().position.offset == self.previous().position.offset + name.len()
     }
 
-    /// Parse a function definition
+    /// Parse a function definition, whose parameters and body are a scope of
+    /// their own that sees no local written outside it.
     pub(crate) fn parse_function_def(&mut self) -> Result<Statement, MetorexError> {
+        self.open_method_scope();
+        let parsed = self.parse_function_def_in_scope();
+        self.close_method_scope();
+        parsed
+    }
+
+    fn parse_function_def_in_scope(&mut self) -> Result<Statement, MetorexError> {
         let start_pos = self.expect(TokenKind::Def, "Expected 'def'")?.position;
         self.skip_whitespace();
 

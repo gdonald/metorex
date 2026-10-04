@@ -190,6 +190,60 @@ impl VirtualMachine {
         self.raise_if_thread_killed(position)
     }
 
+    /// `waitpid`, with the other threads given turns while the child runs
+    /// when there are any to give them to.
+    pub(crate) fn waitpid_handing_turns(
+        &mut self,
+        pid: libc::pid_t,
+        status: &mut libc::c_int,
+        flags: libc::c_int,
+        position: Position,
+    ) -> Result<libc::pid_t, MetorexError> {
+        if flags & libc::WNOHANG != 0 || !self.other_threads_are_waiting() {
+            // SAFETY: `waitpid` only writes through the status pointer given.
+            return Ok(unsafe { libc::waitpid(pid, status, flags) });
+        }
+        loop {
+            // SAFETY: `waitpid` only writes through the status pointer given.
+            let reaped = unsafe { libc::waitpid(pid, status, flags | libc::WNOHANG) };
+            if reaped != 0 {
+                return Ok(reaped);
+            }
+            self.wait_for_other_threads(position);
+            self.raise_if_thread_killed(position)?;
+        }
+    }
+
+    /// Read `source` to its end, with the other threads given turns while
+    /// nothing is ready to read when there are any to give them to.
+    pub(crate) fn read_handing_turns(
+        &mut self,
+        mut source: impl std::io::Read + std::os::unix::io::AsRawFd,
+        position: Position,
+    ) -> Result<Vec<u8>, MetorexError> {
+        let mut gathered = Vec::new();
+        let mut chunk = [0u8; 8192];
+        loop {
+            if self.other_threads_are_waiting() {
+                let mut watched = libc::pollfd {
+                    fd: source.as_raw_fd(),
+                    events: libc::POLLIN,
+                    revents: 0,
+                };
+                // SAFETY: one descriptor is watched, held in `watched`.
+                if unsafe { libc::poll(&mut watched, 1, 0) } == 0 {
+                    self.wait_for_other_threads(position);
+                    self.raise_if_thread_killed(position)?;
+                    continue;
+                }
+            }
+            match source.read(&mut chunk) {
+                Ok(0) | Err(_) => return Ok(gathered),
+                Ok(count) => gathered.extend_from_slice(&chunk[..count]),
+            }
+        }
+    }
+
     pub(crate) fn wait_for_other_threads(&mut self, position: Position) {
         if self.running_a_thread_body() {
             // A thread that hands control over while it waits is asleep for

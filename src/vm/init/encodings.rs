@@ -81,13 +81,13 @@ pub(crate) const PROCESS_CONSTANTS: &[(&str, i64)] = &[
     ),
 ];
 
-pub(crate) const ENCODING_NAMES: [(&str, &str, bool); 119] = [
-    ("UTF_8", "UTF-8", false),
-    ("CESU_8", "CESU-8", false),
-    ("US_ASCII", "US-ASCII", false),
-    ("ASCII", "US-ASCII", false),
+pub(crate) const ENCODING_NAMES: [(&str, &str, bool); 122] = [
     ("ASCII_8BIT", "ASCII-8BIT", false),
     ("BINARY", "ASCII-8BIT", false),
+    ("UTF_8", "UTF-8", false),
+    ("US_ASCII", "US-ASCII", false),
+    ("ASCII", "US-ASCII", false),
+    ("CESU_8", "CESU-8", false),
     ("UTF_16", "UTF-16", true),
     ("UTF_16BE", "UTF-16BE", false),
     ("UTF_16LE", "UTF-16LE", false),
@@ -190,10 +190,17 @@ pub(crate) const ENCODING_NAMES: [(&str, &str, bool); 119] = [
     ("EucJP_ms", "eucJP-ms", false),
     ("CP51932", "CP51932", false),
     ("UTF8_MAC", "UTF8-MAC", false),
+    ("UTF8_DOCOMO", "UTF8-DoCoMo", false),
+    ("UTF8_KDDI", "UTF8-KDDI", false),
+    ("UTF8_SOFTBANK", "UTF8-SoftBank", false),
     ("UTF_8_MAC", "UTF8-MAC", false),
     ("IBM720", "IBM720", false),
     ("CP720", "CP720", false),
     ("MACCYRILLIC", "macCyrillic", false),
+    // EUC-JP under another name, which carries ISO-2022-JP's two-byte
+    // characters between it and EUC-JP.
+    ("Stateless_ISO_2022_JP", "stateless-ISO-2022-JP", false),
+    ("STATELESS_ISO_2022_JP", "stateless-ISO-2022-JP", false),
     // The dummy encodings: Ruby names them and tags strings with them, but
     // converts nothing through them.
     ("ISO_2022_JP", "ISO-2022-JP", true),
@@ -201,8 +208,6 @@ pub(crate) const ENCODING_NAMES: [(&str, &str, bool); 119] = [
     ("ISO_2022_JP_2", "ISO-2022-JP-2", true),
     ("UTF_7", "UTF-7", true),
     ("CP50221", "CP50221", true),
-    ("Stateless_ISO_2022_JP", "stateless-ISO-2022-JP", true),
-    ("STATELESS_ISO_2022_JP", "stateless-ISO-2022-JP", true),
 ];
 
 /// The flags `File.open` accepts in `flags:`, and the ones a glob or fnmatch

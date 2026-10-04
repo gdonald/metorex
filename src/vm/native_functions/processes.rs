@@ -33,15 +33,14 @@ pub(crate) fn needs_a_shell(command: &str) -> bool {
         .any(|byte| READ_BY_THE_SHELL.contains(&byte))
 }
 
-/// Run a program to completion, answering how it ended and the process id it
-/// ran under. A program that cannot be reached ends with status 127 and says
-/// nothing, which is what the shell reports for one.
-pub(crate) fn run_to_completion(
+/// Start a program, answering the process id it runs under, or a negative
+/// one when no process could be made. A program that cannot be reached ends
+/// with status 127 and says nothing, which is what the shell reports for one.
+pub(crate) fn start_program(
     reached: &str,
     words: &[String],
     redirects: &[(i32, String)],
-) -> (std::process::ExitStatus, i64) {
-    use std::os::unix::process::ExitStatusExt as _;
+) -> libc::pid_t {
     let named = std::ffi::CString::new(reached).unwrap_or_default();
     let spelled: Vec<std::ffi::CString> = words
         .iter()
@@ -78,13 +77,7 @@ pub(crate) fn run_to_completion(
             libc::_exit(127);
         }
     }
-    if child < 0 {
-        return (std::process::ExitStatus::from_raw(127 << 8), 0);
-    }
-    let mut held: libc::c_int = 0;
-    // SAFETY: `child` is a process this one started.
-    unsafe { libc::waitpid(child, &mut held, 0) };
-    (std::process::ExitStatus::from_raw(held), child as i64)
+    child
 }
 
 /// The files a `require` of `named` may mean, in the order Ruby tries them.

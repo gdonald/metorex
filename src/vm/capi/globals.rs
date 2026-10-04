@@ -53,6 +53,7 @@ fn caller_at(position: Position) -> Caller {
     Caller {
         position,
         block: None,
+        block_from_ampersand: false,
         keywords_given: false,
         method: None,
     }

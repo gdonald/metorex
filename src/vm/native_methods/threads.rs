@@ -85,6 +85,26 @@ impl VirtualMachine {
                         val
                     }));
                 }
+                // A fiber that is not blocking waits through its scheduler,
+                // which holds it until the thread ends or the limit passes.
+                if let Some(scheduler) = self.current_scheduler() {
+                    let timeout = arguments.first().cloned().unwrap_or(Object::Nil);
+                    while inst.borrow().get_var("__thread_value").is_none() {
+                        self.scheduler_block(
+                            scheduler.clone(),
+                            receiver,
+                            timeout.clone(),
+                            position,
+                        )?;
+                        if limit.is_some() {
+                            break;
+                        }
+                    }
+                    if inst.borrow().get_var("__thread_value").is_none() {
+                        return Ok(Some(Object::Nil));
+                    }
+                    return self.call_thread_method(receiver, method_name, &[], position);
+                }
                 // Waiting on a thread runs it, a step at a time, so a
                 // thread of its own waiting on something else still gets a
                 // turn. A thread starts with no child of its own behind it,

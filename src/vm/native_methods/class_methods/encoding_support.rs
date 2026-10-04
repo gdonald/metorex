@@ -164,6 +164,15 @@ impl VirtualMachine {
     /// else the encoding of the string it was built from, else the encoding a
     /// literal is read in.
     pub(crate) fn pattern_encoding_name(&self, pattern: &Rc<String>, flags: &str) -> String {
+        if let Some((held, named)) = self
+            .forced_pattern_encodings
+            .get(&(Rc::as_ptr(pattern) as usize))
+            && held
+                .upgrade()
+                .is_some_and(|alive| Rc::ptr_eq(&alive, pattern))
+        {
+            return named.clone();
+        }
         // A pattern built to match in one encoding, or from text in an
         // encoding that spells ASCII another way, keeps the one it was built
         // in.
@@ -202,6 +211,14 @@ impl VirtualMachine {
     /// Record the encoding of the text a pattern was built from.
     pub(crate) fn record_pattern_encoding(&mut self, pattern: &Rc<String>, named: String) {
         self.pattern_encodings.insert(
+            Rc::as_ptr(pattern) as usize,
+            (Rc::downgrade(pattern), named),
+        );
+    }
+
+    /// Make a pattern report `named` as its encoding, whatever it holds.
+    pub(crate) fn force_pattern_encoding(&mut self, pattern: &Rc<String>, named: String) {
+        self.forced_pattern_encodings.insert(
             Rc::as_ptr(pattern) as usize,
             (Rc::downgrade(pattern), named),
         );
@@ -256,10 +273,9 @@ fn as_encoded_text(value: &Object) -> Option<Rc<crate::object::StringValue>> {
 /// Whether an encoding lays ASCII out one byte to a character, which is what
 /// lets text in it be read alongside text in another such encoding.
 pub(crate) fn encoding_reads_alongside_ascii(named: &str) -> bool {
-    let dummy = crate::vm::init::ENCODING_NAMES
-        .iter()
-        .any(|(_, display, dummy)| *dummy && *display == named);
-    !dummy && !named.starts_with("UTF-16") && !named.starts_with("UTF-32")
+    !super::encoding_settings::is_dummy_encoding(named)
+        && !named.starts_with("UTF-16")
+        && !named.starts_with("UTF-32")
 }
 
 /// Whether everything an object holds is plain ASCII, which is what makes it

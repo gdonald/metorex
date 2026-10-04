@@ -27,10 +27,7 @@ impl VirtualMachine {
             // If it's a Class (exception class), instantiate it
             match value {
                 Object::Exception(_) => value,
-                Object::String(message) => {
-                    // Create a RuntimeError exception with the string message
-                    Object::exception("RuntimeError", message.as_str().to_string())
-                }
+                given @ Object::String(_) => runtime_error_from(&given),
                 Object::Class(class) => {
                     // Instantiated the way `raise` does it, so the class
                     // travels with the exception and a subclass that writes
@@ -55,10 +52,10 @@ impl VirtualMachine {
                     built
                 }
                 _ => {
-                    return Err(MetorexError::runtime_error(
-                        "Exception must be an Exception object, String, or exception class"
-                            .to_string(),
-                        position_to_location(position),
+                    return Err(crate::vm::errors::simple_exception(
+                        "TypeError",
+                        "exception class/object expected",
+                        position,
                     ));
                 }
             }
@@ -196,9 +193,7 @@ impl VirtualMachine {
                 };
                 answered
             }
-            Some(Object::String(text)) => {
-                Object::exception("RuntimeError", text.as_str().to_string())
-            }
+            Some(given @ Object::String(_)) => runtime_error_from(given),
             // An exception class is instantiated with the message.
             Some(value @ Object::Class(_)) => {
                 let call_arguments = message.into_iter().collect();
@@ -898,4 +893,17 @@ fn causes_run_in_a_circle(
         };
     }
     false
+}
+
+/// The RuntimeError `raise` makes of a String, keeping the String as it
+/// was, encoding and all, for `message` to answer.
+fn runtime_error_from(given: &Object) -> Object {
+    let made = Object::exception("RuntimeError", given.to_string());
+    if let Object::Exception(details) = &made {
+        details
+            .borrow_mut()
+            .instance_vars
+            .insert(crate::vm::MESSAGE_STRING_KEY.to_string(), given.clone());
+    }
+    made
 }

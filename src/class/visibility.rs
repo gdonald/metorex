@@ -20,6 +20,11 @@ impl Class {
         self.frozen.set(true);
     }
 
+    /// Mark this class/module as no longer frozen.
+    pub fn thaw(&self) {
+        self.frozen.set(false);
+    }
+
     /// Whether this class/module is frozen.
     pub fn is_frozen(&self) -> bool {
         self.frozen.get()

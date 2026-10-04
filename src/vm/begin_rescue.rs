@@ -42,36 +42,9 @@ impl VirtualMachine {
         let standing = self.globals().get("!").unwrap_or(Object::Nil);
         let body_result = self.execute_statements_for_value(body);
 
-        // Convert internal RuntimeError/TypeError to a rescuable UncaughtException so that
-        // `rescue Object => e` (and other rescue clauses) can catch them — mirroring Ruby's
-        // behavior where all errors are rescuable.
-        let body_result = match body_result {
-            Err(MetorexError::RuntimeError {
-                ref message,
-                ref location,
-                ..
-            }) => {
-                let exc = Object::exception("RuntimeError", message.clone());
-                Err(MetorexError::UncaughtException {
-                    exception: exc,
-                    location: location.clone(),
-                    message: message.clone(),
-                })
-            }
-            Err(MetorexError::TypeError {
-                ref message,
-                ref location,
-                ..
-            }) => {
-                let exc = Object::exception("TypeError", message.clone());
-                Err(MetorexError::UncaughtException {
-                    exception: exc,
-                    location: location.clone(),
-                    message: message.clone(),
-                })
-            }
-            other => other,
-        };
+        // An internal RuntimeError or TypeError is rescuable the way Ruby's
+        // own are, so `rescue Object => e` and the other clauses catch it.
+        let body_result = body_result.map_err(as_rescuable);
 
         let mut final_value = body_result.clone();
         let mut handled = false;
@@ -124,7 +97,7 @@ impl VirtualMachine {
                 Err(MetorexError::UncaughtException {
                     exception: raised, ..
                 }) if handled => self.set_current_exception(raised.clone()),
-                _ if handled => self.restore_current_exception(standing),
+                _ if handled => self.restore_current_exception(standing.clone()),
                 _ => {}
             }
         } else if body_result.is_ok()
@@ -135,7 +108,17 @@ impl VirtualMachine {
 
         if let Some(ensure_stmts) = ensure_block {
             // If ensure raises (NonLocalReturn or exception), it overrides the prior result.
-            self.execute_statements_for_value(ensure_stmts)?;
+            if let Err(leaving) = self.execute_statements_for_value(ensure_stmts) {
+                // An ensure clause that leaves by `return`, `break` or `next`
+                // drops the exception in flight, and `$!` goes back to what
+                // it named before.
+                if final_value.is_err()
+                    && !matches!(leaving, MetorexError::UncaughtException { .. })
+                {
+                    self.restore_current_exception(standing);
+                }
+                return Err(leaving);
+            }
         }
 
         final_value
@@ -217,5 +200,25 @@ impl VirtualMachine {
             }
         }
         Ok(last_value)
+    }
+}
+
+/// `error` as an exception Ruby code can rescue: the interpreter's own
+/// RuntimeError and TypeError become the exceptions of those classes, and
+/// every other error stays as it is.
+pub(crate) fn as_rescuable(error: MetorexError) -> MetorexError {
+    let (class_name, message, location) = match error {
+        MetorexError::RuntimeError {
+            message, location, ..
+        } => ("RuntimeError", message, location),
+        MetorexError::TypeError {
+            message, location, ..
+        } => ("TypeError", message, location),
+        other => return other,
+    };
+    MetorexError::UncaughtException {
+        exception: Object::exception(class_name, message.clone()),
+        location,
+        message,
     }
 }

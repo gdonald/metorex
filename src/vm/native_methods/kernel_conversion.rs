@@ -115,6 +115,27 @@ impl VirtualMachine {
             return Ok(value.clone());
         }
 
+        // A String in all but name says so through `to_str`, which is
+        // asked before `to_s`. Nil from it leaves `to_s` to answer.
+        if self.responds_to(value, "to_str") {
+            let converted = self.send_to_object(value.clone(), "to_str", vec![], position)?;
+            match converted {
+                Object::String(_) => return Ok(converted),
+                Object::Nil => {}
+                other => {
+                    let source = self.conversion_class_name(value, position);
+                    let produced = self.conversion_class_name(&other, position);
+                    return Err(type_error(
+                        format!(
+                            "can't convert {} to String ({}#to_str gives {})",
+                            source, source, produced
+                        ),
+                        position,
+                    ));
+                }
+            }
+        }
+
         // An object that overrides `respond_to?` gets the last word on
         // whether `to_s` may be called at all.
         if let Some((class, method)) = self.lookup_method(value, "respond_to?") {

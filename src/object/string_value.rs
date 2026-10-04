@@ -218,6 +218,12 @@ impl StringValue {
         self.frozen.set(true);
     }
 
+    /// Let the string change again, which C does by clearing the FREEZE
+    /// flag in its `RBasic`.
+    pub fn thaw(&self) {
+        self.frozen.set(false);
+    }
+
     /// The id this string answers. The first ask takes the next one from the
     /// counter handed in, and every ask after answers the same.
     pub fn object_id(&self, next: impl FnOnce() -> u64) -> u64 {

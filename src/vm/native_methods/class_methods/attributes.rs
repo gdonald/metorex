@@ -140,6 +140,22 @@ impl VirtualMachine {
                         .find_own_method(&name)
                         .map(|method| (Rc::clone(class_rc), method))
                 };
+                // BasicObject's private methods, `initialize` among them,
+                // answer natively, so every class below it reports them
+                // from the list.
+                if found.is_none()
+                    && BASIC_OBJECT_PRIVATE_METHODS.contains(&name.as_str())
+                    && (class_rc.name() == "BasicObject"
+                        || (include_super
+                            && crate::vm::method_invocation::descends_from(
+                                class_rc,
+                                "BasicObject",
+                            )))
+                {
+                    return Ok(Answered(Object::Bool(
+                        method_name == "private_method_defined?",
+                    )));
+                }
                 // Kernel's own methods live in the native dispatch tables
                 // rather than in its method map, so the private ones are
                 // listed rather than looked up.

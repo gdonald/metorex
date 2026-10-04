@@ -314,3 +314,27 @@ fn test_syntax_keyword_labels_no_parens_execution() {
     let output = run_example("syntax/keyword_labels_no_parens.rb");
     assert_eq!(output, KEYWORD_LABELS_OUTPUT);
 }
+
+/// The expected output of both `syntax/locals_by_scope` variants.
+const LOCALS_BY_SCOPE_OUTPUT: &str = concat!(
+    "20\n",
+    "[:called, [[1]]]\n",
+    "[:class_bar, [[2]]]\n",
+    "[:method_baz, [[3]]]\n",
+    "\"e\"\n",
+    "0\n",
+    "[:grault, [[4]]]\n",
+    "7\n",
+);
+
+#[test]
+fn test_syntax_locals_by_scope_execution() {
+    let output = run_example("syntax/locals_by_scope.rb");
+    assert_eq!(output, LOCALS_BY_SCOPE_OUTPUT);
+}
+
+#[test]
+fn test_syntax_locals_by_scope_no_parens_execution() {
+    let output = run_example("syntax/locals_by_scope_no_parens.rb");
+    assert_eq!(output, LOCALS_BY_SCOPE_OUTPUT);
+}

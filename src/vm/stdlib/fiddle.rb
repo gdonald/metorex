@@ -5,6 +5,32 @@ module Fiddle
 
   RTLD_GLOBAL, RTLD_LAZY, RTLD_NOW = __dynamic_library__(:flags)
 
+  # An address in the program's memory, read a byte or a run of bytes at a
+  # time.
+  class Pointer
+    def self.[](address)
+      new address
+    end
+
+    def initialize(address, size = 0, free = nil)
+      @address = address.to_i
+      @size = size
+    end
+
+    def to_i
+      @address
+    end
+    alias to_int to_i
+
+    attr_reader :size
+
+    # The signed byte at `offset`, or the `length` bytes from it.
+    def [](offset, length = nil)
+      return Fiddle.__dynamic_library__(:read, @address + offset, length) unless length.nil?
+      Fiddle.__dynamic_library__(:read, @address + offset, 1).unpack1("c")
+    end
+  end
+
   # A shared library the program has opened, or the program itself.
   class Handle
     RTLD_GLOBAL = Fiddle::RTLD_GLOBAL

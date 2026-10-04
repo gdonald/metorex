@@ -53,6 +53,14 @@ impl VirtualMachine {
                 Ok(())
             };
             let answered = started.and_then(|()| vm.execute_block_body(&block, first));
+            // A thread closes its scheduler as it ends, which runs whatever
+            // the scheduler still holds, on this thread.
+            let answered = match answered {
+                Ok(value) if body_of_a_thread => vm
+                    .close_thread_scheduler(Position::new(0, 0, 0))
+                    .map(|()| value),
+                other => other,
+            };
             let answered = match answered {
                 Ok(value) if body_of_a_thread => vm
                     .fire_event("thread_end", Position::new(0, 0, 0), Vec::new())

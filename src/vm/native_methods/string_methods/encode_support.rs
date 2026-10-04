@@ -237,6 +237,12 @@ pub(crate) fn encoded_characters(string_value: &crate::object::StringValue) -> V
     match named.as_str() {
         "ASCII-8BIT" | "BINARY" => per_byte(),
         held if dummy_encoding(held) => per_byte(),
+        held if let Some(shape) = wide_encoding(held) => {
+            wide_characters(&binary_bytes(string_value), shape)
+                .iter()
+                .map(|character| from_bytes(character))
+                .collect()
+        }
         "Shift_JIS" | "Windows-31J" | "MacJapanese" => {
             shift_jis_characters(&binary_bytes(string_value))
                 .iter()

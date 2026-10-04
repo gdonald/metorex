@@ -6,6 +6,19 @@ impl VirtualMachine {
     /// The VM call stack as Location objects, outermost call last, the way
     /// `caller_locations(0)` reports them.
     pub(crate) fn caller_location_objects(&mut self, position: Position) -> Vec<Object> {
+        self.caller_locations_with_frames(position)
+            .into_iter()
+            .map(|(location, _)| location)
+            .collect()
+    }
+
+    /// Each of `caller_location_objects` with how many frames in from the
+    /// innermost the code running there sits: 0 for the innermost frame, and
+    /// the length of the call stack for the outermost scope.
+    pub(crate) fn caller_locations_with_frames(
+        &mut self,
+        position: Position,
+    ) -> Vec<(Object, usize)> {
         use crate::object::Instance;
         use std::rc::Rc;
         let loc_class = self.backtrace_location_class();
@@ -39,7 +52,7 @@ impl VirtualMachine {
         let label_at = |index: usize| -> String { frame_label_at(&frames, index) };
         here.borrow_mut()
             .set_var("label".to_string(), Object::string(label_at(0)));
-        locations.push(Object::Instance(here));
+        locations.push((Object::Instance(here), 0));
         for (index, frame) in frames.iter().enumerate() {
             // A frame with no recorded call site was never called from
             // anywhere — the file body itself — so it is not a caller.
@@ -70,7 +83,7 @@ impl VirtualMachine {
             // the call.
             inst.borrow_mut()
                 .set_var("label".to_string(), Object::string(label_at(index + 1)));
-            locations.push(Object::Instance(inst));
+            locations.push((Object::Instance(inst), index + 1));
         }
         locations
     }

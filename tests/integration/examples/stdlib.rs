@@ -581,14 +581,14 @@ fn test_runtime_exec_replaces_process_parens_execution() {
 
 #[test]
 fn test_runtime_exec_missing_command_execution() {
-    let expected = "true\nNo such file or directory - definitely_not_a_command_xyz\n";
+    let expected = "true\nNo such file or directory - definitely_not_a_command_xyz\nErrno::EPIPE\n";
     let output = run_example("runtime/exec_missing_command.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_runtime_exec_missing_command_parens_execution() {
-    let expected = "true\nNo such file or directory - definitely_not_a_command_xyz\n";
+    let expected = "true\nNo such file or directory - definitely_not_a_command_xyz\nErrno::EPIPE\n";
     let output = run_example("runtime/exec_missing_command_parens.rb");
     assert_eq!(output, expected);
 }
@@ -1127,16 +1127,16 @@ fn test_runtime_daemonizing_no_parens_execution() {
 
 /// The expected output of both `stdlib/marshal_wrapped_values` variants.
 const MARSHAL_WRAPPED_VALUES_OUTPUT: &str = concat!(
-    "\"\\x04\\x08I\\\"\\ttext\\x06:\\x06ET\"\n",
-    "\"\\x04\\x08\\\"\\ttext\"\n",
-    "\"\\x04\\x08I:\\x08\\xE2\\x86\\x92\\x06:\\x06ET\"\n",
-    "\"\\x04\\x08I/\\x07a.\\x01\\x06:\\x06EF\"\n",
-    "\"\\x04\\x08e:\\x0BTagged[\\x00\"\n",
-    "\"\\x04\\x08C:\\nWords[\\x00\"\n",
-    "\"\\x04\\x08}\\x00i\\x00\"\n",
-    "\"\\x04\\x08C:\\tHash{\\x00\"\n",
-    "\"\\x04\\x08C:\\nTable{\\x00\"\n",
-    "\"\\x04\\x08I\\\"\\tnote\\x07:\\x06ET:\\x08@byI\\\"\\x07me\\x06;\\x00T\"\n",
+    "\"\\x04\\bI\\\"\\ttext\\x06:\\x06ET\"\n",
+    "\"\\x04\\b\\\"\\ttext\"\n",
+    "\"\\x04\\bI:\\b\\xE2\\x86\\x92\\x06:\\x06ET\"\n",
+    "\"\\x04\\bI/\\aa.\\x01\\x06:\\x06EF\"\n",
+    "\"\\x04\\be:\\vTagged[\\x00\"\n",
+    "\"\\x04\\bC:\\nWords[\\x00\"\n",
+    "\"\\x04\\b}\\x00i\\x00\"\n",
+    "\"\\x04\\bC:\\tHash{\\x00\"\n",
+    "\"\\x04\\bC:\\nTable{\\x00\"\n",
+    "\"\\x04\\bI\\\"\\tnote\\a:\\x06ET:\\b@byI\\\"\\ame\\x06;\\x00T\"\n",
     "\"can't dump hash with default proc\"\n",
 );
 
@@ -1154,20 +1154,20 @@ fn test_stdlib_marshal_wrapped_values_no_parens_execution() {
 
 /// The expected output of both `stdlib/marshal_objects` variants.
 const MARSHAL_OBJECTS_OUTPUT: &str = concat!(
-    "\"\\x04\\x08o:\\x0CAccount\\x06:\\x0B@owner\\\"\\x08ann\"\n",
-    "\"\\x04\\x08e:\\x0CLabeledo:\\x0CAccount\\x06:\\x0B@owner\\\"\\x08ann\"\n",
-    "\"\\x04\\x08S:\\nPoint\\x07:\\x06xi\\x06:\\x06yi\\x07\"\n",
-    "\"\\x04\\x08S:\\tSize\\x07:\\nwidthi\\x08:\\x0Bheighti\\t\"\n",
-    "\"\\x04\\x08c\\x0CAccount\"\n",
-    "\"\\x04\\x08m\\x0CLabeled\"\n",
-    "\"\\x04\\x08U:\\rSnapshot[\\x07i\\x06i\\x07\"\n",
-    "\"\\x04\\x08u:\\x0BPacked\\x0Bpacked\"\n",
+    "\"\\x04\\bo:\\fAccount\\x06:\\v@owner\\\"\\bann\"\n",
+    "\"\\x04\\be:\\fLabeledo:\\fAccount\\x06:\\v@owner\\\"\\bann\"\n",
+    "\"\\x04\\bS:\\nPoint\\a:\\x06xi\\x06:\\x06yi\\a\"\n",
+    "\"\\x04\\bS:\\tSize\\a:\\nwidthi\\b:\\vheighti\\t\"\n",
+    "\"\\x04\\bc\\fAccount\"\n",
+    "\"\\x04\\bm\\fLabeled\"\n",
+    "\"\\x04\\bU:\\rSnapshot[\\ai\\x06i\\a\"\n",
+    "\"\\x04\\bu:\\vPacked\\vpacked\"\n",
     "[TypeError, \"can't dump anonymous class #<Class:0x...>\"]\n",
     "[TypeError, \"singleton class can't be dumped\"]\n",
     "[TypeError, \"no _dump_data is defined for class Proc\"]\n",
     "[ArgumentError, \"exceed depth limit\"]\n",
     "[TypeError, \"instance of IO needed\"]\n",
-    "[:binmode, \"\\x04\\x08:\\tnote\"]\n",
+    "[:binmode, \"\\x04\\b:\\tnote\"]\n",
 );
 
 #[test]
@@ -1184,14 +1184,14 @@ fn test_stdlib_marshal_objects_no_parens_execution() {
 
 /// The expected output of both `stdlib/marshal_core_values` variants.
 const MARSHAL_CORE_VALUES_OUTPUT: &str = concat!(
-    "\"\\x04\\x08o:\\x11RuntimeError\\x08:\\tmesgI\\\"\\x0Edisk full\\x06:\\x06ET:\\x07bt[\\x06I\\\"\\x10store.rb:12\\x06;\\x07T:\\r@retriesi\\x08\"\n",
+    "\"\\x04\\bo:\\x11RuntimeError\\b:\\tmesgI\\\"\\x0Edisk full\\x06:\\x06ET:\\abt[\\x06I\\\"\\x10store.rb:12\\x06;\\aT:\\r@retriesi\\b\"\n",
     "[RuntimeError, \"write failed\", ArgumentError, \"bad size\"]\n",
-    "\"\\x04\\x08o:\\nRange\\x08:\\texclF:\\nbegini\\x06:\\x08endi\\x07\"\n",
-    "\"\\x04\\x08o:\\nRange\\x08:\\texclT:\\nbegini\\x06:\\x08endi\\x07\"\n",
+    "\"\\x04\\bo:\\nRange\\b:\\texclF:\\nbegini\\x06:\\bendi\\a\"\n",
+    "\"\\x04\\bo:\\nRange\\b:\\texclT:\\nbegini\\x06:\\bendi\\a\"\n",
     "3...9\n",
-    "\"\\x04\\x08Iu:\\tTime\\r \\x00\\x1C\\xC0\\x00\\x00\\x00\\x00\\x06:\\tzoneI\\\"\\x08UTC\\x06:\\x06EF\"\n",
+    "\"\\x04\\bIu:\\tTime\\r \\x00\\x1C\\xC0\\x00\\x00\\x00\\x00\\x06:\\tzoneI\\\"\\bUTC\\x06:\\x06EF\"\n",
     "true\n",
-    "\"\\x04\\x08[\\x07l+\\n\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x01\\x00@\\x06\"\n",
+    "\"\\x04\\b[\\al+\\n\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x01\\x00@\\x06\"\n",
     "\"Exception\"\n",
 );
 
@@ -1216,7 +1216,7 @@ const MARSHAL_LOAD_HANDLER_OUTPUT: &str = concat!(
     "true\n",
     "42\n",
     "false\n",
-    "\"\\x04\\x08Iu:\\tTime\\r \\x80\\x11\\xC0@\\xE2\\x01\\x00\\t:\\rnano_numi\\x02\\x15\\x03:\\rnano_deni\\x06:\\rsubmicro\\\"\\x07x\\x90:\\tzoneI\\\"\\x08UTC\\x06:\\x06EF\"\n",
+    "\"\\x04\\bIu:\\tTime\\r \\x80\\x11\\xC0@\\xE2\\x01\\x00\\t:\\rnano_numi\\x02\\x15\\x03:\\rnano_deni\\x06:\\rsubmicro\\\"\\ax\\x90:\\tzoneI\\\"\\bUTC\\x06:\\x06EF\"\n",
     "123456789\n",
     "true\n",
     "(1/3000000000)\n",

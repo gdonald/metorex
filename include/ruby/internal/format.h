@@ -103,7 +103,25 @@ static inline void metorex_vformat(metorex_format_buffer *buffer, const char *fo
       cursor++;
       VALUE held = va_arg(*arguments, VALUE);
       VALUE text = inspect ? rb_inspect(held) : rb_obj_as_string(held);
-      metorex_format_append(buffer, RSTRING_PTR(text), (size_t)RSTRING_LEN(text));
+      /* The width and precision written with it apply to the text, so it
+       * is formatted with them as a %s conversion, without the '+' that
+       * asked for inspect. */
+      char text_spec[64];
+      size_t text_length = 0;
+      for (size_t index = 0; index < spec_length - size_length; index++) {
+        if (spec[index] != '+') text_spec[text_length++] = spec[index];
+      }
+      text_spec[text_length++] = 's';
+      text_spec[text_length] = '\0';
+      if (text_length == 2) {
+        metorex_format_append(buffer, RSTRING_PTR(text), (size_t)RSTRING_LEN(text));
+      } else {
+        int needed = snprintf(NULL, 0, text_spec, RSTRING_PTR(text));
+        char *written = (char *)malloc((size_t)needed + 1);
+        snprintf(written, (size_t)needed + 1, text_spec, RSTRING_PTR(text));
+        metorex_format_append(buffer, written, (size_t)needed);
+        free(written);
+      }
       buffer->encoding_source = text;
       continue;
     }
@@ -175,6 +193,10 @@ static inline VALUE rb_sprintf(const char *format, ...) {
   return made;
 }
 
+static inline VALUE rb_str_vcatf(VALUE string, const char *format, va_list arguments) {
+  return rb_str_append(string, rb_vsprintf(format, arguments));
+}
+
 static inline VALUE rb_str_catf(VALUE string, const char *format, ...) {
   va_list arguments;
   va_start(arguments, format);
@@ -198,6 +220,14 @@ static inline void rb_warn(const char *format, ...) {
   VALUE message = rb_vsprintf(format, arguments);
   va_end(arguments);
   rb_warn_message(message, 0);
+}
+
+static inline void rb_category_warn(rb_warning_category_t category, const char *format, ...) {
+  va_list arguments;
+  va_start(arguments, format);
+  VALUE message = rb_vsprintf(format, arguments);
+  va_end(arguments);
+  rb_metorex_category_warn(category, message);
 }
 
 static inline void rb_warning(const char *format, ...) {
