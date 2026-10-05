@@ -260,9 +260,19 @@ fn process_kill_with_signal_zero_only_checks_the_process() {
 }
 
 #[test]
-fn process_kill_with_a_minus_name_asks_about_the_process_group() {
-    let result = run("Process.kill(\"-EXIT\", Process.getpgrp)");
+fn process_kill_with_a_minus_name_signals_the_process_group() {
+    let result = run("child = spawn(\"sleep 5\", pgroup: true); \
+         sent = Process.kill(\"-CONT\", child); \
+         Process.kill(:TERM, child); \
+         Process.wait(child); \
+         sent");
     assert_eq!(result, Some(Object::Int(1)));
+}
+
+#[test]
+fn process_kill_refuses_exit_by_name() {
+    let error = run_err("Process.kill(\"-EXIT\", Process.pid)");
+    assert!(error.contains("unsupported signal 'SIGEXIT'"), "{error}");
 }
 
 #[test]

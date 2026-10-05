@@ -66,8 +66,11 @@ run_linux() {
   step "linux/$arch: tests" scripts/linux.sh cargo test --verbose
   step "linux/$arch: ruby spec" scripts/linux.sh bash -c 'cargo build && scripts/run_ruby_spec.sh'
   if [ "$arch" = "$(host_arch)" ]; then
+    # One link per CPU runs the container out of memory once there are more
+    # instrumented test binaries than its memory holds at once, so the build
+    # is held to fewer jobs.
     step "linux/$arch: coverage" scripts/linux.sh \
-      cargo tarpaulin --all-features --workspace --timeout 120 --out xml
+      cargo tarpaulin --all-features --workspace --timeout 120 --jobs 8 --out xml
   else
     # Coverage cannot run under emulation, so what is checked here is the
     # part that broke CI before: that the tests build the way it builds them.

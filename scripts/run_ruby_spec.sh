@@ -55,7 +55,7 @@ export LLVM_PROFILE_FILE="$PROFILE_ROOT/spec_%p.profraw"
 # keeps nothing.
 cleanup_workdir() {
   rm -rf "$SPEC_TEMP_ROOT" "$PROFILE_ROOT"
-  if [ "$TOTAL_FAILURES" != "0" ] || [ "$TOTAL_ERRORS" != "0" ]; then
+  if [ "$TOTAL_FAILURES" != "0" ] || [ "$TOTAL_ERRORS" != "0" ] || [ "$ANY_FAILED" != "0" ]; then
     printf 'what each spec wrote is in %s\n' "$WORK_DIR" >&2
     return
   fi
@@ -3393,6 +3393,7 @@ run_one_pass() {
       code=$(cat "$code_file")
       if [ "$code" != "0" ]; then
         ANY_FAILED=1
+        printf 'mspec exited %s: %s\n' "$code" "${SPEC_PATHS[$i]}" >&2
       fi
     fi
     if [ -f "$out_file" ]; then

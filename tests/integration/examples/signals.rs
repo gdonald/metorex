@@ -2,14 +2,14 @@ use super::run_example;
 
 #[test]
 fn test_signals_delivery_execution() {
-    let expected = "true\ntrue\ntrue\nInterrupt\nshutting down\ntrue\nSIGTERM\ntrue\nDEFAULT\ntrue\nInterrupt\nSIGTERM\n1\nhandled true\nunsupported signal `SIGNOPE'\n";
+    let expected = "true\ntrue\ntrue\nInterrupt\nshutting down\ntrue\nSIGTERM\ntrue\nDEFAULT\ntrue\nInterrupt\nSIGTERM\n1\nhandled true\nunsupported signal 'SIGNOPE'\n";
     let output = run_example("signals/delivery.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_signals_delivery_parens_execution() {
-    let expected = "true\ntrue\ntrue\nInterrupt\nshutting down\ntrue\nSIGTERM\ntrue\nDEFAULT\ntrue\nInterrupt\nSIGTERM\n1\nhandled true\nunsupported signal `SIGNOPE'\n";
+    let expected = "true\ntrue\ntrue\nInterrupt\nshutting down\ntrue\nSIGTERM\ntrue\nDEFAULT\ntrue\nInterrupt\nSIGTERM\n1\nhandled true\nunsupported signal 'SIGNOPE'\n";
     let output = run_example("signals/delivery_parens.rb");
     assert_eq!(output, expected);
 }

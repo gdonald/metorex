@@ -375,6 +375,11 @@ impl crate::vm::VirtualMachine {
             _ => (given.clone(), false),
         };
         let (name, number) = self.signal_named_by(&given, position)?;
+        // EXIT names what a program runs as it ends, not a signal one process
+        // can send another.
+        if name == "EXIT" && !matches!(given, Object::Int(_)) {
+            return Err(self.signal_name_error(&given, position));
+        }
         let own_pid = std::process::id() as i64;
         let mut delivered = 0;
         for target in &arguments[1..] {
@@ -574,7 +579,7 @@ impl crate::vm::VirtualMachine {
             }
             other => other.to_string(),
         };
-        let message = format!("unsupported signal `{}'", named);
+        let message = format!("unsupported signal '{}'", named);
         crate::error::MetorexError::UncaughtException {
             exception: Object::exception("ArgumentError", message.clone()),
             location: crate::vm::utils::position_to_location(position),
