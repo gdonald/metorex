@@ -602,6 +602,8 @@ impl VirtualMachine {
                 environment: fresh,
                 call_stack: Vec::new(),
                 def_scope_stack: Vec::new(),
+                class_var_home: Vec::new(),
+                class_var_cref_stack: Vec::new(),
                 method_nesting_stack: Vec::new(),
                 current_method_frame: Some(crate::vm::core::TOP_LEVEL_FRAME),
                 lexical_home_frame: None,
@@ -613,6 +615,11 @@ impl VirtualMachine {
             environment: std::mem::replace(&mut self.environment, taken.environment),
             call_stack: std::mem::replace(&mut self.call_stack, taken.call_stack),
             def_scope_stack: std::mem::replace(&mut self.def_scope_stack, taken.def_scope_stack),
+            class_var_home: std::mem::replace(&mut self.class_var_home, taken.class_var_home),
+            class_var_cref_stack: std::mem::replace(
+                &mut self.class_var_cref_stack,
+                taken.class_var_cref_stack,
+            ),
             method_nesting_stack: std::mem::replace(
                 &mut self.method_nesting_stack,
                 taken.method_nesting_stack,

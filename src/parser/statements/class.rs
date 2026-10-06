@@ -453,18 +453,7 @@ impl Parser {
         arguments: Vec<Expression>,
         position: Position,
     ) -> Statement {
-        Statement::Expression {
-            expression: Expression::Call {
-                callee: Box::new(Expression::Identifier {
-                    name: "include".to_string(),
-                    position,
-                }),
-                arguments,
-                trailing_block: None,
-                position,
-            },
-            position,
-        }
+        mixin_call_statement("include", arguments, position)
     }
 
     /// Parse an extend statement
@@ -473,6 +462,14 @@ impl Parser {
             .expect(TokenKind::Extend, "Expected 'extend'")?
             .position;
         self.skip_whitespace();
+
+        // `extend(Mod)` is a call with its arguments in parentheses, which
+        // each name a module evaluated where the call is made.
+        if self.check(&[TokenKind::LParen]) {
+            self.advance();
+            let arguments = self.parse_arguments()?;
+            return Ok(mixin_call_statement("extend", arguments, start_pos));
+        }
 
         let mut module_name = match self.advance().kind {
             TokenKind::Ident(name) => name,
@@ -490,6 +487,20 @@ impl Parser {
                     return Err(self.error_at_previous("Expected constant name after '::'"));
                 }
             }
+        }
+
+        // `extend Mod.dup` and `extend A, B` name modules evaluated where the
+        // call is made, the way the parenthesized form does.
+        if self.check(&[TokenKind::Dot, TokenKind::LBracket]) {
+            let base = self.constant_expression(&module_name, start_pos);
+            let argument = self.parse_postfix_calls(base)?;
+            return Ok(mixin_call_statement("extend", vec![argument], start_pos));
+        }
+        if self.check(&[TokenKind::Comma]) {
+            self.advance();
+            let mut arguments = vec![self.constant_expression(&module_name, start_pos)];
+            arguments.extend(self.parse_arguments_without_parens()?);
+            return Ok(mixin_call_statement("extend", arguments, start_pos));
         }
 
         Ok(Statement::Extend {
@@ -658,5 +669,22 @@ impl Parser {
             }
             _ => Err(self.error_at_previous("Expected method name after 'alias'")),
         }
+    }
+}
+
+/// A call to `include` or `extend` with the modules given, evaluated where
+/// the call is made.
+fn mixin_call_statement(name: &str, arguments: Vec<Expression>, position: Position) -> Statement {
+    Statement::Expression {
+        expression: Expression::Call {
+            callee: Box::new(Expression::Identifier {
+                name: name.to_string(),
+                position,
+            }),
+            arguments,
+            trailing_block: None,
+            position,
+        },
+        position,
     }
 }

@@ -194,6 +194,21 @@ impl VirtualMachine {
                         "method_defined?" | "public_method_defined?"
                     ))));
                 }
+                // The methods core classes answer natively are public ones.
+                if found.is_none()
+                    && (crate::vm::native_methods::class_answers_natively(
+                        class_rc,
+                        &name,
+                        include_super,
+                    ) || (include_super
+                        && crate::vm::method_invocation::descends_from(class_rc, "BasicObject")
+                        && NATIVE_BASIC_OBJECT_METHODS.contains(&name.as_str())))
+                {
+                    return Ok(Answered(Object::Bool(matches!(
+                        method_name,
+                        "method_defined?" | "public_method_defined?"
+                    ))));
+                }
                 let answer = match found {
                     // A tombstone left by `undef_method` is not a definition.
                     Some((_, method)) if method.is_undefined => false,

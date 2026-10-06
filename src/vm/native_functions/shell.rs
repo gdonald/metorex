@@ -463,13 +463,38 @@ impl VirtualMachine {
         arguments: Vec<Object>,
         position: Position,
     ) -> Result<Object, MetorexError> {
+        // A leading Hash names what the child's environment adds, or takes
+        // away where a name is given nil.
+        let mut environment = Vec::new();
+        let mut arguments = &arguments[..];
+        if let Some(Object::Dict(entries)) = arguments.first() {
+            for (name, value) in entries.borrow().iter() {
+                let value = match value {
+                    Object::Nil => None,
+                    held => Some(self.get_string_representation(held, position)?),
+                };
+                environment.push((name.trim_start_matches(':').to_string(), value));
+            }
+            arguments = &arguments[1..];
+        }
         let Some(command) = arguments.first() else {
             return Err(MetorexError::runtime_error(
                 "system requires at least 1 argument".to_string(),
                 crate::vm::utils::position_to_location(position),
             ));
         };
-        let program = self.get_string_representation(command, position)?;
+        // A command written as `[program, name]` runs the program under the
+        // name its `$0` answers.
+        let (program, named_as) = match command {
+            Object::Array(pair) if pair.borrow().len() == 2 => {
+                let pair = pair.borrow().clone();
+                (
+                    self.get_string_representation(&pair[0], position)?,
+                    Some(self.get_string_representation(&pair[1], position)?),
+                )
+            }
+            held => (self.get_string_representation(held, position)?, None),
+        };
         // A trailing Hash names where the child's streams go and
         // whether a failure is raised rather than reported.
         let mut given = &arguments[1..];
@@ -505,8 +530,9 @@ impl VirtualMachine {
         // One string holding a character the shell reads runs through
         // the shell, and anything else runs as the program it names.
         let mut reached = None;
-        let words: Vec<String> = if !rest.is_empty() {
-            let mut held = vec![program.clone()];
+        let words: Vec<String> = if !rest.is_empty() || named_as.is_some() {
+            reached = Some(program.clone());
+            let mut held = vec![named_as.unwrap_or_else(|| program.clone())];
             held.extend(rest);
             held
         } else if needs_a_shell(&program) {
@@ -524,7 +550,8 @@ impl VirtualMachine {
             return Ok(Object::Nil);
         }
         let reached = reached.unwrap_or_else(|| words[0].clone());
-        let (status, pid) = self.run_to_completion(&reached, &words, &redirects, position)?;
+        let (status, pid) =
+            self.run_to_completion(&reached, &words, &redirects, &environment, position)?;
         self.record_last_status(&status, Some(pid));
         let code = status.code().unwrap_or(-1);
         if raises && code != 0 {
@@ -560,10 +587,11 @@ impl VirtualMachine {
         reached: &str,
         words: &[String],
         redirects: &[(i32, String)],
+        environment: &[(String, Option<String>)],
         position: Position,
     ) -> Result<(std::process::ExitStatus, i64), MetorexError> {
         use std::os::unix::process::ExitStatusExt as _;
-        let child = start_program(reached, words, redirects);
+        let child = start_program(reached, words, redirects, environment);
         if child < 0 {
             return Ok((std::process::ExitStatus::from_raw(127 << 8), 0));
         }

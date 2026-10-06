@@ -213,11 +213,12 @@ impl VirtualMachine {
                 .map(|index| counted[index].clone())
                 .unwrap_or_default()
         };
-        let path = path.or_else(|| {
-            self.current_file
-                .as_ref()
-                .map(|file| file.display().to_string())
-        });
+        // A path is named the way `__FILE__` spells it, which is the way the
+        // program was given on the command line.
+        let path = path
+            .map(std::path::PathBuf::from)
+            .or_else(|| self.current_file.clone())
+            .map(|file| self.reported_spelling(&file).display().to_string());
         match (line, path) {
             (Some(line), Some(path)) => format!("{}:{}: warning: ", path, line),
             (Some(line), None) => format!("{}: warning: ", line),

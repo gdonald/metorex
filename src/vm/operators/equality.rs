@@ -467,7 +467,7 @@ thread_local! {
 
 /// A number standing for which object a value is, for the values compared
 /// through a stub.
-fn identity_of(value: &Object) -> usize {
+pub(crate) fn identity_of(value: &Object) -> usize {
     match value {
         Object::Instance(held) => Rc::as_ptr(held) as usize,
         Object::Array(held) => Rc::as_ptr(held) as usize,

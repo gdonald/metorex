@@ -146,6 +146,7 @@ impl VirtualMachine {
             let started_with = self.thread_start_arguments(&thread);
             self.locks_this_turn = 0;
             self.thread_current_stack.push(thread.clone());
+            self.turn_started = std::time::Instant::now();
             let stepped = self.fiber_resume(handle, carried, started_with, position);
             self.thread_current_stack.pop();
             match stepped {
@@ -155,6 +156,14 @@ impl VirtualMachine {
                         MetorexError::UncaughtException { exception, .. } => exception.clone(),
                         other => Object::string(format!("{other}")),
                     };
+                    // What the thread is dying of is kept aside before the
+                    // report runs, since the report is Ruby code that may
+                    // hand the turn to a thread waiting on this one.
+                    if let Object::Instance(instance) = &thread {
+                        instance
+                            .borrow_mut()
+                            .set_var(DYING_OF.to_string(), died_of.clone());
+                    }
                     self.report_thread_death(&thread, &died_of, position);
                     self.finish_thread(&thread, Object::Nil);
                     if let Object::Instance(instance) = &thread {
@@ -235,6 +244,7 @@ impl VirtualMachine {
             return self.deliver_thread_interrupts(false, position);
         }
         self.step_pending_threads(position);
+        self.turn_started = std::time::Instant::now();
         Ok(())
     }
 
@@ -256,16 +266,22 @@ impl VirtualMachine {
 
     /// Wait until something wakes the thread, which is what a `sleep` with
     /// no length asks for. Every other waiting thread gets a turn in the
-    /// meantime, and the wait ends when one of them wakes this one.
-    pub(crate) fn sleep_until_woken(&mut self, position: Position) -> Result<(), MetorexError> {
-        self.sleep_until_woken_within(std::time::Duration::from_secs(2), position)
+    /// meantime, and the wait ends when one of them wakes this one. A
+    /// `deadlockable` wait, such as `Thread.stop` or a condition variable's,
+    /// is one MRI reports as a deadlock when no thread can wake it.
+    pub(crate) fn sleep_until_woken(
+        &mut self,
+        deadlockable: bool,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        self.sleep_until_woken_within(None, deadlockable, position)
     }
 
-    /// Wait to be woken, giving up after `limit` so a wake that never comes
-    /// ends the program rather than holding it forever.
+    /// Wait to be woken, or until `limit` passes when there is one.
     pub(crate) fn sleep_until_woken_within(
         &mut self,
-        limit: std::time::Duration,
+        limit: Option<std::time::Duration>,
+        deadlockable: bool,
         position: Position,
     ) -> Result<(), MetorexError> {
         if !self.running_a_thread_body() {
@@ -290,8 +306,7 @@ impl VirtualMachine {
                 self.fiber_suspend(Object::Nil, position)?;
                 return self.raise_if_thread_killed(position);
             }
-            self.step_pending_threads(position);
-            return self.raise_if_thread_killed(position);
+            return self.main_sleeps_until_woken(deadlockable, position);
         }
         let Some(Object::Instance(instance)) = self.thread_current_stack.last().cloned() else {
             self.fiber_suspend(Object::Nil, position)?;
@@ -309,7 +324,10 @@ impl VirtualMachine {
                 Object::Int(on_fiber as i64),
             );
         }
-        let deadline = std::time::Instant::now() + limit;
+        let deadline = limit.map(|length| std::time::Instant::now() + length);
+        if deadlockable {
+            self.mark_waiting_forever(true);
+        }
         let mut outcome = Ok(());
         loop {
             instance
@@ -323,7 +341,7 @@ impl VirtualMachine {
                 instance.borrow().get_var("__thread_waiting"),
                 Some(Object::Bool(true))
             );
-            if !asleep || std::time::Instant::now() >= deadline {
+            if !asleep || deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
                 break;
             }
         }
@@ -333,7 +351,59 @@ impl VirtualMachine {
         instance
             .borrow_mut()
             .set_var("__thread_in".to_string(), Object::Nil);
+        if deadlockable {
+            self.mark_waiting_forever(false);
+        }
         outcome?;
         self.raise_if_thread_killed(position)
     }
+
+    /// The main thread sleeping until another thread wakes it. A signal's
+    /// handler runs while it sleeps, and the sleep goes on afterwards.
+    fn main_sleeps_until_woken(
+        &mut self,
+        deadlockable: bool,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        let main = self.running_thread();
+        let woken = |main: &Object| {
+            matches!(main, Object::Instance(held)
+                if matches!(held.borrow().get_var(WOKEN), Some(Object::Bool(true))))
+        };
+        if let Object::Instance(held) = &main {
+            held.borrow_mut()
+                .set_var(WOKEN.to_string(), Object::Bool(false));
+        }
+        if deadlockable {
+            self.mark_waiting_forever(true);
+        }
+        let outcome = loop {
+            let before = self.statements_run;
+            self.wait_for_other_threads(position);
+            if woken(&main) {
+                break Ok(());
+            }
+            let checked = self
+                .raise_if_thread_killed(position)
+                .and_then(|_| self.deliver_pending_signals(position))
+                .and_then(|_| {
+                    if deadlockable {
+                        self.check_for_deadlock(before, position)
+                    } else {
+                        Ok(())
+                    }
+                });
+            if checked.is_err() {
+                break checked;
+            }
+        };
+        if deadlockable {
+            self.mark_waiting_forever(false);
+        }
+        outcome
+    }
 }
+
+/// The variable `wakeup` and `run` set on a thread, which ends the main
+/// thread's sleep.
+pub(crate) const WOKEN: &str = "__thread_woken";

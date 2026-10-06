@@ -80,6 +80,128 @@ class RubyVM
     end
   end
 
+  # A program's syntax tree, as MRI's parser builds it.
+  module AbstractSyntaxTree
+    class Node
+      attr_reader :type, :children, :first_lineno, :first_column, :last_lineno, :last_column
+
+      def initialize(type, children, first_lineno, first_column, last_lineno, last_column)
+        @type = type
+        @children = children
+        @first_lineno = first_lineno
+        @first_column = first_column
+        @last_lineno = last_lineno
+        @last_column = last_column
+      end
+
+      def inspect
+        "#<RubyVM::AbstractSyntaxTree::Node:#{@type}@#{@first_lineno}:#{@first_column}-#{@last_lineno}:#{@last_column}>"
+      end
+
+      attr_reader :node_id
+
+      # The lines of the program, when it was parsed with
+      # `keep_script_lines: true`.
+      def script_lines = @tree&.script_lines
+
+      # The text the node was written as.
+      def source
+        lines = script_lines
+        return nil if lines.nil?
+        return lines[@first_lineno - 1].byteslice(@first_column...@last_column) if @first_lineno == @last_lineno
+
+        text = lines[@first_lineno - 1].byteslice(@first_column..)
+        text += lines[@first_lineno...@last_lineno - 1].join
+        text + lines[@last_lineno - 1].byteslice(0, @last_column)
+      end
+
+      # Every token of the program, when it was parsed with
+      # `keep_tokens: true`.
+      def all_tokens = @tree&.tokens
+
+      # The tokens written within the node.
+      def tokens
+        all_tokens&.select do |_, _, _, (first_line, first_column, last_line, last_column)|
+          ([first_line, first_column] <=> [@first_lineno, @first_column]) >= 0 &&
+            ([last_line, last_column] <=> [@last_lineno, @last_column]) <= 0
+        end
+      end
+    end
+
+    def self.parse(source, **options)
+      __load_abstract_syntax_tree__
+      __parse__(source, **options)
+    end
+
+    def self.parse_file(path, **options)
+      parse(File.read(path), **options)
+    end
+
+    def self.of(body, keep_script_lines: false, error_tolerant: false, keep_tokens: false)
+      __load_abstract_syntax_tree__
+      __of__(body, keep_script_lines: keep_script_lines, keep_tokens: keep_tokens)
+    end
+
+    def self.node_id_for_backtrace_location(location)
+      __load_abstract_syntax_tree__
+      __of__(location)&.node_id
+    end
+  end
+
+  # A compiled program, method or block. The converter behind it is read the
+  # first time one is made.
+  class InstructionSequence
+    class << self
+      def compile(source, file = "<compiled>", path = nil, line = 1, options = nil, **)
+        __load_instruction_sequence__
+        __compile__(source, file, path || file, line)
+      end
+      alias new compile
+      alias compile_prism compile
+      alias compile_parsey compile
+
+      def compile_file(file, options = nil, **)
+        __load_instruction_sequence__
+        __compile_file__(file)
+      end
+      alias compile_file_prism compile_file
+
+      def of(body)
+        __load_instruction_sequence__
+        __of__(body)
+      end
+
+      def disasm(body) = of(body)&.disasm
+      alias disassemble disasm
+
+      def compile_option
+        __load_instruction_sequence__
+        @compile_option ||= COMPILE_OPTIONS.dup
+      end
+
+      def compile_option=(options)
+        compile_option.merge!(options.to_hash) if options.respond_to?(:to_hash)
+      end
+
+      def load_from_binary(binary)
+        __load_instruction_sequence__
+        __load_from_binary__(binary)
+      end
+
+      def load_from_binary_extra_data(binary)
+        __load_instruction_sequence__
+        __load_from_binary_extra_data__(binary)
+      end
+
+      def __frame__(location)
+        __load_instruction_sequence__
+        __frame_sequence__(location)
+      end
+      private :__frame__
+    end
+  end
+  __undefine_allocator__ InstructionSequence
+
   # MRI's just-in-time compilers. Metorex has none, so neither can be
   # turned on.
   module YJIT

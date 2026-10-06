@@ -205,8 +205,9 @@ impl VirtualMachine {
             Object::BigInt(number) => Ok(crate::vm::operators::big_to_float(number)),
             Object::Float(number) => Ok(*number),
             // A Rational answers its own Float value, and anything else is
-            // asked to coerce before Ruby gives up on it.
-            other if self.responds_to(other, "to_f") => {
+            // asked to coerce before Ruby gives up on it. A core value such
+            // as nil or a String is not a number whatever `to_f` it has.
+            other @ Object::Instance(_) if self.responds_to(other, "to_f") => {
                 match self.send_to_object(other.clone(), "to_f", vec![], position)? {
                     Object::Float(number) => Ok(number),
                     Object::Int(number) => Ok(number as f64),

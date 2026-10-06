@@ -22,6 +22,22 @@ impl VirtualMachine {
         if !self.key_hashes_for_itself(key) {
             return Ok(crate::vm::utils::object_to_dict_key(key).unwrap_or_default());
         }
+        self.hashed_slot(key, position, |candidate| {
+            pairs
+                .contains_key(candidate)
+                .then(|| reconstruct_key(pairs, candidate))
+        })
+    }
+
+    /// The slot a key that answers `#hash` takes: the first slot under its
+    /// hash number that is free or holds an `#eql?` key. `stored_at` gives
+    /// the key held in a slot, or None for a free one.
+    fn hashed_slot(
+        &mut self,
+        key: &Object,
+        position: Position,
+        stored_at: impl Fn(&str) -> Option<Object>,
+    ) -> Result<String, MetorexError> {
         let hashed = match self.send_to_object(key.clone(), "hash", vec![], position)? {
             Object::Int(number) => number,
             other => self.object_identity(&other, position)?,
@@ -29,10 +45,9 @@ impl VirtualMachine {
         let mut slot = 0usize;
         loop {
             let candidate = format!("{HASHED_SLOT_PREFIX}h{hashed}#{slot}");
-            if !pairs.contains_key(&candidate) {
+            let Some(stored) = stored_at(&candidate) else {
                 return Ok(candidate);
-            }
-            let stored = reconstruct_key(pairs, &candidate);
+            };
             // A key looks itself up without being asked, so a class whose
             // `#eql?` refuses its own object still finds its entry.
             if crate::vm::native_methods::object_methods::same_object(&stored, key) {
@@ -56,11 +71,17 @@ impl VirtualMachine {
         key: &Object,
         position: Position,
     ) -> Result<String, MetorexError> {
-        let (pairs, by_identity) = {
+        let by_identity = dict_rc.borrow().contains_key(BY_IDENTITY_KEY);
+        if by_identity || !self.key_hashes_for_itself(key) {
+            return self.dict_slot_in(&indexmap::IndexMap::new(), key, by_identity, position);
+        }
+        // `#hash` and `#eql?` run program code that may change the hash, so
+        // each slot is read under a borrow of its own.
+        self.hashed_slot(key, position, |candidate| {
             let dict = dict_rc.borrow();
-            (dict.clone(), dict.contains_key(BY_IDENTITY_KEY))
-        };
-        self.dict_slot_in(&pairs, key, by_identity, position)
+            dict.contains_key(candidate)
+                .then(|| reconstruct_key(&dict, candidate))
+        })
     }
 
     /// Whether a key answers `#hash` and `#eql?` of its own, which is what

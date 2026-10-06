@@ -234,6 +234,22 @@ pub(crate) fn register_native_functions(globals: &mut GlobalRegistry) {
         Object::NativeFunction("__undefine_allocator__".to_string()),
     );
     globals.set(
+        "__load_abstract_syntax_tree__",
+        Object::NativeFunction("__load_abstract_syntax_tree__".to_string()),
+    );
+    globals.set(
+        "__load_instruction_sequence__",
+        Object::NativeFunction("__load_instruction_sequence__".to_string()),
+    );
+    globals.set(
+        "__allocate_instance__",
+        Object::NativeFunction("__allocate_instance__".to_string()),
+    );
+    globals.set(
+        "__block_position__",
+        Object::NativeFunction("__block_position__".to_string()),
+    );
+    globals.set(
         "__ractor_move__",
         Object::NativeFunction("__ractor_move__".to_string()),
     );

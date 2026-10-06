@@ -87,7 +87,7 @@ try_load
 // ── gets() — only the wrong-arg-count error path is testable without stdin ─
 
 #[test]
-fn gets_with_args_errors() {
-    let err = run_err("gets(\"prompt\")");
-    assert!(err.contains("0 argument"));
+fn gets_hands_its_arguments_to_argf() {
+    let result = run("def ARGF.gets(*given)\n  given\nend\ngets(\"prompt\").inspect");
+    assert_eq!(result, Some(Object::string("[\"prompt\"]")));
 }

@@ -98,10 +98,12 @@ impl VirtualMachine {
 
     /// The TypeError Ruby raises for an operand that cannot become a number.
     pub(crate) fn uncoercible(&mut self, value: &Object, position: Position) -> MetorexError {
-        let message = format!(
-            "{} can't be coerced into Integer",
-            self.builtins().class_of(value).name()
-        );
+        let named = match value {
+            Object::Nil => "nil".to_string(),
+            Object::Bool(held) => held.to_string(),
+            other => self.builtins().class_of(other).name().to_string(),
+        };
+        let message = format!("{named} can't be coerced into Integer");
         MetorexError::UncaughtException {
             exception: Object::exception("TypeError", message.clone()),
             location: crate::vm::utils::position_to_location(position),

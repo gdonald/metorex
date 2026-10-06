@@ -420,6 +420,7 @@ impl VirtualMachine {
                     .collect(),
             );
             exc.backtrace_sites = Some(sites);
+            exc.raise_column = Some(position.column.saturating_sub(1));
 
             drop(exc); // Release the borrow before returning
             Object::Exception(exc_ref)

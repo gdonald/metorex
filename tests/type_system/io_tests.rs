@@ -561,13 +561,13 @@ fn eof_error_is_a_standard_error() {
 }
 
 #[test]
-fn readline_rejects_arguments() {
-    let error = run_err("readline(1)");
-    assert!(error.contains("readline() expects 0 arguments, got 1"));
+fn readline_hands_its_arguments_to_argf() {
+    let result = run("def ARGF.readline(*given)\n  given\nend\nreadline(\"x\", 1).inspect");
+    assert_eq!(result, Some(Object::string("[\"x\", 1]")));
 }
 
 #[test]
-fn readlines_rejects_arguments() {
-    let error = run_err("readlines(1)");
-    assert!(error.contains("readlines() expects 0 arguments, got 1"));
+fn readlines_hands_its_arguments_to_argf() {
+    let result = run("def ARGF.readlines(*given)\n  given\nend\nreadlines(\"x\", 1).inspect");
+    assert_eq!(result, Some(Object::string("[\"x\", 1]")));
 }

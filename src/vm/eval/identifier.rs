@@ -455,6 +455,8 @@ pub(crate) fn runs_when_named_bare(name: &str) -> bool {
             | "__method__"
             | "__callee__"
             | "__timeout_close__"
+            | "__load_abstract_syntax_tree__"
+            | "__load_instruction_sequence__"
             | "abort"
             | "at_exit"
             | "caller"

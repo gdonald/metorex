@@ -49,13 +49,14 @@ impl Parser {
                         None
                     };
                     refuse_two_blocks(&arguments, trailing_block.is_some())?;
-                    expr = Expression::MethodCall {
-                        receiver: Box::new(expr),
-                        method: "call".to_string(),
+                    expr = method_call(
+                        expr,
+                        "call".to_string(),
                         arguments,
                         trailing_block,
+                        safe,
                         position,
-                    };
+                    );
                     continue;
                 }
                 // Allow `.[]` to name the `[]` method explicitly.
@@ -79,13 +80,7 @@ impl Parser {
                     } else {
                         Vec::new()
                     };
-                    expr = Expression::MethodCall {
-                        receiver: Box::new(expr),
-                        method: name,
-                        arguments,
-                        trailing_block: None,
-                        position,
-                    };
+                    expr = method_call(expr, name, arguments, None, safe, position);
                     continue;
                 }
                 let method_name = match self.advance().kind {
@@ -178,18 +173,7 @@ impl Parser {
 
                 let position = expr.position();
                 expr = if safe {
-                    let mut relayed = vec![Expression::Symbol {
-                        value: method_name,
-                        position,
-                    }];
-                    relayed.extend(arguments);
-                    Expression::MethodCall {
-                        receiver: Box::new(expr),
-                        method: SAFE_CALL.to_string(),
-                        arguments: relayed,
-                        trailing_block,
-                        position,
-                    }
+                    method_call(expr, method_name, arguments, trailing_block, true, position)
                 } else {
                     // `"text".freeze` stands for one frozen string shared by
                     // every place the same literal is written.
@@ -569,5 +553,38 @@ impl Parser {
         if !self.check(&[TokenKind::Dot]) {
             self.stream.restore_position(resume);
         }
+    }
+}
+
+/// A call of `method` on `receiver`. One written with `&.` goes through the
+/// safe-call method, which answers nil for a nil receiver.
+fn method_call(
+    receiver: Expression,
+    method: String,
+    arguments: Vec<Expression>,
+    trailing_block: Option<Box<Expression>>,
+    safe: bool,
+    position: crate::lexer::Position,
+) -> Expression {
+    if !safe {
+        return Expression::MethodCall {
+            receiver: Box::new(receiver),
+            method,
+            arguments,
+            trailing_block,
+            position,
+        };
+    }
+    let mut relayed = vec![Expression::Symbol {
+        value: method,
+        position,
+    }];
+    relayed.extend(arguments);
+    Expression::MethodCall {
+        receiver: Box::new(receiver),
+        method: SAFE_CALL.to_string(),
+        arguments: relayed,
+        trailing_block,
+        position,
     }
 }

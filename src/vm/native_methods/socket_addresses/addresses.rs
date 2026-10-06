@@ -127,16 +127,25 @@ impl VirtualMachine {
                 let named = unsafe { std::ffi::CStr::from_ptr(buffer.as_ptr() as *const _) };
                 Ok(Object::string(named.to_string_lossy().to_string()))
             }
-            "resolve" => match std::net::ToSocketAddrs::to_socket_addrs(&(text.as_str(), 0u16)) {
-                Ok(found) => Ok(Object::array(
-                    found
-                        .map(|held| Object::string(held.ip().to_string()))
-                        .collect(),
-                )),
-                Err(_) => Err(refuse(format!(
-                    "getaddrinfo: {text}: nodename nor servname provided, or not known"
-                ))),
-            },
+            "resolve" => {
+                let named = text.clone();
+                let found = self.run_beside_threads(
+                    move || {
+                        std::net::ToSocketAddrs::to_socket_addrs(&(named.as_str(), 0u16)).map(
+                            |found| found.map(|held| held.ip().to_string()).collect::<Vec<_>>(),
+                        )
+                    },
+                    position,
+                );
+                match found {
+                    Ok(found) => Ok(Object::array(
+                        found.into_iter().map(Object::string).collect(),
+                    )),
+                    Err(_) => Err(refuse(format!(
+                        "getaddrinfo: {text}: nodename nor servname provided, or not known"
+                    ))),
+                }
+            }
             // The name this machine answers to.
             "hostname" => Ok(Object::string(
                 hostname().unwrap_or_else(|| "localhost".to_string()),

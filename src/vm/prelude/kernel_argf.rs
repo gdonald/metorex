@@ -224,7 +224,7 @@ class ArgfStream
 
   # Reading a line records which file it came from and how many have been
   # read, which is what `$FILENAME` and `$.` report.
-  def gets(*separator)
+  def gets(*separator, **keywords)
     loop do
       self.__open_current__
       if @current.nil?
@@ -232,7 +232,7 @@ class ArgfStream
         return nil
       end
       $FILENAME = @current.path
-      line = @current.gets(*separator)
+      line = @current.gets(*separator, **keywords)
       if line.nil?
         if self.__names__.empty?
           @drained = true
@@ -254,8 +254,8 @@ class ArgfStream
     nil
   end
 
-  def readline(*separator)
-    line = self.gets(*separator)
+  def readline(*separator, **keywords)
+    line = self.gets(*separator, **keywords)
     raise EOFError, "end of file reached" if line.nil?
     line
   end
@@ -274,9 +274,9 @@ class ArgfStream
     self.each_line(*separator, &block)
   end
 
-  def readlines(*args)
+  def readlines(*args, **keywords)
     collected = []
-    while (line = self.gets)
+    while (line = self.gets(*args, **keywords))
       collected.push line
     end
     collected

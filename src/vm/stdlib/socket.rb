@@ -856,6 +856,14 @@ class Addrinfo
     held
   end
 
+  # The name a host was written as when it was looked up, and nil for an
+  # address written out or one of the names that stand for an address.
+  def self.looked_up_name(host)
+    written = host.to_s
+    return nil if written.empty? || ["<any>", "<broadcast>"].include?(written)
+    Socket.__address__("family", written, 0).nil? ? written : nil
+  end
+
   def self.built(host, port, socktype, protocol)
     held = allocate
     held.send :fill_ip, host, port, socktype, protocol
@@ -890,8 +898,24 @@ class Addrinfo
     # `AI_CANONNAME` asks for the name the host is known under, which is the
     # name the caller wrote once it has been looked up.
     canonical = flags.is_a?(Integer) && (flags & Socket::AI_CANONNAME) != 0
-    Socket.resolved(host).map do |address|
+    numbered = family.nil? || family == 0 ? nil : Socket.family_numbered(Socket.named_part(family))
+    # No host at all names every address a server would answer on, or the
+    # loopback when the address is for reaching one.
+    addresses =
+      if host.nil?
+        passive = flags.is_a?(Integer) && (flags & Socket::AI_PASSIVE) != 0
+        passive ? ["0.0.0.0", "::"] : ["127.0.0.1", "::1"]
+      else
+        Socket.resolved host
+      end
+    found = addresses.select do |address|
+      held_family = Socket.__address__("family", address, 0) == 4 ? Socket::AF_INET : Socket::AF_INET6
+      numbered.nil? || held_family == numbered
+    end
+    looked_up = host.nil? ? nil : Addrinfo.looked_up_name(Socket.named_part(host))
+    found.map do |address|
       held = Addrinfo.built address, port, kind, named
+      held.instance_variable_set :@inspected_name, looked_up
       held.send :name_canonically, host.to_s if canonical
       held
     end
@@ -1259,6 +1283,8 @@ class Addrinfo
     @canonname = nil
     @afamily = Socket.__address__("family", named, 0) == 4 ? Socket::AF_INET : Socket::AF_INET6
     @pfamily = @afamily
+    # An address found by looking a name up shows that name when inspected.
+    @inspected_name = Addrinfo.looked_up_name(host)
     self
   end
 

@@ -2,10 +2,25 @@
 
 use super::*;
 
-/// How many statements a thread runs before it hands the turn to the others.
-const STATEMENTS_PER_TURN: usize = 10_000;
+/// How long a thread runs before it hands the turn to the others, which is
+/// how often MRI's timer marks a turn as spent.
+const TIME_SLICE: std::time::Duration = std::time::Duration::from_millis(100);
 
 impl VirtualMachine {
+    /// Counts a statement, and hands the turn over once the thread has held
+    /// it for a time slice.
+    pub(crate) fn pass_checkpoint(
+        &mut self,
+        position: crate::lexer::Position,
+    ) -> Result<(), MetorexError> {
+        self.statements_run = self.statements_run.wrapping_add(1);
+        if self.turn_started.elapsed() >= TIME_SLICE {
+            self.turn_started = std::time::Instant::now();
+            self.share_the_turn(position)?;
+        }
+        Ok(())
+    }
+
     /// Evaluate a statement and produce control-flow information for the caller.
     pub(crate) fn execute_statement(
         &mut self,
@@ -43,11 +58,7 @@ impl VirtualMachine {
             self.fire_line_event(statement.position())?;
         }
         self.deliver_pending_signals(statement.position())?;
-        self.statements_this_turn += 1;
-        if self.statements_this_turn >= STATEMENTS_PER_TURN {
-            self.statements_this_turn = 0;
-            self.share_the_turn(statement.position())?;
-        }
+        self.pass_checkpoint(statement.position())?;
         let line = statement.position().line;
         if self.coverage_skip_line.take() != Some(line) && self.coverage.is_some() {
             self.coverage_count(line);

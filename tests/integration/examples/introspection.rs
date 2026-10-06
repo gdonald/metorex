@@ -847,3 +847,40 @@ fn test_introspection_tracepoint_call_in_block_no_parens_execution() {
     let output = run_example("introspection/tracepoint_call_in_block_no_parens.rb");
     assert_eq!(output, TRACEPOINT_CALL_IN_BLOCK_OUTPUT);
 }
+
+const NATIVE_METHODS_ANSWERED: &str = concat!(
+    "true\n",
+    "true\n",
+    "true\n",
+    "\"method\"\n",
+    "nil\n",
+    "true\n",
+    "true\n",
+    "true\n",
+    "true\n",
+    "true\n",
+    "true\n",
+    "true\n",
+    "true\n",
+    "false\n",
+    "false\n",
+    "true\n",
+    "true\n",
+    "false\n",
+    "true\n",
+    "true\n",
+    "false\n",
+    "true\n",
+);
+
+#[test]
+fn test_introspection_native_methods_answered_execution() {
+    let output = run_example("introspection/native_methods_answered.rb");
+    assert_eq!(output, NATIVE_METHODS_ANSWERED);
+}
+
+#[test]
+fn test_introspection_native_methods_answered_no_parens_execution() {
+    let output = run_example("introspection/native_methods_answered_no_parens.rb");
+    assert_eq!(output, NATIVE_METHODS_ANSWERED);
+}

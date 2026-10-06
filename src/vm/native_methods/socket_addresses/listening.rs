@@ -36,17 +36,23 @@ impl VirtualMachine {
     ) -> Result<Object, MetorexError> {
         use std::net::ToSocketAddrs as _;
         use std::os::unix::io::FromRawFd as _;
-        let wanted: std::net::SocketAddr = (text.as_str(), port as u16)
-            .to_socket_addrs()
-            .ok()
-            .and_then(|mut found| found.next())
-            .ok_or_else(|| {
-                crate::vm::errors::simple_exception(
-                    "SocketError",
-                    &format!("bind({text}:{port}): no such address"),
-                    position,
-                )
-            })?;
+        let named = text.clone();
+        let found = self.run_beside_threads(
+            move || {
+                (named.as_str(), port as u16)
+                    .to_socket_addrs()
+                    .ok()
+                    .and_then(|mut found| found.next())
+            },
+            position,
+        );
+        let wanted: std::net::SocketAddr = found.ok_or_else(|| {
+            crate::vm::errors::simple_exception(
+                "SocketError",
+                &format!("bind({text}:{port}): no such address"),
+                position,
+            )
+        })?;
         let family = match wanted {
             std::net::SocketAddr::V4(_) => libc::AF_INET,
             std::net::SocketAddr::V6(_) => libc::AF_INET6,
@@ -112,7 +118,12 @@ impl VirtualMachine {
         port: i64,
         position: Position,
     ) -> Result<Object, MetorexError> {
-        let held = std::net::TcpStream::connect((text.as_str(), port as u16))
+        let host = text.clone();
+        let held = self
+            .run_beside_threads(
+                move || std::net::TcpStream::connect((host.as_str(), port as u16)),
+                position,
+            )
             .map_err(|problem| refused(position, format!("connect({text}:{port}): {problem}")))?;
         let _ = held.set_read_timeout(Some(POLL_LIMIT));
         let named = self.open_sockets.next;

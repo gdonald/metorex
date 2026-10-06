@@ -226,6 +226,7 @@ impl VirtualMachine {
                         if !self.tracepoints.is_empty() {
                             self.fire_line_event(statement.position())?;
                         }
+                        self.pass_checkpoint(statement.position())?;
                         // A `redo` inside a `begin` that has an ensure clause
                         // arrives as an unwinding signal once the clause ran.
                         last_value = match self.evaluate_expression(expression) {

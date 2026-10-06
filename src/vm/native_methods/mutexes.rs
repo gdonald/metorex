@@ -81,17 +81,35 @@ impl VirtualMachine {
                 }
                 // A lock something else holds is waited for, so whatever else
                 // the program has to run gets a turn until it is let go.
-                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+                self.mark_waiting_forever(true);
+                let mut waited = Ok(());
+                let mut last_round = None;
                 while matches!(
                     inst.borrow().get_var("__mutex_locked"),
                     Some(Object::Bool(true))
-                ) && std::time::Instant::now() < deadline
-                {
+                ) {
+                    if let Some(before) = last_round
+                        && let Err(stuck) = self.check_for_deadlock(before, position)
+                    {
+                        waited = Err(stuck);
+                        break;
+                    }
+                    last_round = Some(self.statements_run);
                     self.wait_for_other_threads(position);
+                    if self.thread_told_to_stop() {
+                        break;
+                    }
                 }
-                self.mark_mutex_held(&inst);
-                // A thread told to stop while it waited takes the lock first,
-                // so whatever unwinds next still holds it.
+                self.mark_waiting_forever(false);
+                waited?;
+                // A thread told to stop while it waited takes the lock when it
+                // is free, so whatever unwinds next still holds it.
+                if !matches!(
+                    inst.borrow().get_var("__mutex_locked"),
+                    Some(Object::Bool(true))
+                ) {
+                    self.mark_mutex_held(&inst);
+                }
                 self.raise_if_thread_killed(position)?;
                 Ok(Some(receiver.clone()))
             }
@@ -149,7 +167,7 @@ impl VirtualMachine {
                 // the sleep is raised, so an `ensure` around the sleep sees
                 // the thread still holding it.
                 let stopped = match wanted {
-                    None => self.sleep_until_woken(position),
+                    None => self.sleep_until_woken(true, position),
                     Some(_) => {
                         self.wait_for_other_threads(position);
                         Ok(())

@@ -17,3 +17,5 @@ mod waiting;
 
 pub(crate) use state::*;
 pub(crate) use stopping::*;
+pub(crate) use threads::WOKEN;
+pub(crate) use waiting::{DYING_OF, WAITING_FOREVER};

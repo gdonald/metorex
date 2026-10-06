@@ -121,6 +121,7 @@ pub(super) const SOURCE: &str = r##"
   # The seconds an argument to `+` or `-` stands for. A String names no
   # number of seconds however much it looks like one.
   def exact_seconds(other)
+    raise TypeError, "can't convert NilClass into an exact number" if other.nil?
     raise TypeError, "can't convert String into an exact number" if other.is_a?(String)
     return other.to_r if other.is_a?(Numeric)
     unless other.respond_to?(:to_r)

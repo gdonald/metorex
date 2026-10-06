@@ -49,7 +49,7 @@ fn test_basics_readline_and_readlines() {
         "true\ntrue\ntrue\nIOError\ntrue\n",
         "nil\n[]\n",
         "EOFError: end of file reached\n",
-        "readline() expects 0 arguments, got 1\n"
+        "with a limit: end of file reached\n"
     );
     let output = run_example("basics/readline_and_readlines.rb");
     assert_eq!(output, expected);
@@ -61,7 +61,7 @@ fn test_basics_readline_and_readlines_no_parens() {
         "true\ntrue\ntrue\nIOError\ntrue\n",
         "nil\n[]\n",
         "EOFError: end of file reached\n",
-        "readline() expects 0 arguments, got 1\n"
+        "with a limit: end of file reached\n"
     );
     let output = run_example("basics/readline_and_readlines_no_parens.rb");
     assert_eq!(output, expected);
@@ -163,4 +163,26 @@ fn test_basics_warn_categories_parens_execution() {
     );
     let output = run_example("basics/warn/categories_parens.rb");
     assert_eq!(output, expected);
+}
+
+const WARN_UPLEVEL_PATHS: &str = concat!(
+    "tests/_examples/basics/warn/uplevel_paths.rb:8: warning: from the caller\n",
+    "tests/_examples/basics/warn/uplevel_paths.rb:9: warning: from here\n",
+);
+
+const WARN_UPLEVEL_PATHS_PARENS: &str = concat!(
+    "tests/_examples/basics/warn/uplevel_paths_parens.rb:8: warning: from the caller\n",
+    "tests/_examples/basics/warn/uplevel_paths_parens.rb:9: warning: from here\n",
+);
+
+#[test]
+fn test_basics_warn_uplevel_paths_execution() {
+    let output = run_example("basics/warn/uplevel_paths.rb");
+    assert_eq!(output, WARN_UPLEVEL_PATHS);
+}
+
+#[test]
+fn test_basics_warn_uplevel_paths_parens_execution() {
+    let output = run_example("basics/warn/uplevel_paths_parens.rb");
+    assert_eq!(output, WARN_UPLEVEL_PATHS_PARENS);
 }

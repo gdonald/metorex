@@ -58,6 +58,41 @@ impl VirtualMachine {
                 }
                 Ok(Object::Nil)
             }
+            // An instance of a class whose allocator is undefined, which the
+            // core library makes for itself.
+            "__allocate_instance__" => match arguments.first() {
+                Some(Object::Class(class)) => self.allocate_instance(&Rc::clone(class), position),
+                _ => Ok(Object::Nil),
+            },
+            // The converter behind RubyVM::AbstractSyntaxTree, read the
+            // first time a program asks for a syntax tree.
+            "__load_abstract_syntax_tree__" => {
+                self.run_embedded_library(
+                    "abstract_syntax_tree",
+                    include_str!("../stdlib/abstract_syntax_tree.rb"),
+                )?;
+                Ok(Object::Nil)
+            }
+            // The converter behind RubyVM::InstructionSequence, read the first
+            // time a program compiles one.
+            "__load_instruction_sequence__" => {
+                self.run_embedded_library(
+                    "instruction_sequence",
+                    include_str!("../stdlib/instruction_sequence.rb"),
+                )?;
+                Ok(Object::Nil)
+            }
+            // Where a block literal opens, as its line and its column counted
+            // in characters from 0, or nil for a block with no Ruby source.
+            "__block_position__" => Ok(match arguments.first() {
+                Some(Object::Block(block)) => match (block.opened_at, block.opened_column) {
+                    (Some(line), Some(column)) => {
+                        Object::array(vec![Object::Int(line as i64), Object::Int(column as i64)])
+                    }
+                    _ => Object::Nil,
+                },
+                _ => Object::Nil,
+            }),
             "__ractor_move__" => {
                 if let Some(moved) = arguments.into_iter().next() {
                     self.mark_moved(moved);
@@ -112,9 +147,9 @@ impl VirtualMachine {
             "print" => self.print_values(arguments, position),
             "printf" => self.print_formatted(arguments, position),
             "p" | "pp" => self.inspect_values(arguments, position),
-            "readline" => self.read_line_or_fail(arguments, position),
-            "readlines" => self.read_all_lines(arguments, position),
-            "gets" => self.read_line(arguments, position),
+            "readline" => self.read_through_argf("readline", arguments, position),
+            "readlines" => self.read_through_argf("readlines", arguments, position),
+            "gets" => self.read_through_argf("gets", arguments, position),
             "assert" => self.assert_true(arguments, position),
             "assert_equal" => self.assert_equality(arguments, position),
             "assert_raises" => self.assert_raises_exception(arguments, position),

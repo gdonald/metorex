@@ -74,3 +74,25 @@ fn test_oop_super_forms_parens_execution() {
     let output = run_example("oop/super_forms_parens.rb");
     assert_eq!(output, expected);
 }
+
+/// The expected output of both `oop/class_method_super` variants.
+const CLASS_METHOD_SUPER_OUTPUT: &str = concat!(
+    "\"leaf middle base\"\n",
+    "\"middle base\"\n",
+    "Counted\n",
+    "1\n",
+    "[Greeting, \"ANN\", \"hello\"]\n",
+    "[Farewell, \"BO\", \"goodbye\"]\n",
+);
+
+#[test]
+fn test_oop_class_method_super_execution() {
+    let output = run_example("oop/class_method_super.rb");
+    assert_eq!(output, CLASS_METHOD_SUPER_OUTPUT);
+}
+
+#[test]
+fn test_oop_class_method_super_no_parens_execution() {
+    let output = run_example("oop/class_method_super_no_parens.rb");
+    assert_eq!(output, CLASS_METHOD_SUPER_OUTPUT);
+}

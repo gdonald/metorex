@@ -138,7 +138,29 @@ impl VirtualMachine {
                 holder = class.superclass();
             }
             let class_method_key = format!("__class__{}", method_name);
-            let mut current = self_class.superclass();
+            // The search starts above the class whose own class method is
+            // running, so each override in a chain reaches the next one up
+            // rather than itself.
+            let running = self.method_running_stack.last().cloned();
+            let own_class_method = |class: &Rc<crate::class::Class>| {
+                class
+                    .singleton_class_slot()
+                    .clone()
+                    .and_then(|singleton| singleton.find_own_method(&method_name))
+                    .or_else(|| class.find_own_method(&class_method_key))
+            };
+            let mut defining = Some(Rc::clone(&self_class));
+            if let Some(running) = &running {
+                let mut probe = Some(Rc::clone(&self_class));
+                while let Some(class) = probe {
+                    if own_class_method(&class).is_some_and(|own| Rc::ptr_eq(&own, running)) {
+                        defining = Some(Rc::clone(&class));
+                        break;
+                    }
+                    probe = class.superclass();
+                }
+            }
+            let mut current = defining.and_then(|class| class.superclass());
             while let Some(cls) = current {
                 let candidate = cls
                     .singleton_class_slot()
@@ -186,6 +208,23 @@ impl VirtualMachine {
                 "inherited" | "included" | "extended" | "prepended" | "const_added"
             ) {
                 return Ok(Object::Nil);
+            }
+            // An override of `allocate` reaches the core library's, which
+            // makes the instance.
+            if method_name == "allocate" {
+                return self.allocate_instance(&self_class, position);
+            }
+            // An override of `new` on a class reaches the core library's,
+            // which allocates the instance and runs `initialize`.
+            if method_name == "new" && matches!(self_object, Object::Class(_)) {
+                return self.invoke_class(Rc::clone(&self_class), evaluated_args, position);
+            }
+            // Any other class method the core library writes natively
+            // answers a `super` from an override of it.
+            if let Some(result) =
+                self.call_class_methods(&self_class, &method_name, &evaluated_args, position)?
+            {
+                return Ok(result);
             }
             return Err(MetorexError::runtime_error(
                 format!(

@@ -536,6 +536,7 @@ impl VirtualMachine {
                             && crate::vm::native_methods::EVERY_EXCEPTION_METHOD
                                 .contains(&name))
                         || crate::vm::native_methods::is_native_kernel_method(name)
+                        || self.answers_natively(receiver, name)
                         || (self.builtins().class_of(receiver).name() == "File"
                             && crate::vm::native_methods::class_methods::is_native_io_method(name))
                 }
@@ -666,6 +667,7 @@ impl VirtualMachine {
         if crate::vm::native_methods::is_kernel_private_function(name)
             && !matches!(receiver, Object::Class(_) | Object::Module(_))
             && self.visibility_owner(receiver, name).is_none()
+            && !self.answers_natively(receiver, name)
         {
             return true;
         }

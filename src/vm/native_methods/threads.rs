@@ -279,6 +279,15 @@ impl VirtualMachine {
             "inspect" | "to_s" => {
                 let address = Rc::as_ptr(&inst) as usize;
                 let doing = match self.call_thread_method(receiver, "status", &[], position)? {
+                    // A thread waiting on what only another thread can give
+                    // it sleeps until then, however long that is.
+                    _ if matches!(
+                        inst.borrow().get_var(crate::vm::fibers::WAITING_FOREVER),
+                        Some(Object::Bool(true))
+                    ) =>
+                    {
+                        "sleep_forever".to_string()
+                    }
                     Some(Object::String(word)) => word.as_str().to_string(),
                     _ => "dead".to_string(),
                 };
@@ -458,6 +467,7 @@ impl VirtualMachine {
                     let mut details = details.borrow_mut();
                     details.backtrace = None;
                     details.backtrace_sites = None;
+                    details.raise_column = None;
                     details.backtrace_array = None;
                     details.backtrace_locations_array = None;
                 }
@@ -499,16 +509,17 @@ impl VirtualMachine {
                 // is ready to run rather than asleep.
                 inst.borrow_mut()
                     .set_var("__thread_waiting".to_string(), Object::Bool(false));
+                inst.borrow_mut()
+                    .set_var(crate::vm::fibers::WOKEN.to_string(), Object::Bool(true));
                 Ok(Some(receiver.clone()))
             }
-            // The number the operating system knows the thread by. Only the
-            // thread running now has one; the rest have not been handed to
-            // the system at all.
+            // The number the operating system knows the thread by. Every
+            // thread runs on the one operating system thread the interpreter
+            // runs on, so the thread running now answers its number, and the
+            // rest answer nil, as threads MRI schedules M:N do while they
+            // are off a native thread.
             "native_thread_id" => {
-                let running = match self.thread_current_stack.last() {
-                    Some(current) => current.clone(),
-                    None => self.globals().get("__Thread_main").unwrap_or(Object::Nil),
-                };
+                let running = self.running_thread();
                 let is_running = matches!(
                     (&running, receiver),
                     (Object::Instance(a), Object::Instance(b)) if Rc::ptr_eq(a, b)
@@ -516,8 +527,7 @@ impl VirtualMachine {
                 if !is_running {
                     return Ok(Some(Object::Nil));
                 }
-                // SAFETY: `getpid` reads a number and touches nothing else.
-                Ok(Some(Object::Int(unsafe { libc::getpid() } as i64)))
+                Ok(Some(Object::Int(os_thread_id())))
             }
             // A thread that has not had a turn, or that is waiting for
             // something, is stopped; one running now is not.
@@ -684,4 +694,21 @@ impl VirtualMachine {
             held.set_var("__thread_line".to_string(), Object::Int(line as i64));
         }
     }
+}
+
+/// The number the operating system knows the running thread by.
+#[cfg(target_os = "macos")]
+fn os_thread_id() -> i64 {
+    let mut id: u64 = 0;
+    // SAFETY: a null thread names the calling thread, and `id` is one u64
+    // the call writes into.
+    unsafe { libc::pthread_threadid_np(0, &mut id) };
+    id as i64
+}
+
+/// The number the operating system knows the running thread by.
+#[cfg(not(target_os = "macos"))]
+fn os_thread_id() -> i64 {
+    // SAFETY: `gettid` reads a number and touches nothing else.
+    i64::from(unsafe { libc::gettid() })
 }

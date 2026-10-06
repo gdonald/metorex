@@ -248,3 +248,29 @@ fn test_programs_begin_blocks_no_parens_execution() {
     let output = run_example("programs/begin_blocks_no_parens.rb");
     assert_eq!(output, BEGIN_BLOCKS_OUTPUT);
 }
+
+const SYSTEM_WITH_ENVIRONMENT: &str = concat!(
+    "child parent\n",
+    "true\n",
+    "[]\n",
+    "true\n",
+    "shell\n",
+    "true\n",
+    "named\n",
+    "true\n",
+    "false\n",
+    "4\n",
+    "nil\n",
+);
+
+#[test]
+fn test_programs_system_with_environment_execution() {
+    let output = run_example("programs/system_with_environment.rb");
+    assert_eq!(output, SYSTEM_WITH_ENVIRONMENT);
+}
+
+#[test]
+fn test_programs_system_with_environment_no_parens_execution() {
+    let output = run_example("programs/system_with_environment_no_parens.rb");
+    assert_eq!(output, SYSTEM_WITH_ENVIRONMENT);
+}

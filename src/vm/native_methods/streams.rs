@@ -176,11 +176,57 @@ fn wait_until_readable(number: RawFd) -> bool {
     ready > 0 || std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted
 }
 
+/// Wait for a descriptor to have room to write into.
+fn wait_until_writable(number: RawFd) {
+    let mut watched = libc::pollfd {
+        fd: number,
+        events: libc::POLLOUT,
+        revents: 0,
+    };
+    // SAFETY: `watched` is one pollfd, which is the count passed, and a
+    // negative timeout waits for as long as it takes.
+    unsafe { libc::poll(&mut watched, 1, -1) };
+}
+
+fn closed_in_another_thread(position: Position) -> MetorexError {
+    crate::vm::errors::simple_exception("IOError", "stream closed in another thread", position)
+}
+
 fn closed_error(position: Position) -> MetorexError {
     crate::vm::errors::simple_exception("IOError", "closed stream", position)
 }
 
 impl VirtualMachine {
+    /// Read from a stream, waiting while it has nothing to hand over yet.
+    /// The other threads run while it waits when there are any, and the
+    /// descriptor is waited on otherwise, since another process may still
+    /// write to it. Answers what `take` answers, with nothing read when the
+    /// stream is closed in another thread meanwhile.
+    fn take_when_ready(
+        &mut self,
+        handle: u64,
+        number: RawFd,
+        buffer: &mut [u8],
+        position: Position,
+    ) -> Result<isize, MetorexError> {
+        loop {
+            let read = self.open_streams.take(handle, number, buffer);
+            if read >= 0 || std::io::Error::last_os_error().raw_os_error() != Some(libc::EAGAIN) {
+                return Ok(read);
+            }
+            if self.other_threads_are_waiting() {
+                self.wait_for_other_threads(position);
+                if self.open_streams.number_of(handle).is_none() {
+                    return Err(closed_in_another_thread(position));
+                }
+                continue;
+            }
+            // A descriptor poll cannot wait on fails the read that follows.
+            wait_until_readable(number);
+            self.deliver_pending_signals(position)?;
+        }
+    }
+
     /// Whether a broken pipe is the operating system's to answer for, which
     /// is what `Signal.trap('PIPE', 'SYSTEM_DEFAULT')` asks for.
     fn leaves_a_broken_pipe_to_the_system(&self) -> bool {
@@ -407,17 +453,41 @@ impl VirtualMachine {
                 self.open_streams.forget_read_ahead(handle);
                 Ok(Object::Nil)
             }
+            // The count says how a descriptor with no room is waited on: 0
+            // tries once, 2 waits and writes what fits, and 1 waits until
+            // every byte is written. The other threads run while it waits.
             "write" => {
                 let Some(number) = self.open_streams.number_of(handle) else {
                     return Err(closed_error(position));
                 };
                 let bytes = text_bytes.clone();
-                // SAFETY: `bytes` names a run this call only reads from.
-                let written = unsafe {
-                    libc::write(number, bytes.as_ptr() as *const libc::c_void, bytes.len())
-                };
-                if written < 0 {
+                let mut total = 0usize;
+                loop {
+                    let rest = &bytes[total..];
+                    // SAFETY: `rest` names a run this call only reads from.
+                    let written = unsafe {
+                        libc::write(number, rest.as_ptr() as *const libc::c_void, rest.len())
+                    };
+                    if written >= 0 {
+                        total += written as usize;
+                        if count == 1 && total < bytes.len() {
+                            continue;
+                        }
+                        return Ok(Object::Int(total as i64));
+                    }
                     let trouble = std::io::Error::last_os_error();
+                    if trouble.raw_os_error() == Some(libc::EAGAIN) && count != 0 {
+                        if self.other_threads_are_waiting() {
+                            self.wait_for_other_threads(position);
+                            if self.open_streams.number_of(handle).is_none() {
+                                return Err(closed_in_another_thread(position));
+                            }
+                        } else {
+                            wait_until_writable(number);
+                            self.deliver_pending_signals(position)?;
+                        }
+                        continue;
+                    }
                     // Writing where nothing is left to read is a signal, and
                     // a program that leaves that signal to the operating
                     // system ends by it rather than hearing about it.
@@ -428,7 +498,6 @@ impl VirtualMachine {
                     }
                     return Err(stream_error(&trouble, "write", position));
                 }
-                Ok(Object::Int(written as i64))
             }
             "read" => {
                 let Some(number) = self.open_streams.number_of(handle) else {
@@ -441,8 +510,13 @@ impl VirtualMachine {
                 let read = loop {
                     // A descriptor that blocks would hold every thread up
                     // until it had something, so it is asked first whether it
-                    // has, and the other threads run while it has not.
-                    if self.other_threads_are_waiting() && !descriptor_is_ready(number) {
+                    // has, and the other threads run while it has not. One
+                    // that does not block is read straight away, since macOS
+                    // does not report a FIFO whose writer closed as ready.
+                    if self.other_threads_are_waiting()
+                        && !descriptor_is_nonblocking(number)
+                        && !descriptor_is_ready(number)
+                    {
                         self.wait_for_other_threads(position);
                         if self.open_streams.number_of(handle).is_none() {
                             return Err(crate::vm::errors::simple_exception(
@@ -669,7 +743,8 @@ impl VirtualMachine {
                 // one already read, so they are stepped over here.
                 if skipping {
                     loop {
-                        let read = self.open_streams.take(handle, number, &mut buffer[..1]);
+                        let read =
+                            self.take_when_ready(handle, number, &mut buffer[..1], position)?;
                         if read <= 0 {
                             break;
                         }
@@ -734,8 +809,12 @@ impl VirtualMachine {
                                 let kept = extra.iter().take_while(|held| **held == b'\n').count();
                                 extra.drain(..kept);
                                 while extra.is_empty() {
-                                    let read =
-                                        self.open_streams.take(handle, number, &mut buffer[..1]);
+                                    let read = self.take_when_ready(
+                                        handle,
+                                        number,
+                                        &mut buffer[..1],
+                                        position,
+                                    )?;
                                     if read <= 0 {
                                         break;
                                     }
@@ -767,7 +846,7 @@ impl VirtualMachine {
                     && extra_read < EXTRA_LIMIT
                     && std::str::from_utf8(&collected).is_err()
                 {
-                    let read = self.open_streams.take(handle, number, &mut buffer[..1]);
+                    let read = self.take_when_ready(handle, number, &mut buffer[..1], position)?;
                     if read <= 0 {
                         break;
                     }
@@ -789,7 +868,7 @@ impl VirtualMachine {
                 };
                 let mut collected: Vec<u8> = Vec::new();
                 let mut byte = [0u8; 1];
-                let read = self.open_streams.take(handle, number, &mut byte);
+                let read = self.take_when_ready(handle, number, &mut byte, position)?;
                 if read <= 0 {
                     return Ok(Object::Nil);
                 }
@@ -811,7 +890,7 @@ impl VirtualMachine {
                     _ => 0,
                 };
                 for _ in 0..following {
-                    let read = self.open_streams.take(handle, number, &mut byte);
+                    let read = self.take_when_ready(handle, number, &mut byte, position)?;
                     if read <= 0 {
                         break;
                     }
@@ -975,40 +1054,29 @@ impl VirtualMachine {
         let is_fifo = std::fs::metadata(path)
             .map(|found| found.file_type().is_fifo())
             .unwrap_or(false);
-        if !is_fifo || !self.other_threads_are_waiting() {
+        if !is_fifo {
             return options.open(path);
         }
-        let (sender, receiver) = std::sync::mpsc::channel();
         let named = path.to_string();
-        std::thread::spawn(move || {
-            let _ = sender.send(options.open(&named));
-        });
-        loop {
-            match receiver.try_recv() {
-                Ok(opened) => {
-                    if let Ok(file) = &opened {
-                        let number = file.as_raw_fd();
-                        // SAFETY: the descriptor came from the file just
-                        // opened, which is still held.
-                        unsafe {
-                            let flags = libc::fcntl(number, libc::F_GETFL);
-                            libc::fcntl(number, libc::F_SETFL, flags | libc::O_NONBLOCK);
-                        }
-                    }
-                    return opened;
-                }
-                // The thread making the open sends before it ends, so the
-                // only thing to wait for is that send.
-                Err(_) => {
-                    if self.other_threads_are_waiting() {
-                        self.wait_for_other_threads(position);
-                    } else {
-                        std::thread::sleep(std::time::Duration::from_millis(2));
-                    }
-                }
+        let opened = self.run_beside_threads(move || options.open(&named), position);
+        if let Ok(file) = &opened {
+            let number = file.as_raw_fd();
+            // SAFETY: the descriptor came from the file just opened, which
+            // is still held.
+            unsafe {
+                let flags = libc::fcntl(number, libc::F_GETFL);
+                libc::fcntl(number, libc::F_SETFL, flags | libc::O_NONBLOCK);
             }
         }
+        opened
     }
+}
+
+/// Whether reads from a descriptor answer straight away rather than wait.
+fn descriptor_is_nonblocking(number: RawFd) -> bool {
+    // SAFETY: `fcntl` with F_GETFL only reads the descriptor's flags.
+    let flags = unsafe { libc::fcntl(number, libc::F_GETFL) };
+    flags >= 0 && flags & libc::O_NONBLOCK != 0
 }
 
 /// Whether a read from a descriptor would answer straight away: it has bytes,

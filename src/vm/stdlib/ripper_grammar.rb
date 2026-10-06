@@ -5,12 +5,15 @@
 class Ripper
   module Engine
     # A parser event not yet dispatched. A command or a multiple
-    # assignment is `terminal`: no binary operator can follow it.
-    Ev = Struct.new(:name, :args, :terminal)
+    # assignment is `terminal`: no binary operator can follow it. `last` is
+    # the index of the last token the grammar had taken when it built the
+    # event.
+    Ev = Struct.new(:name, :args, :terminal, :last)
 
     # A value already dispatched, such as a squiggly heredoc's contents,
-    # which are dedented as soon as the heredoc ends.
-    Dispatched = Struct.new(:value)
+    # which are dedented as soon as the heredoc ends. The parts it was built
+    # from and the width taken off each line stay beside it.
+    Dispatched = Struct.new(:value, :source, :width)
 
     # A syntax error, raised at the token that cannot continue the parse.
     class SyntaxFailure < StandardError
@@ -66,6 +69,14 @@ class Ripper
         @block_depth = 0
         @in_defined = false
         @jump_errors = []
+        @reported_errors = []
+        @taken = []
+      end
+
+      # The tree of events for the whole program, not dispatched, with the
+      # tokens it was built from in the order they were taken.
+      def syntax_tree
+        [program, @taken]
       end
 
       def run
@@ -106,6 +117,8 @@ class Ripper
       def take
         token = peek
         @lookahead = nil
+        token.index = @taken.size
+        @taken << token
         token
       end
 
@@ -137,9 +150,9 @@ class Ripper
         take while term?
       end
 
-      def ev(name, *args) = Ev.new(name, args, false)
+      def ev(name, *args) = Ev.new(name, args, false, @taken.size - 1)
 
-      def terminal(name, *args) = Ev.new(name, args, true)
+      def terminal(name, *args) = Ev.new(name, args, true, @taken.size - 1)
 
       # Dispatch
 
@@ -170,24 +183,46 @@ class Ripper
         scope
       end
 
+      # The compile errors reported, each as [message, first, last, at]:
+      # the indexes of the first and last token the error names, or nil when
+      # MRI names none, and the index of the last token taken when it was
+      # reported.
+      attr_reader :reported_errors
+      public :reported_errors
+
+      def report_error(message, first = nil, last = first, at: last || @taken.size - 1)
+        @bridge.compile_error(message)
+        @reported_errors << [message, first, last, at]
+      end
+
+      # The indexes of the first and last token a node was written with.
+      def token_bounds(node)
+        case node
+        when Token then [node.index, node.index]
+        when Ev
+          bounds = node.args.map { |arg| token_bounds(arg) }.compact
+          bounds.empty? ? nil : [bounds.map(&:first).min, bounds.map(&:last).max]
+        end
+      end
+
       def anonymous_argument(kind, message)
-        @bridge.compile_error(message) unless method_scope.anonymous.include?(kind)
+        report_error(message) unless method_scope.anonymous.include?(kind)
       end
 
       def numbered_parameter
         if @scope.ordinary_parameters
-          @bridge.compile_error("ordinary parameter is defined")
+          report_error("ordinary parameter is defined")
         elsif @scope.it_used
-          @bridge.compile_error("numbered parameters are not allowed when 'it' is already used")
+          report_error("numbered parameters are not allowed when 'it' is already used")
         end
         @scope.numbered = true
       end
 
       def it_parameter
         if @scope.ordinary_parameters
-          @bridge.compile_error("ordinary parameter is defined")
+          report_error("ordinary parameter is defined")
         elsif @scope.numbered
-          @bridge.compile_error("'it' is not allowed when a numbered parameter is already used")
+          report_error("'it' is not allowed when a numbered parameter is already used")
         end
         @scope.it_used = true
       end
@@ -218,8 +253,11 @@ class Ripper
         @in_def, @loop_depth, @in_rescue, @jump_errors = saved
       end
 
-      def in_class_body
-        saved = [@in_def, @in_class, @loop_depth, @in_rescue, @block_depth, @jump_errors]
+      # A singleton class opened inside a method may `return` from that
+      # method. A class or module body may not.
+      def in_class_body(singleton: false)
+        saved = [@in_def, @in_class, @loop_depth, @in_rescue, @block_depth, @jump_errors, @method_around_class]
+        @method_around_class = singleton && (@in_def || @method_around_class)
         @in_def = false
         @in_class = true
         @loop_depth = 0
@@ -228,7 +266,7 @@ class Ripper
         @jump_errors = []
         yield
       ensure
-        @in_def, @in_class, @loop_depth, @in_rescue, @block_depth, @jump_errors = saved
+        @in_def, @in_class, @loop_depth, @in_rescue, @block_depth, @jump_errors, @method_around_class = saved
       end
 
       def in_loop
@@ -254,11 +292,12 @@ class Ripper
       end
 
       def statements
-        saved_depth = @command_argument_depth
+        saved = [@command_argument_depth, @command_in_parentheses]
         @command_argument_depth = 0
+        @command_in_parentheses = false
         statement_list
       ensure
-        @command_argument_depth = saved_depth
+        @command_argument_depth, @command_in_parentheses = saved
       end
 
       def statement_list
@@ -292,7 +331,7 @@ class Ripper
       ensure
         errors = @jump_errors.pop
         if @jump_errors.empty?
-          errors.each { |message| @bridge.compile_error(message) }
+          errors.each { |message, first, last| report_error(message, first, last, at: @taken.size - 1) }
         else
           @jump_errors.last.concat(errors)
         end
@@ -300,12 +339,16 @@ class Ripper
 
       # A jump outside a loop, reported unless the statement holding it
       # turns out to be the body of a `while` or `until` modifier.
-      def invalid_jump(message)
+      # The error is reported once the outermost statement holding the jump
+      # has ended. The entry it answers names the jump's tokens.
+      def invalid_jump(message, keyword)
+        entry = [message, keyword.index, keyword.index]
         if @jump_errors.empty?
-          @bridge.compile_error(message)
+          report_error(*entry)
         else
-          @jump_errors.last << message
+          @jump_errors.last << entry
         end
+        entry
       end
 
       def modifiers(node)
@@ -368,7 +411,7 @@ class Ripper
           first = take
           second = expect(:gvar, :backref)
           if second.type == :backref && second.text.match?(/\A\$\d/)
-            @bridge.compile_error("can't make alias for the number variables")
+            report_error("can't make alias for the number variables", second.index)
           end
           return ev(:var_alias, first, second)
         end
@@ -583,14 +626,14 @@ class Ripper
             value = multiple_rhs(ev(:args_add, ev(:args_new), value))
             return terminal(:assign, target, value)
           end
-          Ev.new(:assign, [target, value], value.is_a?(Ev) && value.terminal)
+          Ev.new(:assign, [target, value], value.is_a?(Ev) && value.terminal, @taken.size - 1)
         when :op_asgn
           return node unless assignable?(node)
 
           operator = take
           target = assignment_target(node, declare_local: true)
           value = assignment_value(command)
-          Ev.new(:opassign, [target, operator, value], value.is_a?(Ev) && value.terminal)
+          Ev.new(:opassign, [target, operator, value], value.is_a?(Ev) && value.terminal, @taken.size - 1)
         else
           node
         end
@@ -663,7 +706,7 @@ class Ripper
           token = node.args[0]
           declare(token.text) if declare_local && token.type == :ident
           if token.type == :const && @in_def
-            @bridge.compile_error("dynamic constant assignment")
+            report_error("dynamic constant assignment", token.index)
           end
           ev(:var_field, token)
         when :call
@@ -676,10 +719,10 @@ class Ripper
         when :aref
           ev(:aref_field, *node.args)
         when :const_path_ref
-          @bridge.compile_error("dynamic constant assignment") if @in_def
+          report_error("dynamic constant assignment", *token_bounds(node)) if @in_def
           ev(:const_path_field, *node.args)
         when :top_const_ref
-          @bridge.compile_error("dynamic constant assignment") if @in_def
+          report_error("dynamic constant assignment", node.args[0].index - 1, node.args[0].index) if @in_def
           ev(:top_const_field, *node.args)
         end
       end
@@ -832,12 +875,12 @@ class Ripper
         when :k_return then return_expression(command)
         when :k_break, :k_next then jump_expression(command)
         when :k_redo
-          take
-          invalid_jump("Invalid redo") if @loop_depth.zero? && !@in_defined
+          keyword = take
+          invalid_jump("Invalid redo", keyword) if @loop_depth.zero? && !@in_defined
           ev(:redo)
         when :k_retry
-          take
-          @bridge.compile_error("Invalid retry without rescue") unless @in_rescue || @in_defined
+          keyword = take
+          report_error("Invalid retry without rescue", keyword.index) unless @in_rescue || @in_defined
           ev(:retry)
         when :k_yield then yield_expression(command)
         when :k_super then super_expression(command)
@@ -953,6 +996,14 @@ class Ripper
       end
 
       def paren_statements
+        saved = @command_in_parentheses
+        @command_in_parentheses = false
+        paren_statement_list
+      ensure
+        @command_in_parentheses = saved
+      end
+
+      def paren_statement_list
         list = ev(:stmts_new)
         count = 0
         if term?
@@ -988,6 +1039,7 @@ class Ripper
         loop do
           case peek_type
           when :".", :"&."
+            receiver_is_block_call = block_call?(node)
             operator = take
             skip_newlines
             if peek_type == :"("
@@ -995,8 +1047,12 @@ class Ripper
               next
             end
             name = method_name
+            if receiver_is_block_call
+              node = block_call_rest(node, operator, name)
+              next
+            end
             node = call_rest(ev(:call, node, operator, name), node, operator, name, command)
-            return node if node.terminal
+            return node if node.terminal && !block_call?(node)
           when :colon2
             operator = take
             name = method_name
@@ -1031,6 +1087,28 @@ class Ripper
             return node
           end
         end
+      end
+
+      # A command given a `do` block, which a call may follow.
+      def block_call?(node)
+        node.is_a?(Ev) && node.terminal && node.name == :method_add_block && node.args[1].name == :do_block
+      end
+
+      def block_opener? = %i[{ lbrace_arg k_do k_do_block].include?(peek_type)
+
+      # A call on a command given a `do` block. A block after it makes it a
+      # command_call, and arguments without parentheses are added to a call.
+      def block_call_rest(receiver, operator, name)
+        arguments = peek_type == :"(" ? paren_args : nil
+        if block_opener?
+          block = %i[{ lbrace_arg].include?(peek_type) ? brace_block : do_block
+          return terminal(:method_add_block, ev(:command_call, receiver, operator, name, arguments), block)
+        end
+        call = ev(:call, receiver, operator, name)
+        return ev(:method_add_arg, call, arguments) if arguments
+        return terminal(:method_add_arg, call, command_args) if command_follows?(true)
+
+        call
       end
 
       def block_target?(node)
@@ -1090,7 +1168,7 @@ class Ripper
           expect(:")")
           return ev(:arg_paren, args)
         end
-        args = call_args(:")", paren: true)
+        args = call_args(:")", command: true, paren: true)
         skip_newlines
         expect(:")")
         ev(:arg_paren, args)
@@ -1121,8 +1199,19 @@ class Ripper
         args
       end
 
+      # The first argument, which may be a command. A command written as
+      # the argument in parentheses takes no `do` block.
+      def command_argument(paren)
+        saved = @command_in_parentheses
+        @command_in_parentheses = paren
+        arg(0, command: true)
+      ensure
+        @command_in_parentheses = saved
+      end
+
       def command_block(node)
         return node if @command_argument_depth.positive?
+        return node if @command_in_parentheses && peek_type == :k_do_block
 
         if peek_type == :k_do_block
           return terminal(:method_add_block, node, do_block)
@@ -1179,7 +1268,7 @@ class Ripper
             end
           else
             value = if command && args.name == :args_new && assocs.nil?
-                      arg(0, command: true)
+                      command_argument(paren)
                     else
                       arg(0)
                     end
@@ -1557,7 +1646,7 @@ class Ripper
 
         contents = emit(list)
         @bridge.parser_event(:heredoc_dedent, contents, width)
-        Dispatched.new(contents)
+        Dispatched.new(contents, list, width)
       end
 
       def single_string
@@ -1644,8 +1733,11 @@ class Ripper
 
       # Control structures
 
+      # One term separates a condition from its body. Newlines after it are
+      # not terms, and a further `;` is an empty statement in the body.
       def then_clause
-        skip_terms
+        take if term?
+        skip_newlines
         accept(:k_then)
       end
 
@@ -1696,7 +1788,8 @@ class Ripper
           take
         else
           unexpected unless term?
-          skip_terms
+          take
+          skip_newlines
         end
         body = in_loop { statements }
         expect(:k_end)
@@ -1826,7 +1919,7 @@ class Ripper
           left = ev(:binary, left, :|, pattern_basic)
         end
         if alternatives && (name = @pattern_bindings.find { |bound| !bound.start_with?("_") })
-          @bridge.compile_error("illegal variable in alternative pattern (#{name})")
+          report_error("illegal variable in alternative pattern (#{name})")
         end
         left
       ensure
@@ -1902,7 +1995,7 @@ class Ripper
         when :ident, :ivar, :gvar, :cvar
           name = take
           if name.type == :ident && !local?(name.text)
-            @bridge.compile_error("#{name.text}: no such local variable")
+            report_error("#{name.text}: no such local variable")
           end
           ev(:var_ref, name)
         when :lparen, :"(", :lparen_arg
@@ -2052,7 +2145,8 @@ class Ripper
           take
         else
           unexpected unless term?
-          skip_terms
+          take
+          skip_newlines
         end
         body = in_loop { statements }
         expect(:k_end)
@@ -2233,7 +2327,7 @@ class Ripper
           unexpected unless term?
           body = nil
           with_scope(false) do
-            in_class_body do
+            in_class_body(singleton: true) do
               skip_terms
               body = body_statement
             end
@@ -2241,8 +2335,9 @@ class Ripper
           expect(:k_end)
           return ev(:sclass, target, body)
         end
-        @bridge.compile_error("class definition in method body") if @in_def
+        keyword = @taken.last
         path = class_path
+        report_error("class definition in method body", keyword.index, @taken.size - 1) if @in_def
         superclass = nil
         if peek_type == :<
           take
@@ -2263,9 +2358,9 @@ class Ripper
       end
 
       def module_expression
-        take
-        @bridge.compile_error("module definition in method body") if @in_def
+        keyword = take
         path = class_path
+        report_error("module definition in method body", keyword.index, @taken.size - 1) if @in_def
         body = nil
         with_scope(false) { in_class_body { body = body_statement } }
         expect(:k_end)
@@ -2273,9 +2368,9 @@ class Ripper
       end
 
       def return_expression(command)
-        take
-        if @in_class && !@in_def && @block_depth.zero? && !@in_defined
-          @bridge.compile_error("Invalid return in class/module body")
+        keyword = take
+        if @in_class && !@in_def && !@method_around_class && @block_depth.zero? && !@in_defined
+          report_error("Invalid return in class/module body", keyword.index)
         end
         if command_follows?(command) || (command && argument_start?)
           return command_block(terminal(:return, jump_arguments))
@@ -2287,9 +2382,12 @@ class Ripper
       def jump_expression(command)
         keyword = take
         name = keyword.text.to_sym
-        invalid_jump("Invalid #{name}") if @loop_depth.zero? && !@in_defined
+        entry = invalid_jump("Invalid #{name}", keyword) if @loop_depth.zero? && !@in_defined
         if command && argument_start?
-          return command_block(terminal(name, jump_arguments))
+          arguments = jump_arguments
+          # The error names the jump with the value it carries.
+          entry[2] = @taken.size - 1 if entry
+          return command_block(terminal(name, arguments))
         end
 
         ev(name, ev(:args_new))
@@ -2303,8 +2401,8 @@ class Ripper
       end
 
       def yield_expression(command)
-        take
-        @bridge.compile_error("Invalid yield") unless @in_def || @in_defined
+        keyword = take
+        report_error("Invalid yield", keyword.index) unless @in_def || @in_defined
         if peek_type == :"("
           take
           skip_newlines

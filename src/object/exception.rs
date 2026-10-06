@@ -45,6 +45,9 @@ pub struct Exception {
     /// The file and line of each backtrace entry, which
     /// `#backtrace_locations` reports as Location objects.
     pub backtrace_sites: Option<Vec<(String, usize, String)>>,
+    /// The column, counted in characters from 0, of the expression that
+    /// raised, which the first backtrace location carries.
+    pub raise_column: Option<usize>,
     /// The Array `#backtrace_locations` hands out, kept for the same reason.
     pub backtrace_locations_array: Option<Object>,
     /// The class this exception was built from. An exception is identified by
@@ -92,6 +95,7 @@ impl Exception {
             receiver: None,
             backtrace_array: None,
             backtrace_sites: None,
+            raise_column: None,
             backtrace_locations_array: None,
             class: None,
             instance_vars: indexmap::IndexMap::new(),
@@ -113,6 +117,7 @@ impl Exception {
             receiver: None,
             backtrace_array: None,
             backtrace_sites: None,
+            raise_column: None,
             backtrace_locations_array: None,
             class: None,
             instance_vars: indexmap::IndexMap::new(),
@@ -138,6 +143,7 @@ impl Exception {
             receiver: None,
             backtrace_array: None,
             backtrace_sites: None,
+            raise_column: None,
             backtrace_locations_array: None,
             class: None,
             instance_vars: indexmap::IndexMap::new(),
@@ -159,6 +165,7 @@ impl Exception {
             receiver: None,
             backtrace_array: None,
             backtrace_sites: None,
+            raise_column: None,
             backtrace_locations_array: None,
             class: None,
             instance_vars: indexmap::IndexMap::new(),
@@ -186,6 +193,7 @@ impl Exception {
             receiver: None,
             backtrace_array: None,
             backtrace_sites: None,
+            raise_column: None,
             backtrace_locations_array: None,
             class: None,
             instance_vars: indexmap::IndexMap::new(),

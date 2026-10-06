@@ -287,7 +287,7 @@ thread_local! {
 
 impl VirtualMachine {
     /// The `fatal` exception class, made once as a subclass of Exception.
-    fn fatal_class(&mut self) -> Object {
+    pub(crate) fn fatal_class(&mut self) -> Object {
         let Some(Object::Class(exception)) = self.globals().get("Exception") else {
             return Object::Nil;
         };

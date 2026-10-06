@@ -18,6 +18,6 @@ end
 
 begin
   readline(1)
-rescue RuntimeError => error
-  puts error.message
+rescue EOFError => error
+  puts "with a limit: #{error.message}"
 end

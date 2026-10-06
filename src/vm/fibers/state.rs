@@ -47,6 +47,8 @@ pub(crate) struct FiberContext {
     pub(crate) environment: crate::environment::Environment,
     pub(crate) call_stack: Vec<crate::vm::CallFrame>,
     pub(crate) def_scope_stack: Vec<std::rc::Rc<crate::class::Class>>,
+    pub(crate) class_var_home: Vec<std::rc::Rc<crate::class::Class>>,
+    pub(crate) class_var_cref_stack: Vec<Option<std::rc::Rc<crate::class::Class>>>,
     pub(crate) method_nesting_stack: Vec<Vec<std::rc::Rc<crate::class::Class>>>,
     /// The invocation a `return` written here belongs to. It travels with the
     /// fiber, so a method the interrupted side is part-way through still

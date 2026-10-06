@@ -300,6 +300,7 @@ impl VirtualMachine {
                     // Where the block was opened, which is the line
                     // `source_location` names however far down the body starts.
                     block.opened_at = Some(position.line);
+                    block.opened_column = Some(position.column.saturating_sub(1));
                     if let Some(file) = block.source_file.clone() {
                         let mut within = self
                             .running_code

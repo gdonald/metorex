@@ -40,8 +40,22 @@ pub(crate) fn start_program(
     reached: &str,
     words: &[String],
     redirects: &[(i32, String)],
+    environment: &[(String, Option<String>)],
 ) -> libc::pid_t {
     let named = std::ffi::CString::new(reached).unwrap_or_default();
+    // The names are spelled before the split, so the child only hands them
+    // to the system.
+    let settings: Vec<(std::ffi::CString, Option<std::ffi::CString>)> = environment
+        .iter()
+        .map(|(name, value)| {
+            (
+                std::ffi::CString::new(name.as_str()).unwrap_or_default(),
+                value
+                    .as_ref()
+                    .map(|held| std::ffi::CString::new(held.as_str()).unwrap_or_default()),
+            )
+        })
+        .collect();
     let spelled: Vec<std::ffi::CString> = words
         .iter()
         .map(|held| std::ffi::CString::new(held.as_str()).unwrap_or_default())
@@ -67,6 +81,15 @@ pub(crate) fn start_program(
         for (slot, file) in &opened {
             // SAFETY: both numbers name descriptors this process holds.
             unsafe { libc::dup2(file.as_raw_fd(), *slot) };
+        }
+        for (name, value) in &settings {
+            // SAFETY: both strings are null-terminated and outlive the calls.
+            unsafe {
+                match value {
+                    Some(value) => libc::setenv(name.as_ptr(), value.as_ptr(), 1),
+                    None => libc::unsetenv(name.as_ptr()),
+                };
+            }
         }
         let mut pointers: Vec<*const libc::c_char> =
             spelled.iter().map(|held| held.as_ptr()).collect();

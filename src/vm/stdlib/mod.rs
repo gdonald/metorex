@@ -96,6 +96,7 @@ pub(crate) fn embedded_library(name: &str) -> Option<&'static str> {
         "weakref" => Some(include_str!("weakref.rb")),
         "logger" => Some(include_str!("logger.rb")),
         "monitor" => Some(include_str!("monitor.rb")),
+        "forwardable" | "forwardable/impl" => Some(include_str!("forwardable.rb")),
         "fileutils" => Some(include_str!("fileutils.rb")),
         "tmpdir" => Some(include_str!("tmpdir.rb")),
         "tempfile" => Some(include_str!("tempfile.rb")),

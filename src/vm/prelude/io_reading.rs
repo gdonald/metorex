@@ -37,11 +37,19 @@ pub(super) const SOURCE: &str = r##"
   # The pieces written to the stream, carried into its encoding when
   # `converting` says so. `syswrite` and `write_nonblock` write them as they
   # are.
-  def __write_texts__(texts, converting)
+  # How a write waits on a descriptor with no room: WRITE_ONCE tries once,
+  # WRITE_WHEN_ROOM waits and writes what fits, and WRITE_ALL waits until
+  # everything is written.
+  WRITE_ONCE = 0
+  WRITE_WHEN_ROOM = 2
+  WRITE_ALL = 1
+  private_constant :WRITE_ONCE, :WRITE_WHEN_ROOM, :WRITE_ALL
+
+  def __write_texts__(texts, converting, waiting = WRITE_ALL)
     raise IOError, "closed stream" if closed?
     raise IOError, "not opened for writing" if @write_closed
     raise IOError, "not opened for writing" unless __writable__
-    return @__popen_writer.__send__(:__write_texts__, texts, converting) unless @__popen_writer.nil?
+    return @__popen_writer.__send__(:__write_texts__, texts, converting, waiting) unless @__popen_writer.nil?
     @line_buffered = nil
     @wrote_through_buffer = true
     # Each piece is carried into the stream's encoding on its own, and the
@@ -60,7 +68,7 @@ pub(super) const SOURCE: &str = r##"
     # The streams the program started with are written through the
     # interpreter's own writer, so what a program prints keeps the order it
     # printed it in whichever route it took.
-    return IO.__stream__("write", __stream_handle__, held, 0) if @standard.nil?
+    return IO.__stream__("write", __stream_handle__, held, waiting) if @standard.nil?
     IO.__write_standard__ @standard, held
     held.bytesize
   end
@@ -85,7 +93,7 @@ pub(super) const SOURCE: &str = r##"
     return nil if @pending.nil? || @pending.empty?
     # What could not be written stays held, so the next flush or the close
     # reports the same trouble rather than losing it.
-    IO.__stream__ "write", __stream_handle__, @pending, 0
+    IO.__stream__ "write", __stream_handle__, @pending, WRITE_ALL
     @pending = nil unless frozen?
     nil
   end
@@ -471,7 +479,7 @@ pub(super) const SOURCE: &str = r##"
     if @wrote_through_buffer
       warn "warning: syswrite for buffered IO"
     end
-    held = __write_texts__ [text.to_s], false
+    held = __write_texts__ [text.to_s], false, WRITE_WHEN_ROOM
     @wrote_through_buffer = nil
     held
   end
@@ -479,10 +487,15 @@ pub(super) const SOURCE: &str = r##"
   # As much as the descriptor will take right now. A descriptor with no room
   # says so rather than holding the program up.
   def write_nonblock(text, exception: true)
-    __write_texts__ [text.to_s], false
-  rescue Errno::EAGAIN
-    raise IO::EAGAINWaitWritable, "write would block" if exception
-    :wait_writable
+    buffered_before = @wrote_through_buffer
+    begin
+      __write_texts__ [text.to_s], false, WRITE_ONCE
+    rescue Errno::EAGAIN
+      raise IO::EAGAINWaitWritable, "write would block" if exception
+      :wait_writable
+    ensure
+      @wrote_through_buffer = buffered_before
+    end
   end
 
   # The next line, up to the separator or the limit, whichever comes first.

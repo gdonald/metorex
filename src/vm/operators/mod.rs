@@ -29,4 +29,5 @@ mod ordering;
 mod unary;
 
 pub(crate) use coercion::*;
+pub(crate) use equality::identity_of;
 pub(crate) use modules::*;

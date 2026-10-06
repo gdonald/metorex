@@ -4,7 +4,8 @@
 
 class Ripper
   module Engine
-    Token = Struct.new(:type, :value, :text, :line, :column, :state, :space_before)
+    # `index` is where the token stands among those the grammar took.
+    Token = Struct.new(:type, :value, :text, :line, :column, :state, :space_before, :index)
 
     # An open string: what closes it, and what may appear inside it.
     StringTerm = Struct.new(:kind, :term, :paren, :nest, :interpolate, :regexp,

@@ -1268,8 +1268,8 @@ fn test_c_extensions_c_flags_no_parens_execution() {
 /// The expected output of both `c_extensions/c_debug` variants.
 const C_DEBUG_OUTPUT: &str = concat!(
     "[CDebug, CDebug, nil, nil, nil, \"frames\", 9]\n",
-    "[Reporter, Reporter, [:debug, :marker], :report_frames, nil, \"Reporter#report_frames\", 9]\n",
-    "[Object, nil, [:debug, :outer], nil, nil, \"<main>\", 25]\n",
+    "[Reporter, Reporter, [:debug, :marker], :report_frames, [RubyVM::InstructionSequence, \"report_frames\", 7], \"Reporter#report_frames\", 9]\n",
+    "[Object, nil, [:debug, :outer], nil, [RubyVM::InstructionSequence, \"<main>\", 0], \"<main>\", 25]\n",
     "[true, CDebug, nil]\n",
     "ArgumentError: no such frame\n",
     "ArgumentError: no such frame\n",

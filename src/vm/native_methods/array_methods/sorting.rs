@@ -3,27 +3,18 @@
 use super::*;
 
 impl VirtualMachine {
-    /// Sort by insertion, ordering each pair with the block when one is given
-    /// and with `<=>` otherwise. Insertion keeps the comparisons in the order
-    /// Ruby makes them, which a block that records them can observe.
+    /// The elements in order, each pair ordered with the block when one is
+    /// given and with `<=>` otherwise. Elements that compare equal keep the
+    /// order they came in.
     pub(crate) fn sort_elements(
         &mut self,
         elements: Vec<Object>,
         block: Option<Rc<crate::object::BlockStatement>>,
         position: Position,
     ) -> Result<Vec<Object>, MetorexError> {
-        let mut sorted: Vec<Object> = Vec::with_capacity(elements.len());
-        for element in elements {
-            let mut place = sorted.len();
-            for (index, other) in sorted.clone().into_iter().enumerate() {
-                if self.compare_elements(&element, &other, &block, position)? < 0 {
-                    place = index;
-                    break;
-                }
-            }
-            sorted.insert(place, element);
-        }
-        Ok(sorted)
+        self.merge_sort(elements, |machine, left, right| {
+            machine.compare_elements(left, right, &block, position)
+        })
     }
 
     /// The elements of `(key, element)` pairs ordered by their keys with
@@ -33,19 +24,48 @@ impl VirtualMachine {
         keyed: Vec<(Object, Object)>,
         position: Position,
     ) -> Result<Vec<Object>, MetorexError> {
-        let mut sorted: Vec<(Object, Object)> = Vec::with_capacity(keyed.len());
-        for (key, element) in keyed {
-            let held_keys: Vec<Object> = sorted.iter().map(|(held, _)| held.clone()).collect();
-            let mut place = sorted.len();
-            for (index, other) in held_keys.iter().enumerate() {
-                if self.compare_elements(&key, other, &None, position)? < 0 {
-                    place = index;
-                    break;
-                }
-            }
-            sorted.insert(place, (key, element));
-        }
+        let sorted = self.merge_sort(keyed, |machine, (left, _), (right, _)| {
+            machine.compare_elements(left, right, &None, position)
+        })?;
         Ok(sorted.into_iter().map(|(_, element)| element).collect())
+    }
+
+    /// A merge sort whose comparison can raise, which is any comparison that
+    /// runs Ruby code. Runs of one, then two, then four are merged, taking
+    /// the left run's item while it is not greater than the right's.
+    fn merge_sort<T: Clone>(
+        &mut self,
+        items: Vec<T>,
+        mut compare: impl FnMut(&mut Self, &T, &T) -> Result<i64, MetorexError>,
+    ) -> Result<Vec<T>, MetorexError> {
+        let length = items.len();
+        let mut current = items;
+        let mut merged = Vec::with_capacity(length);
+        let mut width = 1;
+        while width < length {
+            merged.clear();
+            let mut start = 0;
+            while start < length {
+                let middle = (start + width).min(length);
+                let end = (start + 2 * width).min(length);
+                let (mut left, mut right) = (start, middle);
+                while left < middle && right < end {
+                    if compare(self, &current[right], &current[left])? < 0 {
+                        merged.push(current[right].clone());
+                        right += 1;
+                    } else {
+                        merged.push(current[left].clone());
+                        left += 1;
+                    }
+                }
+                merged.extend_from_slice(&current[left..middle]);
+                merged.extend_from_slice(&current[right..end]);
+                start = end;
+            }
+            std::mem::swap(&mut current, &mut merged);
+            width *= 2;
+        }
+        Ok(current)
     }
 
     /// Order two elements with `<=>`, or with the block when one is given.

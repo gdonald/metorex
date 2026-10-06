@@ -4,7 +4,7 @@
 //! is the first frame, and has no binding.
 
 use super::calls::call;
-use super::handles::{QNIL, Value, to_value};
+use super::handles::{QNIL, Value, to_object, to_value};
 use super::{called_from, interpreter, raise, running_method};
 use crate::object::Object;
 
@@ -13,6 +13,10 @@ struct InspectedFrame {
     receiver: Value,
     class: Value,
     binding: Value,
+    location: Object,
+    /// Whether the frame runs a method written in C, which has no
+    /// instruction sequence.
+    native: bool,
 }
 
 /// What `rb_debug_inspector_t` points to while the inspector is open.
@@ -48,12 +52,15 @@ fn inspected() -> Inspector {
     let mut frames = Vec::with_capacity(located.len() + 1);
     let mut locations = Vec::with_capacity(located.len() + 1);
     if let Some(method) = running_method() {
+        let location = relabeled(&located[0].0, &method.name);
         frames.push(InspectedFrame {
             receiver: to_value(&method.receiver),
             class: to_value(&Object::Class(method.owner)),
             binding: QNIL,
+            location: location.clone(),
+            native: true,
         });
-        locations.push(relabeled(&located[0].0, &method.name));
+        locations.push(location);
     }
     for (location, running) in located {
         let path = call(location.clone(), "path", Vec::new()).to_string();
@@ -64,6 +71,8 @@ fn inspected() -> Inspector {
             receiver: to_value(&receiver),
             class: frame_class(running),
             binding: to_value(&binding),
+            location: location.clone(),
+            native: false,
         });
         locations.push(location);
     }
@@ -126,14 +135,20 @@ pub extern "C-unwind" fn rb_debug_inspector_frame_binding_get(
     frame(inspector, index).binding
 }
 
-/// Nil for every frame, since metorex compiles no instruction sequences.
+/// The instruction sequence the frame runs, or nil for a method written
+/// in C.
 #[unsafe(no_mangle)]
 pub extern "C-unwind" fn rb_debug_inspector_frame_iseq_get(
     inspector: *const Inspector,
     index: i64,
 ) -> Value {
-    frame(inspector, index);
-    QNIL
+    let inspected = frame(inspector, index);
+    if inspected.native {
+        return QNIL;
+    }
+    let location = inspected.location.clone();
+    let sequences = to_object(super::modules::class_at_path("RubyVM::InstructionSequence"));
+    to_value(&call(sequences, "__frame__", vec![location]))
 }
 
 #[unsafe(no_mangle)]

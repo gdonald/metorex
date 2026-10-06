@@ -101,71 +101,16 @@ impl VirtualMachine {
             .map(|opened| opened.unwrap_or(Object::Nil))
     }
 
-    /// Kernel#readline — `gets` that refuses to answer nil: at end of
-    /// input it raises EOFError.
-    pub(crate) fn read_line_or_fail(
+    /// `gets`, `readline` and `readlines` are ARGF's, so a stand-in
+    /// installed on ARGF answers here, with the separator, limit and
+    /// keywords the call was given.
+    pub(crate) fn read_through_argf(
         &mut self,
+        name: &str,
         arguments: Vec<Object>,
         position: Position,
     ) -> Result<Object, MetorexError> {
-        if !arguments.is_empty() {
-            return Err(MetorexError::runtime_error(
-                format!("readline() expects 0 arguments, got {}", arguments.len()),
-                crate::vm::utils::position_to_location(position),
-            ));
-        }
-        match self.read_raw_line_from_stdin(position)? {
-            Some(line) => Ok(Object::string(line)),
-            None => {
-                let message = "end of file reached".to_string();
-                Err(MetorexError::UncaughtException {
-                    exception: Object::exception("EOFError", message.clone()),
-                    location: crate::vm::utils::position_to_location(position),
-                    message,
-                })
-            }
-        }
-    }
-
-    /// Kernel#readlines — every remaining line, as an Array.
-    pub(crate) fn read_all_lines(
-        &mut self,
-        arguments: Vec<Object>,
-        position: Position,
-    ) -> Result<Object, MetorexError> {
-        if !arguments.is_empty() {
-            return Err(MetorexError::runtime_error(
-                format!("readlines() expects 0 arguments, got {}", arguments.len()),
-                crate::vm::utils::position_to_location(position),
-            ));
-        }
-        let mut lines = Vec::new();
-        while let Some(line) = self.read_raw_line_from_stdin(position)? {
-            lines.push(Object::string(line));
-        }
-        Ok(Object::Array(std::rc::Rc::new(std::cell::RefCell::new(
-            lines,
-        ))))
-    }
-
-    /// `gets` is ARGF's, so a stand-in installed on ARGF answers here.
-    pub(crate) fn read_line(
-        &mut self,
-        arguments: Vec<Object>,
-        position: Position,
-    ) -> Result<Object, MetorexError> {
-        if !arguments.is_empty() {
-            return Err(MetorexError::runtime_error(
-                format!("gets() expects 0 arguments, got {}", arguments.len()),
-                crate::vm::utils::position_to_location(position),
-            ));
-        }
         let argf = self.globals().get("ARGF").unwrap_or(Object::Nil);
-        if let Some((class, method)) = self.lookup_method(&argf, "gets")
-            && !method.is_undefined
-        {
-            return self.invoke_method(class, method, argf, vec![], position);
-        }
-        self.read_line_from_stdin(position)
+        self.send_to_object(argf, name, arguments, position)
     }
 }

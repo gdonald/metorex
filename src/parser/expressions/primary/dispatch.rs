@@ -3,7 +3,7 @@
 
 use crate::ast::Expression;
 use crate::error::MetorexError;
-use crate::lexer::TokenKind;
+use crate::lexer::{InterpolationPart, TokenKind};
 use crate::parser::Parser;
 
 use super::literals;
@@ -62,12 +62,21 @@ impl Parser {
             // Two string literals written next to each other are one string,
             // which is how a long one is split across lines.
             TokenKind::String(value) => {
-                let mut spelled = value;
-                while let TokenKind::String(next) = &self.peek().kind {
-                    spelled.push_str(next);
-                    self.advance();
+                let parts = self.adjacent_string_parts(vec![InterpolationPart::Text(value)]);
+                if parts
+                    .iter()
+                    .all(|part| matches!(part, InterpolationPart::Text(_)))
+                {
+                    let spelled = parts
+                        .iter()
+                        .filter_map(|part| match part {
+                            InterpolationPart::Text(text) => Some(text.as_str()),
+                            InterpolationPart::Expression(..) => None,
+                        })
+                        .collect();
+                    return Ok(literals::string_literal(spelled, position));
                 }
-                Ok(literals::string_literal(spelled, position))
+                self.primary_interpolated_string(parts, position)
             }
             TokenKind::ByteString(value) => Ok(literals::byte_string_literal(value, position)),
             // A literal in a source that asked outright for literals that
@@ -97,6 +106,7 @@ impl Parser {
                 Ok(self.primary_percent_i(value, filled, position))
             }
             TokenKind::InterpolatedString(parts) => {
+                let parts = self.adjacent_string_parts(parts);
                 self.primary_interpolated_string(parts, position)
             }
             TokenKind::PercentSymbol(name) => Ok(Expression::Symbol {
@@ -325,5 +335,21 @@ impl Parser {
             ensure_block: None,
             position,
         })
+    }
+
+    /// The parts of a string literal followed by the literals written next
+    /// to it, which Ruby reads as one string, interpolations and all.
+    fn adjacent_string_parts(
+        &mut self,
+        mut parts: Vec<InterpolationPart>,
+    ) -> Vec<InterpolationPart> {
+        loop {
+            match &self.peek().kind {
+                TokenKind::String(next) => parts.push(InterpolationPart::Text(next.clone())),
+                TokenKind::InterpolatedString(next) => parts.extend(next.iter().cloned()),
+                _ => return parts,
+            }
+            self.advance();
+        }
     }
 }

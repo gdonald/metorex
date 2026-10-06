@@ -65,3 +65,18 @@ fn test_hash_methods_key_identity_and_hashing_no_parens_execution() {
     let output = run_example("hash_methods/key_identity_and_hashing_no_parens.rb");
     assert_eq!(output, KEY_IDENTITY_AND_HASHING_OUTPUT);
 }
+
+/// The expected output of both `hash_methods/key_changing_its_hash` variants.
+const KEY_CHANGING_ITS_HASH_OUTPUT: &str = "1\nnil\n3\n3\n";
+
+#[test]
+fn test_hash_methods_key_changing_its_hash_execution() {
+    let output = run_example("hash_methods/key_changing_its_hash.rb");
+    assert_eq!(output, KEY_CHANGING_ITS_HASH_OUTPUT);
+}
+
+#[test]
+fn test_hash_methods_key_changing_its_hash_no_parens_execution() {
+    let output = run_example("hash_methods/key_changing_its_hash_no_parens.rb");
+    assert_eq!(output, KEY_CHANGING_ITS_HASH_OUTPUT);
+}

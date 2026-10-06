@@ -191,3 +191,24 @@ fn test_metaprogramming_inside_a_singleton_class_no_parens_execution() {
     let output = run_example("metaprogramming/inside_a_singleton_class_no_parens.rb");
     assert_eq!(output, INSIDE_A_SINGLETON_CLASS_OUTPUT);
 }
+
+const EXTEND_WITH_SEVERAL_MODULES: &str = concat!(
+    ":loud\n",
+    "[#<Class:Speaker>, Loud, Quiet]\n",
+    ":quiet\n",
+    "[TypeError, \"wrong argument type Integer (expected Module)\"]\n",
+    "[ArgumentError, \"wrong number of arguments (given 0, expected 1+)\"]\n",
+    "[TypeError, \"wrong argument type Class (expected Module)\"]\n",
+);
+
+#[test]
+fn test_metaprogramming_extend_with_several_modules_execution() {
+    let output = run_example("metaprogramming/extend_with_several_modules.rb");
+    assert_eq!(output, EXTEND_WITH_SEVERAL_MODULES);
+}
+
+#[test]
+fn test_metaprogramming_extend_with_several_modules_no_parens_execution() {
+    let output = run_example("metaprogramming/extend_with_several_modules_no_parens.rb");
+    assert_eq!(output, EXTEND_WITH_SEVERAL_MODULES);
+}

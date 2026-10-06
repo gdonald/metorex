@@ -231,6 +231,7 @@ impl VirtualMachine {
                         match byte {
                             b'"' => out.push_str("\\\""),
                             b'\\' => out.push_str("\\\\"),
+                            b'#' if opens_interpolation(bytes.get(at + 1)) => out.push_str("\\#"),
                             0x20..=0x7e => out.push(byte as char),
                             _ => out.push_str(&format!("\\x{byte:02X}")),
                         }
@@ -265,6 +266,9 @@ impl VirtualMachine {
                             match bytes[at] {
                                 b'"' => out.push_str("\\\""),
                                 b'\\' => out.push_str("\\\\"),
+                                b'#' if opens_interpolation(bytes.get(at + 1)) => {
+                                    out.push_str("\\#")
+                                }
                                 b'\n' => out.push_str("\\n"),
                                 b'\r' => out.push_str("\\r"),
                                 b'\t' => out.push_str("\\t"),
@@ -344,4 +348,10 @@ impl VirtualMachine {
             _ => Ok(None),
         }
     }
+}
+
+/// Whether a byte after `#` would make the two read as an interpolation,
+/// which `inspect` escapes so the answer reads back as the same text.
+fn opens_interpolation(next: Option<&u8>) -> bool {
+    matches!(next, Some(b'{' | b'$' | b'@'))
 }

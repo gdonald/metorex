@@ -80,13 +80,20 @@ impl VirtualMachine {
                             _position,
                         ));
                     }
-                    let started = std::time::Instant::now();
-                    let waiting_limit = match wait_for {
-                        Some(seconds) => std::time::Duration::from_secs_f64(seconds.max(0.0)),
-                        None => std::time::Duration::from_secs(2),
-                    };
+                    let deadline = wait_for.map(|seconds| {
+                        std::time::Instant::now()
+                            + std::time::Duration::from_secs_f64(seconds.max(0.0))
+                    });
+                    let forever = deadline.is_none();
+                    if forever {
+                        self.mark_waiting_forever(true);
+                    }
                     let mut counted = false;
-                    while items_arr.borrow().len() >= most && started.elapsed() < waiting_limit {
+                    let mut waited = Ok(());
+                    let mut last_round = None;
+                    while items_arr.borrow().len() >= most
+                        && deadline.is_none_or(|deadline| std::time::Instant::now() < deadline)
+                    {
                         // Closing the queue while something waits to put on
                         // it ends the wait, which is how a producer learns it
                         // is done.
@@ -98,6 +105,9 @@ impl VirtualMachine {
                                 let waiting = (queue_waiting_count(&inst) - 1).max(0);
                                 inst.borrow_mut()
                                     .set_var("__queue_waiting".to_string(), Object::Int(waiting));
+                            }
+                            if forever {
+                                self.mark_waiting_forever(false);
                             }
                             return Err(crate::vm::errors::simple_exception(
                                 "ClosedQueueError",
@@ -111,13 +121,29 @@ impl VirtualMachine {
                             inst.borrow_mut()
                                 .set_var("__queue_waiting".to_string(), Object::Int(waiting));
                         }
+                        if forever
+                            && let Some(before) = last_round
+                            && let Err(stuck) = self.check_for_deadlock(before, _position)
+                        {
+                            waited = Err(stuck);
+                            break;
+                        }
+                        last_round = Some(self.statements_run);
                         self.wait_for_other_threads(_position);
+                        if let Err(killed) = self.raise_if_thread_killed(_position) {
+                            waited = Err(killed);
+                            break;
+                        }
+                    }
+                    if forever {
+                        self.mark_waiting_forever(false);
                     }
                     if counted {
                         let waiting = (queue_waiting_count(&inst) - 1).max(0);
                         inst.borrow_mut()
                             .set_var("__queue_waiting".to_string(), Object::Int(waiting));
                     }
+                    waited?;
                     // A limit on how long to wait that passes with the queue
                     // still full answers nothing rather than putting anyway.
                     if wait_for.is_some() && items_arr.borrow().len() >= most {
@@ -202,16 +228,22 @@ impl VirtualMachine {
                 // Taking from an empty queue waits for something to be put
                 // there, so every other waiting thread gets a turn until one
                 // of them puts something or none of them can run at all.
-                let started = std::time::Instant::now();
-                let deadline = started
-                    + match limit {
-                        Some(seconds) => std::time::Duration::from_secs_f64(seconds.max(0.0)),
-                        None => std::time::Duration::from_secs(2),
-                    };
+                let deadline = limit.map(|seconds| {
+                    std::time::Instant::now() + std::time::Duration::from_secs_f64(seconds.max(0.0))
+                });
+                let forever = deadline.is_none();
+                if forever {
+                    self.mark_waiting_forever(true);
+                }
                 let mut counted = false;
+                let mut waited = Ok(());
+                let mut last_round = None;
                 while items_arr.borrow().is_empty()
-                    && !self.pending_threads.is_empty()
-                    && std::time::Instant::now() < deadline
+                    && !matches!(
+                        inst.borrow().get_var("__queue_closed"),
+                        Some(Object::Bool(true))
+                    )
+                    && deadline.is_none_or(|deadline| std::time::Instant::now() < deadline)
                 {
                     // Whoever is waiting here is one of the number the queue
                     // reports, for as long as the wait lasts.
@@ -221,26 +253,29 @@ impl VirtualMachine {
                         inst.borrow_mut()
                             .set_var("__queue_waiting".to_string(), Object::Int(waiting));
                     }
-                    let held = self.pending_threads.len();
-                    self.wait_for_other_threads(_position);
-                    self.raise_if_thread_killed(_position)?;
-                    // Nothing moved and nothing ran for long enough that
-                    // nothing ever will. The grace matters because whoever is
-                    // waiting on this thread may be the one about to put
-                    // something on the queue.
-                    if self.pending_threads.len() == held
-                        && items_arr.borrow().is_empty()
-                        && self.stepping_threads
-                        && started.elapsed() >= QUEUE_DEADLOCK_GRACE
+                    if forever
+                        && let Some(before) = last_round
+                        && let Err(stuck) = self.check_for_deadlock(before, _position)
                     {
+                        waited = Err(stuck);
                         break;
                     }
+                    last_round = Some(self.statements_run);
+                    self.wait_for_other_threads(_position);
+                    if let Err(killed) = self.raise_if_thread_killed(_position) {
+                        waited = Err(killed);
+                        break;
+                    }
+                }
+                if forever {
+                    self.mark_waiting_forever(false);
                 }
                 if counted {
                     let waiting = (queue_waiting_count(&inst) - 1).max(0);
                     inst.borrow_mut()
                         .set_var("__queue_waiting".to_string(), Object::Int(waiting));
                 }
+                waited?;
                 let val = if items_arr.borrow().is_empty() {
                     Object::Nil
                 } else {
@@ -299,10 +334,6 @@ impl VirtualMachine {
         }
     }
 }
-
-/// How long a wait on an empty queue keeps going after nothing has moved,
-/// before it is taken as a wait nothing will ever satisfy.
-const QUEUE_DEADLOCK_GRACE: std::time::Duration = std::time::Duration::from_millis(50);
 
 /// A queue method's positional arguments paired with the keywords it was
 /// given, which is where `timeout:` arrives.

@@ -190,6 +190,37 @@ impl VirtualMachine {
         self.raise_if_thread_killed(position)
     }
 
+    /// Run `work` on an operating system thread of its own, giving the
+    /// other threads turns while it runs, and answer what it answered. Work
+    /// that waits on the operating system, such as opening a FIFO or
+    /// connecting a socket, would otherwise hold every thread up.
+    pub(crate) fn run_beside_threads<T: Send + 'static>(
+        &mut self,
+        work: impl FnOnce() -> T + Send + 'static,
+        position: Position,
+    ) -> T {
+        if !self.other_threads_are_waiting() {
+            return work();
+        }
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = sender.send(work());
+        });
+        loop {
+            if let Ok(answered) = receiver.try_recv() {
+                return answered;
+            }
+            if !self.other_threads_are_waiting() {
+                // The thread sends before it ends, so the only thing left to
+                // wait for is that send.
+                if let Ok(answered) = receiver.recv() {
+                    return answered;
+                }
+            }
+            self.wait_for_other_threads(position);
+        }
+    }
+
     /// `waitpid`, with the other threads given turns while the child runs
     /// when there are any to give them to.
     pub(crate) fn waitpid_handing_turns(
@@ -296,7 +327,26 @@ impl VirtualMachine {
             return Ok(Some(Object::Nil));
         };
         let deadline = limit.map(|held| std::time::Instant::now() + held);
+        // Waiting on a thread with no limit waits on what only it can do.
+        if limit.is_none() {
+            self.mark_waiting_forever(true);
+        }
+        let joined = self.run_thread_turns(thread, handle, deadline, position);
+        if limit.is_none() {
+            self.mark_waiting_forever(false);
+        }
+        joined
+    }
+
+    fn run_thread_turns(
+        &mut self,
+        thread: &Object,
+        handle: usize,
+        deadline: Option<std::time::Instant>,
+        position: Position,
+    ) -> Result<Option<Object>, MetorexError> {
         let mut turns = 0;
+        let mut last_round = None;
         loop {
             if self.fibers.get(handle).is_some_and(|state| state.finished) {
                 break;
@@ -316,6 +366,12 @@ impl VirtualMachine {
             {
                 return Ok(None);
             }
+            if deadline.is_none()
+                && let Some(before) = last_round
+            {
+                self.check_for_deadlock(before, position)?;
+            }
+            last_round = Some(self.statements_run);
             turns += 1;
             let carried = self.thread_fiber_object(thread, handle);
             let started_with = self.thread_start_arguments(thread);
@@ -355,10 +411,19 @@ impl VirtualMachine {
                 }
             }
         }
-        let held = match thread {
-            Object::Instance(instance) => instance.borrow().get_var("__thread_value").cloned(),
-            _ => None,
+        // A thread another wait ran to its end may have died of an
+        // exception, which is handed to whoever waits on it, including while
+        // that death is still being reported.
+        let (held, died_of) = match thread {
+            Object::Instance(instance) => (
+                instance.borrow().get_var("__thread_value").cloned(),
+                instance.borrow().get_var(DYING_OF).cloned(),
+            ),
+            _ => (None, None),
         };
+        if let Some(raised @ Object::Exception(_)) = died_of {
+            self.call_native_function("raise", vec![raised], position)?;
+        }
         Ok(Some(held.unwrap_or(Object::Nil)))
     }
 
@@ -408,4 +473,100 @@ impl VirtualMachine {
         self.thread_body_fibers
             .contains(&self.fiber_current_handle())
     }
+
+    /// Marks the running thread as waiting on something only another
+    /// thread can give it, or as done waiting.
+    pub(crate) fn mark_waiting_forever(&mut self, waiting: bool) {
+        if let Object::Instance(instance) = self.running_thread() {
+            instance
+                .borrow_mut()
+                .set_var(WAITING_FOREVER.to_string(), Object::Bool(waiting));
+        }
+    }
+
+    /// Whether the running thread was told to stop or handed an exception
+    /// to raise, either of which ends a wait it would otherwise never leave.
+    pub(crate) fn thread_told_to_stop(&mut self) -> bool {
+        self.thread_abort.is_some()
+            || matches!(self.running_thread(), Object::Instance(running)
+                if matches!(running.borrow().get_var("__thread_killed"), Some(Object::Bool(true))))
+    }
+
+    /// The main thread, waiting on something only another thread can give
+    /// it, has given every other thread a turn. When no statement ran in
+    /// that round and every thread is waiting the same way, none of them
+    /// can ever go on, and MRI raises `fatal` in the main thread.
+    pub(crate) fn check_for_deadlock(
+        &mut self,
+        statements_before: u64,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        if self.running_a_thread_body() || self.statements_run != statements_before {
+            return Ok(());
+        }
+        let living = self.living_threads();
+        let all_waiting = living.iter().all(|thread| {
+            matches!(thread, Object::Instance(held)
+                if matches!(held.borrow().get_var(WAITING_FOREVER), Some(Object::Bool(true))))
+        });
+        if !all_waiting {
+            return Ok(());
+        }
+        Err(self.deadlock_error(living, position))
+    }
+
+    /// The threads that have not finished, other than the main one.
+    pub(crate) fn living_threads(&self) -> Vec<Object> {
+        self.pending_threads
+            .iter()
+            .filter(|thread| {
+                !matches!(thread, Object::Instance(held)
+                    if held.borrow().get_var("__thread_value").is_some())
+            })
+            .cloned()
+            .collect()
+    }
+
+    /// MRI's `fatal` for a deadlock, listing each thread with where it waits.
+    fn deadlock_error(&mut self, living: Vec<Object>, position: Position) -> MetorexError {
+        let main = self.running_thread();
+        let mut threads = vec![main.clone()];
+        threads.extend(living);
+        let mut message = format!(
+            "No live threads left. Deadlock?\n{count} threads, {count} sleeps current:{main:#018x} main thread:{main:#018x}\n",
+            count = threads.len(),
+            main = crate::vm::operators::identity_of(&main),
+        );
+        for thread in &threads {
+            let described = self
+                .send_to_object(thread.clone(), "inspect", vec![], position)
+                .map(|shown| shown.to_string())
+                .unwrap_or_default();
+            message.push_str(&format!("* {described}\n"));
+            if let Ok(Object::Array(lines)) =
+                self.send_to_object(thread.clone(), "backtrace", vec![], position)
+            {
+                for line in lines.borrow().iter() {
+                    message.push_str(&format!("   {line}\n"));
+                }
+            }
+        }
+        let exception = Object::exception("fatal", message.clone());
+        if let (Object::Exception(details), Object::Class(class)) = (&exception, self.fatal_class())
+        {
+            details.borrow_mut().class = Some(class);
+        }
+        MetorexError::UncaughtException {
+            exception,
+            location: crate::vm::utils::position_to_location(position),
+            message,
+        }
+    }
 }
+
+/// The variable a thread is marked with while it waits on something only
+/// another thread can give it.
+pub(crate) const WAITING_FOREVER: &str = "__thread_waiting_forever";
+/// What a thread died of, kept from the moment its fiber fails, before the
+/// death is reported and recorded.
+pub(crate) const DYING_OF: &str = "__thread_dying_of";

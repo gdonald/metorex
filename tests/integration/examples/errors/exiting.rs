@@ -224,3 +224,31 @@ fn test_errors_system_exit_subclass_exits_silently() {
     assert_eq!(stderr, "");
     assert_eq!(output.status.code(), Some(8));
 }
+
+const CONVERSIONS_REFUSED: &str = concat!(
+    "1.coerce(nil): can't convert nil into Float\n",
+    "1.coerce(true): can't convert true into Float\n",
+    "1.coerce(:name): can't convert Symbol into Float\n",
+    "1.coerce(1..2): can't convert Range into Float\n",
+    "1.fdiv(nil): nil can't be coerced into Integer\n",
+    "1.fdiv(\"2\"): String can't be coerced into Integer\n",
+    "[nil].pack(\"D\"): can't convert nil into Float\n",
+    "[\"1.5\"].pack(\"e\"): can't convert String into Float\n",
+    "[true].pack(\"f\"): can't convert true into Float\n",
+    "sleep(\"2\"): can't convert String into time interval\n",
+    "Time.at(0) + nil: can't convert NilClass into an exact number\n",
+    "Time.at(0) - nil: can't convert NilClass into an exact number\n",
+    "[2.0, 1.0]\n",
+);
+
+#[test]
+fn test_errors_conversions_refused_execution() {
+    let output = run_example("errors/conversions_refused.rb");
+    assert_eq!(output, CONVERSIONS_REFUSED);
+}
+
+#[test]
+fn test_errors_conversions_refused_no_parens_execution() {
+    let output = run_example("errors/conversions_refused_no_parens.rb");
+    assert_eq!(output, CONVERSIONS_REFUSED);
+}

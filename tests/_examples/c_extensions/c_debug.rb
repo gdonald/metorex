@@ -14,7 +14,7 @@ def describe_frame(frame)
   receiver, klass, binding, iseq, location = frame
   locals = binding ? binding.local_variables.sort & [:debug, :marker, :outer] : nil
   method = binding ? binding.eval("__method__") : nil
-  [receiver.class, klass, locals, method, iseq, location.label, location.lineno]
+  [receiver.class, klass, locals, method, iseq && [iseq.class, iseq.label, iseq.first_lineno], location.label, location.lineno]
 end
 
 directory = Dir.mktmpdir

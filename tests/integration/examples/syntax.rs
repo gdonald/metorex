@@ -353,3 +353,50 @@ fn test_syntax_lambda_parameter_no_parens_execution() {
     let output = run_example("syntax/lambda_parameter_no_parens.rb");
     assert_eq!(output, LAMBDA_PARAMETER_OUTPUT);
 }
+
+/// The expected output of both `syntax/safe_navigation_operators` variants.
+const SAFE_NAVIGATION_OPERATORS_OUTPUT: &str = concat!(
+    "3\n",
+    "4\n",
+    "{tea: 3, coffee: 4}\n",
+    "10\n",
+    "nil\n",
+    "nil\n",
+    "nil\n",
+    ":none\n",
+);
+
+#[test]
+fn test_syntax_safe_navigation_operators_execution() {
+    let output = run_example("syntax/safe_navigation_operators.rb");
+    assert_eq!(output, SAFE_NAVIGATION_OPERATORS_OUTPUT);
+}
+
+#[test]
+fn test_syntax_safe_navigation_operators_no_parens_execution() {
+    let output = run_example("syntax/safe_navigation_operators_no_parens.rb");
+    assert_eq!(output, SAFE_NAVIGATION_OPERATORS_OUTPUT);
+}
+
+const ADJACENT_STRING_LITERALS: &str = concat!(
+    "\"ab\"\n",
+    "\"a3\"\n",
+    "\"3b\"\n",
+    "3\n",
+    "\"a3c\"\n",
+    "3\n",
+    "\"x6y3\"\n",
+    "\"first part, second part 3\"\n",
+);
+
+#[test]
+fn test_syntax_adjacent_string_literals_execution() {
+    let output = run_example("syntax/adjacent_string_literals.rb");
+    assert_eq!(output, ADJACENT_STRING_LITERALS);
+}
+
+#[test]
+fn test_syntax_adjacent_string_literals_no_parens_execution() {
+    let output = run_example("syntax/adjacent_string_literals_no_parens.rb");
+    assert_eq!(output, ADJACENT_STRING_LITERALS);
+}

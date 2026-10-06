@@ -48,26 +48,7 @@ impl VirtualMachine {
             // on this specific object. (Class/Module already have their own
             // dedicated `extend` in class_methods.rs that hits earlier.)
             "extend" => {
-                if arguments.is_empty() {
-                    return Err(method_argument_error(
-                        "extend",
-                        1,
-                        arguments.len(),
-                        position,
-                    ));
-                }
-                for arg in arguments {
-                    // Ruby takes a module here and rejects a class.
-                    let module_rc = match arg {
-                        Object::Module(m) => std::rc::Rc::clone(m),
-                        other => {
-                            return Err(method_argument_type_error(
-                                "extend", "Module", other, position,
-                            ));
-                        }
-                    };
-                    self.apply_module_extend(receiver, &module_rc, position)?;
-                }
+                self.extend_with_modules(receiver, arguments, position)?;
                 Ok(Some(receiver.clone()))
             }
             "singleton_method" => {
@@ -110,4 +91,51 @@ impl VirtualMachine {
             _ => Ok(None),
         }
     }
+}
+
+impl VirtualMachine {
+    /// `extend` with the modules given, which must all be modules. Ruby
+    /// extends with the last one first, so the first one named ends up
+    /// nearest the object.
+    pub(crate) fn extend_with_modules(
+        &mut self,
+        receiver: &Object,
+        arguments: &[Object],
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        if arguments.is_empty() {
+            return Err(crate::vm::errors::simple_exception(
+                "ArgumentError",
+                "wrong number of arguments (given 0, expected 1+)",
+                position,
+            ));
+        }
+        let mut modules = Vec::with_capacity(arguments.len());
+        for argument in arguments {
+            match argument {
+                Object::Module(module) => modules.push(std::rc::Rc::clone(module)),
+                Object::Instance(instance) => {
+                    let named = instance.borrow().class.name().to_string();
+                    return Err(not_a_module(&named, position));
+                }
+                other => {
+                    let named = crate::vm::native_methods::define_method::ruby_class_name(other);
+                    return Err(not_a_module(named, position));
+                }
+            }
+        }
+        for module in modules.iter().rev() {
+            self.apply_module_extend(receiver, module, position)?;
+        }
+        Ok(())
+    }
+}
+
+/// The TypeError `extend` raises for something that is not a module.
+fn not_a_module(named: &str, position: Position) -> MetorexError {
+    crate::vm::errors::simple_exception(
+        "TypeError",
+        &format!("wrong argument type {named} (expected Module)"),
+        position,
+    )
 }

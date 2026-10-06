@@ -235,10 +235,13 @@ pub struct VirtualMachine {
     /// given a turn. A thread that takes enough of them hands the turn over,
     /// so one looping on a lock still lets the others run.
     pub(crate) locks_this_turn: usize,
-    /// How many statements have run since the turn was last handed over. A
-    /// thread that runs enough of them hands the turn over, so one that never
-    /// waits on anything still lets the others run.
-    pub(crate) statements_this_turn: usize,
+    /// When the running thread took the turn. A thread that has held it for
+    /// a time slice hands it over, so one that never waits on anything still
+    /// lets the others run.
+    pub(crate) turn_started: std::time::Instant,
+    /// How many statements have run, which a round of turns in which every
+    /// thread waits leaves unchanged.
+    pub(crate) statements_run: u64,
     /// What a thread that asked for its exceptions to take the program down
     /// died of, waiting to be raised where the program next waits.
     pub(crate) thread_abort: Option<Object>,
@@ -580,7 +583,8 @@ impl VirtualMachine {
             thread_body_fibers: Vec::new(),
             blocking_in_fiber: false,
             locks_this_turn: 0,
-            statements_this_turn: 0,
+            turn_started: std::time::Instant::now(),
+            statements_run: 0,
             thread_abort: None,
             taken_mutexes: Vec::new(),
             source_line_shift: 0,

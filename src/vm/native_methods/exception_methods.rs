@@ -360,6 +360,7 @@ impl VirtualMachine {
                         if given_locations {
                             let mut details = exception.borrow_mut();
                             details.backtrace_sites = Some(sites);
+                            details.raise_column = None;
                             details.backtrace_locations_array = Some(arguments[0].clone());
                         }
                         // Ruby keeps the very Array of Strings it was handed,
@@ -644,9 +645,11 @@ impl VirtualMachine {
                     return Ok(Some(Object::Nil));
                 };
                 let location_class = self.backtrace_location_class();
+                let raise_column = exception.borrow().raise_column;
                 let entries: Vec<Object> = sites
                     .iter()
-                    .map(|(path, line, label)| {
+                    .enumerate()
+                    .map(|(at, (path, line, label))| {
                         let instance =
                             crate::object::Instance::new(std::rc::Rc::clone(&location_class));
                         {
@@ -658,6 +661,10 @@ impl VirtualMachine {
                                 "absolute_path".to_string(),
                                 Object::string(absolute_path(path)),
                             );
+                            // The raise site knows the column of what raised.
+                            if let (0, Some(column)) = (at, raise_column) {
+                                filling.set_var("column".to_string(), Object::Int(column as i64));
+                            }
                         }
                         Object::Instance(instance)
                     })

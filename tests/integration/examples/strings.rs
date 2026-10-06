@@ -432,3 +432,27 @@ fn test_strings_element_assignment_no_parens_execution() {
     let output = run_example("strings/element_assignment_no_parens.rb");
     assert_eq!(output, STRING_ELEMENT_ASSIGNMENT_OUTPUT);
 }
+
+/// The expected output of both `strings/inspect_interpolation_marks` variants.
+const INSPECT_INTERPOLATION_MARKS_OUTPUT: &str = concat!(
+    "\"\\#{total}\"\n",
+    "\"\\#$stdout\"\n",
+    "\"\\#@count\"\n",
+    "\"#plain\"\n",
+    "\"\\#{total}\"\n",
+    "\"\\#{\\x{A4A2}\"\n",
+    "\"\\#$stdout\"\n",
+    "\"\\#{total}\"\n",
+);
+
+#[test]
+fn test_strings_inspect_interpolation_marks_execution() {
+    let output = run_example("strings/inspect_interpolation_marks.rb");
+    assert_eq!(output, INSPECT_INTERPOLATION_MARKS_OUTPUT);
+}
+
+#[test]
+fn test_strings_inspect_interpolation_marks_no_parens_execution() {
+    let output = run_example("strings/inspect_interpolation_marks_no_parens.rb");
+    assert_eq!(output, INSPECT_INTERPOLATION_MARKS_OUTPUT);
+}

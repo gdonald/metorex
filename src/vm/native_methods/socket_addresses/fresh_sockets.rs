@@ -82,7 +82,7 @@ impl VirtualMachine {
         port: i64,
         position: Position,
     ) -> Result<Object, MetorexError> {
-        let wanted = socket_address(&text, port, position)?;
+        let wanted = self.looked_up_address(&text, port, position)?;
         let Some(descriptor) = self.socket_descriptor(handle) else {
             return Err(refused(position, "bind on a closed socket".to_string()));
         };
@@ -110,7 +110,7 @@ impl VirtualMachine {
         port: i64,
         position: Position,
     ) -> Result<Object, MetorexError> {
-        let wanted = socket_address(&text, port, position)?;
+        let wanted = self.looked_up_address(&text, port, position)?;
         let Some(descriptor) = self.socket_descriptor(handle) else {
             return Err(refused(position, "connect on a closed socket".to_string()));
         };
@@ -174,7 +174,7 @@ impl VirtualMachine {
         port: i64,
         position: Position,
     ) -> Result<Object, MetorexError> {
-        let wanted = socket_address(&text, port, position)?;
+        let wanted = self.looked_up_address(&text, port, position)?;
         let Some(descriptor) = self.socket_descriptor(handle) else {
             return Err(refused(position, "connect on a closed socket".to_string()));
         };
@@ -229,25 +229,34 @@ fn descriptor_writable(descriptor: libc::c_int) -> bool {
     unsafe { libc::poll(&mut asked, 1, 0) > 0 && asked.revents != 0 }
 }
 
-/// The address and port named, resolved the way a bind or a connect takes
-/// them.
-fn socket_address(
-    text: &str,
-    port: i64,
-    position: Position,
-) -> Result<std::net::SocketAddr, MetorexError> {
-    use std::net::ToSocketAddrs as _;
-    (text, port as u16)
-        .to_socket_addrs()
-        .ok()
-        .and_then(|mut found| found.next())
-        .ok_or_else(|| {
+impl VirtualMachine {
+    /// The address and port named, resolved the way a bind or a connect
+    /// takes them. A name is looked up while the other threads run.
+    fn looked_up_address(
+        &mut self,
+        text: &str,
+        port: i64,
+        position: Position,
+    ) -> Result<std::net::SocketAddr, MetorexError> {
+        let named = text.to_string();
+        let found = self.run_beside_threads(
+            move || {
+                use std::net::ToSocketAddrs as _;
+                (named.as_str(), port as u16)
+                    .to_socket_addrs()
+                    .ok()
+                    .and_then(|mut found| found.next())
+            },
+            position,
+        );
+        found.ok_or_else(|| {
             crate::vm::errors::simple_exception(
                 "SocketError",
                 &format!("getaddrinfo: {text}: nodename nor servname provided, or not known"),
                 position,
             )
         })
+    }
 }
 
 /// What the operating system says went wrong, without the error number

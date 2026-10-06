@@ -89,6 +89,9 @@ pub struct BlockStatement {
     /// The line the block was opened on, which is where `source_location`
     /// says it was written even when its body starts further down.
     pub opened_at: Option<usize>,
+    /// The column the block was opened at, counted in characters from 0,
+    /// which tells it from another block opened on the same line.
+    pub opened_column: Option<usize>,
     /// The name a callable built from a Symbol stands for, which is what it
     /// says of itself in place of a file and a line.
     pub from_symbol: Option<String>,
@@ -146,6 +149,7 @@ impl BlockStatement {
             source_file: None,
             home_frame: None,
             opened_at: None,
+            opened_column: None,
             outer_locals: Rc::default(),
             from_symbol: None,
             written_in: None,
@@ -181,6 +185,7 @@ impl BlockStatement {
             source_file: None,
             home_frame: None,
             opened_at: None,
+            opened_column: None,
             outer_locals: Rc::default(),
             from_symbol: None,
             written_in: None,

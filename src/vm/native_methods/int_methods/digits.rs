@@ -50,6 +50,20 @@ impl VirtualMachine {
         argument: &Object,
         position: Position,
     ) -> Result<f64, MetorexError> {
+        // nil, true and false are refused by name rather than asked for the
+        // `to_f` nil has.
+        if let Some(named) = match argument {
+            Object::Nil => Some("nil"),
+            Object::Bool(true) => Some("true"),
+            Object::Bool(false) => Some("false"),
+            _ => None,
+        } {
+            return Err(crate::vm::errors::simple_exception(
+                "TypeError",
+                &format!("can't convert {named} into Float"),
+                position,
+            ));
+        }
         if let Object::String(text) = argument {
             return text.as_str().trim().parse::<f64>().map_err(|_| {
                 let message = format!("invalid value for Float(): {:?}", text.as_str());
@@ -69,6 +83,10 @@ impl VirtualMachine {
         {
             return Ok(value);
         }
-        Err(self.uncoercible(argument, position))
+        Err(crate::vm::errors::simple_exception(
+            "TypeError",
+            &format!("can't convert {} into Float", self.class_name_of(argument)),
+            position,
+        ))
     }
 }

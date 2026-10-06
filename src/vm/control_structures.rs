@@ -65,6 +65,9 @@ impl VirtualMachine {
         body: &[Statement],
     ) -> Result<ControlFlow, MetorexError> {
         loop {
+            // Each pass is a place the turn can be handed over, so a loop
+            // with nothing in its body still lets the other threads run.
+            self.pass_checkpoint(condition.position())?;
             let condition_value = self.evaluate_condition(condition)?;
 
             if !is_truthy(&condition_value) {
@@ -132,6 +135,7 @@ impl VirtualMachine {
                     }
                 }
             }
+            self.pass_checkpoint(condition.position())?;
             let tested = self.evaluate_condition(condition)?;
             if !is_truthy(&tested) {
                 return Ok(ControlFlow::Value(crate::object::Object::Nil));

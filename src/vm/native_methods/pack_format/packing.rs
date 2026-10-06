@@ -370,11 +370,9 @@ impl VirtualMachine {
         }
         // Any other number converts through `to_f`, which is how a Rational
         // or a Complex with no imaginary part reaches a double. Anything that
-        // is not a number at all is refused.
+        // is not a number at all is refused, whatever `to_f` it has.
         let class = self.builtins().class_of(value);
-        if crate::vm::method_invocation::descends_from(&class, "Numeric")
-            || self.responds_to(value, "to_f")
-        {
+        if crate::vm::method_invocation::descends_from(&class, "Numeric") {
             // A number that has no `to_f`, or one whose `to_f` answers
             // something else, is refused the same way a non-number is.
             if let Ok(Object::Float(number)) =
@@ -383,7 +381,13 @@ impl VirtualMachine {
                 return Ok(number);
             }
         }
-        let message = format!("can't convert {} into Float", class.name());
+        let named = match value {
+            Object::Nil => "nil",
+            Object::Bool(true) => "true",
+            Object::Bool(false) => "false",
+            _ => class.name(),
+        };
+        let message = format!("can't convert {named} into Float");
         Err(crate::vm::errors::simple_exception(
             "TypeError",
             &message,

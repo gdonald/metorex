@@ -67,6 +67,8 @@ mod enumerators;
 mod fibers;
 mod mutexes;
 mod names;
+mod native_names;
+pub(crate) use native_names::class_answers_natively;
 mod queues;
 pub(crate) mod subclasses;
 mod threads;

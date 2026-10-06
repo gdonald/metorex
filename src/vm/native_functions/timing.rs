@@ -64,7 +64,23 @@ impl VirtualMachine {
                         + self.float_value_of(&rest, position)?,
                 )
             }
-            Some(held) => Some(self.float_value_of(held, position)?),
+            Some(held @ (Object::Int(_) | Object::BigInt(_) | Object::Float(_))) => {
+                Some(self.float_value_of(held, position)?)
+            }
+            // Anything else names no length of time.
+            Some(other) => {
+                let named = match other {
+                    Object::Instance(instance) => instance.borrow().class.name().to_string(),
+                    held => {
+                        crate::vm::native_methods::define_method::ruby_class_name(held).to_string()
+                    }
+                };
+                return Err(crate::vm::errors::simple_exception(
+                    "TypeError",
+                    &format!("can't convert {named} into time interval"),
+                    position,
+                ));
+            }
         };
         // A length is a wait, so there is no waiting backwards.
         if wanted.is_some_and(|seconds| seconds < 0.0) {
@@ -85,7 +101,7 @@ impl VirtualMachine {
         // the wait lasts until something wakes the thread.
         let started = std::time::Instant::now();
         match wanted {
-            None => self.sleep_until_woken(position)?,
+            None => self.sleep_until_woken(false, position)?,
             Some(seconds) => {
                 self.sleep_for_length(std::time::Duration::from_secs_f64(seconds), position)?
             }
@@ -106,7 +122,7 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<(), MetorexError> {
         if self.running_a_thread_body() {
-            return self.sleep_until_woken_within(length, position);
+            return self.sleep_until_woken_within(Some(length), false, position);
         }
         let deadline = std::time::Instant::now() + length;
         loop {

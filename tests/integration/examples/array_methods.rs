@@ -209,3 +209,27 @@ fn test_array_methods_sort_by_array_keys_no_parens_execution() {
     let output = run_example("array_methods/sort_by_array_keys_no_parens.rb");
     assert_eq!(output, SORT_BY_ARRAY_KEYS_OUTPUT);
 }
+
+/// The expected output of both `array_methods/sort_comparisons` variants.
+const SORT_COMPARISONS_OUTPUT: &str = concat!(
+    "true\n",
+    "true\n",
+    "[1000, 999, 998]\n",
+    "1000\n",
+    "[\"apple\", \"date\", \"fig\", \"kiwi\", \"pear\"]\n",
+    "[\"pear\", \"kiwi\", \"fig\", \"date\", \"apple\"]\n",
+    "[\"fig\", \"pear\", \"kiwi\", \"date\", \"apple\"]\n",
+    "[1, 2, 3]\n",
+);
+
+#[test]
+fn test_array_methods_sort_comparisons_execution() {
+    let output = run_example("array_methods/sort_comparisons.rb");
+    assert_eq!(output, SORT_COMPARISONS_OUTPUT);
+}
+
+#[test]
+fn test_array_methods_sort_comparisons_no_parens_execution() {
+    let output = run_example("array_methods/sort_comparisons_no_parens.rb");
+    assert_eq!(output, SORT_COMPARISONS_OUTPUT);
+}

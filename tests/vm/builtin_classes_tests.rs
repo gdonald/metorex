@@ -126,6 +126,7 @@ fn class_of_block() {
         source_file: None,
         home_frame: None,
         opened_at: None,
+        opened_column: None,
         from_symbol: None,
         written_in: None,
         written_depth: None,

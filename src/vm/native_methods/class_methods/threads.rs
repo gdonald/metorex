@@ -354,7 +354,14 @@ impl VirtualMachine {
                 // `Thread.stop` puts the thread running now to sleep until
                 // something wakes it.
                 "stop" => {
-                    self.sleep_until_woken(position)?;
+                    if !self.running_a_thread_body() && self.living_threads().is_empty() {
+                        return Err(crate::vm::errors::simple_exception(
+                            "ThreadError",
+                            "stopping only thread\n\tnote: use sleep to stop forever",
+                            position,
+                        ));
+                    }
+                    self.sleep_until_woken(true, position)?;
                     return Ok(Answered(Object::Nil));
                 }
                 // Thread.current returns the innermost Thread instance whose

@@ -156,52 +156,61 @@ impl VirtualMachine {
             return Ok(Deferred);
         }
         if method_name == "allocate" {
-            if class_rc.name() == "Class" {
-                let anon = Class::new("", None);
-                anon.set_class_var("__uninitialized__", Object::Bool(true));
-                return Ok(Answered(Object::Class(anon)));
-            }
-            // An exception class allocates an exception, with no message
-            // given yet, which is what Marshal builds one back from.
-            if self.is_exception_class(class_rc) {
-                let made = Object::exception(class_rc.name(), String::new());
-                if let Object::Exception(details) = &made {
-                    let mut details = details.borrow_mut();
-                    details.class = Some(Rc::clone(class_rc));
-                    details.message_given = false;
-                }
-                return Ok(Answered(made));
-            }
-            let inst = crate::object::Instance::new(Rc::clone(class_rc));
-            // A subclass of String, Array or Hash starts out holding an empty
-            // one, which is what its methods then work on.
-            let descends = |name: &str| {
-                class_rc.name() != name
-                    && crate::vm::method_invocation::descends_from(class_rc, name)
-            };
-            let backing = if descends("String") {
-                Some((
-                    crate::vm::native_methods::STRING_SUBCLASS_VAR,
-                    self.string_from_new_arguments(&[], position)?,
-                ))
-            } else if descends("Array") {
-                Some((
-                    crate::vm::native_methods::ARRAY_SUBCLASS_VAR,
-                    Object::array(Vec::new()),
-                ))
-            } else if descends("Hash") {
-                Some((
-                    crate::vm::native_methods::HASH_SUBCLASS_VAR,
-                    Object::Dict(Rc::new(std::cell::RefCell::new(indexmap::IndexMap::new()))),
-                ))
-            } else {
-                None
-            };
-            if let Some((slot, value)) = backing {
-                inst.borrow_mut().set_var(slot.to_string(), value);
-            }
-            return Ok(Answered(Object::Instance(inst)));
+            return Ok(Answered(self.allocate_instance(class_rc, position)?));
         }
         Ok(Unclaimed)
+    }
+
+    /// An instance of `class_rc` with nothing set up yet, the way the
+    /// core library's `allocate` makes one.
+    pub(crate) fn allocate_instance(
+        &mut self,
+        class_rc: &Rc<Class>,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        if class_rc.name() == "Class" {
+            let anon = Class::new("", None);
+            anon.set_class_var("__uninitialized__", Object::Bool(true));
+            return Ok(Object::Class(anon));
+        }
+        // An exception class allocates an exception, with no message
+        // given yet, which is what Marshal builds one back from.
+        if self.is_exception_class(class_rc) {
+            let made = Object::exception(class_rc.name(), String::new());
+            if let Object::Exception(details) = &made {
+                let mut details = details.borrow_mut();
+                details.class = Some(Rc::clone(class_rc));
+                details.message_given = false;
+            }
+            return Ok(made);
+        }
+        let inst = crate::object::Instance::new(Rc::clone(class_rc));
+        // A subclass of String, Array or Hash starts out holding an empty
+        // one, which is what its methods then work on.
+        let descends = |name: &str| {
+            class_rc.name() != name && crate::vm::method_invocation::descends_from(class_rc, name)
+        };
+        let backing = if descends("String") {
+            Some((
+                crate::vm::native_methods::STRING_SUBCLASS_VAR,
+                self.string_from_new_arguments(&[], position)?,
+            ))
+        } else if descends("Array") {
+            Some((
+                crate::vm::native_methods::ARRAY_SUBCLASS_VAR,
+                Object::array(Vec::new()),
+            ))
+        } else if descends("Hash") {
+            Some((
+                crate::vm::native_methods::HASH_SUBCLASS_VAR,
+                Object::Dict(Rc::new(std::cell::RefCell::new(indexmap::IndexMap::new()))),
+            ))
+        } else {
+            None
+        };
+        if let Some((slot, value)) = backing {
+            inst.borrow_mut().set_var(slot.to_string(), value);
+        }
+        Ok(Object::Instance(inst))
     }
 }

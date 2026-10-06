@@ -999,3 +999,125 @@ fn test_stdlib_libraries_ripper_events_no_parens_execution() {
     let output = run_example("stdlib_libraries/ripper_events_no_parens.rb");
     assert_eq!(output, RIPPER_EVENTS_OUTPUT);
 }
+
+/// The expected output of both `stdlib_libraries/ripper_grammar_forms` variants.
+const RIPPER_GRAMMAR_FORMS_OUTPUT: &str = concat!(
+    "[:program, [[:if, [:vcall, [:@ident, \"a\", [1, 3]]], [[:void_stmt], [:vcall, [:@ident, \"b\", [2, 1]]]], nil]]]\n",
+    "[:program, [[:if, [:vcall, [:@ident, \"a\", [1, 3]]], [[:void_stmt], [:vcall, [:@ident, \"b\", [1, 6]]]], nil]]]\n",
+    "[:program, [[:if, [:vcall, [:@ident, \"a\", [1, 3]]], [[:void_stmt], [:vcall, [:@ident, \"b\", [2, 3]]]], nil]]]\n",
+    "[:program, [[:if, [:vcall, [:@ident, \"a\", [1, 3]]], [[:vcall, [:@ident, \"b\", [3, 0]]]], nil]]]\n",
+    "[:program, [[:if, [:vcall, [:@ident, \"a\", [1, 3]]], [[:vcall, [:@ident, \"b\", [2, 0]]]], nil]]]\n",
+    "[:program, [[:if, [:vcall, [:@ident, \"a\", [1, 3]]], [[:vcall, [:@ident, \"b\", [2, 5]]]], nil]]]\n",
+    "[:program, [[:if, [:vcall, [:@ident, \"a\", [1, 3]]], [[:vcall, [:@ident, \"b\", [1, 11]]]], nil]]]\n",
+    "[:program, [[:while, [:vcall, [:@ident, \"a\", [1, 6]]], [[:void_stmt], [:vcall, [:@ident, \"b\", [2, 1]]]]]]]\n",
+    "[:program, [[:while, [:vcall, [:@ident, \"a\", [1, 6]]], [[:void_stmt], [:vcall, [:@ident, \"b\", [1, 9]]]]]]]\n",
+    "[:program, [[:until, [:vcall, [:@ident, \"a\", [1, 6]]], [[:vcall, [:@ident, \"b\", [3, 0]]]]]]]\n",
+    "[:program, [[:for, [:var_field, [:@ident, \"x\", [1, 4]]], [:vcall, [:@ident, \"a\", [1, 9]]], [[:void_stmt], [:vcall, [:@ident, \"b\", [2, 1]]]]]]]\n",
+    "[:program, [[:for, [:var_field, [:@ident, \"x\", [1, 4]]], [:vcall, [:@ident, \"a\", [1, 9]]], [[:vcall, [:@ident, \"b\", [1, 11]]]]]]]\n",
+    "[:program, [[:unless, [:vcall, [:@ident, \"a\", [1, 7]]], [[:void_stmt], [:vcall, [:@ident, \"b\", [2, 1]]]], nil]]]\n",
+    "[:program, [[:if, [:vcall, [:@ident, \"a\", [1, 3]]], [[:void_stmt]], [:elsif, [:vcall, [:@ident, \"c\", [2, 6]]], [[:void_stmt], [:vcall, [:@ident, \"b\", [3, 1]]]], nil]]]]\n",
+    "[:program, [[:case, [:vcall, [:@ident, \"a\", [1, 5]]], [:when, [[:@int, \"1\", [2, 5]]], [[:void_stmt], [:vcall, [:@ident, \"b\", [3, 1]]]], nil]]]]\n",
+    "[:program, [[:case, [:vcall, [:@ident, \"a\", [1, 5]]], [:when, [[:@int, \"1\", [2, 5]]], [[:void_stmt], [:vcall, [:@ident, \"b\", [2, 9]]]], nil]]]]\n",
+    "[:program, [[:begin, [:bodystmt, [[:void_stmt], [:vcall, [:@ident, \"a\", [2, 1]]]], [:rescue, nil, nil, [[:void_stmt], [:vcall, [:@ident, \"b\", [4, 1]]]], nil], nil, nil]]]]\n",
+    "[:program, [[:while, [:vcall, [:@ident, \"a\", [1, 6]]], [[:void_stmt], [:vcall, [:@ident, \"b\", [1, 12]]]]]]]\n",
+    "[:program, [[:method_add_arg, [:fcall, [:@ident, \"p\", [1, 0]]], [:arg_paren, [[:command_call, [:vcall, [:@ident, \"a\", [1, 2]]], [:@period, \".\", [1, 3]], [:@ident, \"b\", [1, 4]], [:args_add_block, [[:@int, \"1\", [1, 6]]], false]]]]]]]\n",
+    "[:program, [[:method_add_arg, [:fcall, [:@ident, \"p\", [1, 0]]], [:arg_paren, [[:command, [:@ident, \"bar\", [1, 2]], [:args_add_block, [[:array, [[:@int, \"2\", [1, 7]]]]], false]]]]]]]\n",
+    "[:program, [[:method_add_arg, [:fcall, [:@ident, \"p\", [1, 0]]], [:arg_paren, [[:command, [:@ident, \"gather\", [1, 2]], [:args_add_block, [[:paren, [[:void_stmt]]]], false]]]]]]]\n",
+    "[:program, [[:method_add_arg, [:fcall, [:@ident, \"p\", [1, 0]]], [:arg_paren, [[:command_call, [:vcall, [:@ident, \"a\", [1, 2]]], [:@period, \".\", [1, 3]], [:@ident, \"b\", [1, 4]], [:args_add_block, [[:@int, \"1\", [1, 6]], [:@int, \"2\", [1, 9]]], false]]]]]]]\n",
+    "[:program, [[:method_add_arg, [:fcall, [:@ident, \"p\", [1, 0]]], [:arg_paren, [[:command, [:@ident, \"foo\", [1, 2]], [:args_add_block, [[:@int, \"1\", [1, 6]]], false]]]]]]]\n",
+    "[:program, [[:method_add_arg, [:fcall, [:@ident, \"p\", [1, 0]]], [:arg_paren, [[:command, [:@ident, \"foo\", [1, 2]], [:args_add_block, [[:@int, \"1\", [1, 6]], [:@int, \"2\", [1, 9]]], false]]]]]]]\n",
+    "nil\n",
+    "nil\n",
+    "[:program, [[:method_add_block, [:call, [:method_add_block, [:method_add_arg, [:fcall, [:@ident, \"foo\", [1, 0]]], []], [:do_block, nil, [:bodystmt, [[:void_stmt]], nil, nil, nil]]], [:@period, \".\", [2, 3]], [:@ident, \"bar\", [2, 4]]], [:do_block, nil, [:bodystmt, [[:void_stmt]], nil, nil, nil]]]]]\n",
+    "[:program, [[:method_add_block, [:command_call, [:method_add_block, [:method_add_arg, [:fcall, [:@ident, \"foo\", [1, 0]]], []], [:do_block, nil, [:bodystmt, [[:void_stmt]], nil, nil, nil]]], [:@period, \".\", [1, 10]], [:@ident, \"bar\", [1, 11]], [:args_add_block, [[:@int, \"1\", [1, 15]]], false]], [:do_block, nil, [:bodystmt, [[:void_stmt]], nil, nil, nil]]]]]\n",
+    "nil\n",
+    "nil\n",
+    "[:program, [[:method_add_arg, [:fcall, [:@ident, \"foo\", [1, 0]]], [:arg_paren, [[:command_call, [:vcall, [:@ident, \"a\", [1, 4]]], [:@period, \".\", [1, 5]], [:@ident, \"b\", [1, 6]], [:args_add_block, [[:@int, \"1\", [1, 8]]], false]]]]]]]\n",
+    "[:program, [[:method_add_arg, [:fcall, [:@ident, \"p\", [1, 0]]], [:arg_paren, [[:command, [:@ident, \"foo\", [1, 2]], [:args_add_block, [[:bare_assoc_hash, [[:assoc_new, [:@label, \"a:\", [1, 6]], [:@int, \"1\", [1, 9]]]]]], false]]]]]]]\n",
+    "nil\n",
+    "[:program, [[:method_add_arg, [:fcall, [:@ident, \"p\", [1, 0]]], [:arg_paren, [:args_add_block, [[:paren, [[:method_add_block, [:command, [:@ident, \"foo\", [1, 3]], [:args_add_block, [[:@int, \"1\", [1, 7]]], false]], [:do_block, nil, [:bodystmt, [[:void_stmt]], nil, nil, nil]]]]]], false]]]]]\n",
+    "[:program, [[:method_add_arg, [:fcall, [:@ident, \"p\", [1, 0]]], [:arg_paren, [[:command, [:@ident, \"foo\", [1, 2]], [:args_add_block, [[:method_add_block, [:method_add_arg, [:fcall, [:@ident, \"bar\", [1, 6]]], []], [:brace_block, nil, [[:method_add_block, [:command, [:@ident, \"baz\", [1, 12]], [:args_add_block, [[:@int, \"1\", [1, 16]]], false]], [:do_block, nil, [:bodystmt, [[:void_stmt]], nil, nil, nil]]]]]]], false]]]]]]]\n",
+    "[:program, [[:method_add_block, [:command, [:@ident, \"foo\", [1, 0]], [:args_add_block, [[:@int, \"1\", [1, 4]]], false]], [:do_block, nil, [:bodystmt, [[:void_stmt]], nil, nil, nil]]]]]\n",
+    "[:program, [[:method_add_block, [:command_call, [:method_add_block, [:command, [:@ident, \"foo\", [1, 0]], [:args_add_block, [[:@int, \"1\", [1, 4]]], false]], [:do_block, nil, [:bodystmt, [[:void_stmt]], nil, nil, nil]]], [:@period, \".\", [1, 12]], [:@ident, \"bar\", [1, 13]], nil], [:do_block, nil, [:bodystmt, [[:void_stmt]], nil, nil, nil]]]]]\n",
+    "[:program, [[:call, [:method_add_block, [:command, [:@ident, \"foo\", [1, 0]], [:args_add_block, [[:@int, \"1\", [1, 4]]], false]], [:do_block, nil, [:bodystmt, [[:void_stmt]], nil, nil, nil]]], [:@period, \".\", [1, 12]], [:@ident, \"bar\", [1, 13]]]]]\n",
+    "[:program, [[:method_add_arg, [:call, [:method_add_block, [:command, [:@ident, \"foo\", [1, 0]], [:args_add_block, [[:@int, \"1\", [1, 4]]], false]], [:do_block, nil, [:bodystmt, [[:void_stmt]], nil, nil, nil]]], [:@period, \".\", [1, 12]], [:@ident, \"bar\", [1, 13]]], [:args_add_block, [[:@int, \"2\", [1, 17]]], false]]]]\n",
+    "[:program, [[:method_add_block, [:command_call, [:method_add_block, [:command, [:@ident, \"foo\", [1, 0]], [:args_add_block, [[:@int, \"1\", [1, 4]]], false]], [:do_block, nil, [:bodystmt, [[:void_stmt]], nil, nil, nil]]], [:@period, \".\", [1, 12]], [:@ident, \"bar\", [1, 13]], nil], [:brace_block, nil, [[:void_stmt]]]]]]\n",
+    "[:program, [[:method_add_block, [:command_call, [:method_add_block, [:command, [:@ident, \"foo\", [1, 0]], [:args_add_block, [[:@int, \"1\", [1, 4]]], false]], [:do_block, nil, [:bodystmt, [[:void_stmt]], nil, nil, nil]]], [:@period, \".\", [1, 12]], [:@ident, \"bar\", [1, 13]], [:arg_paren, [:args_add_block, [[:@int, \"2\", [1, 17]]], false]]], [:do_block, nil, [:bodystmt, [[:void_stmt]], nil, nil, nil]]]]]\n",
+    "[:program, [[:def, [:@ident, \"m\", [1, 4]], [:params, nil, nil, nil, nil, nil, nil, nil], [:bodystmt, [[:sclass, [:var_ref, [:@kw, \"self\", [1, 16]]], [:bodystmt, [[:return, [:args_add_block, [[:@int, \"1\", [1, 29]]], false]]], nil, nil, nil]]], nil, nil, nil]]]]\n",
+    "nil\n",
+    "[:program, [[:def, [:@ident, \"m\", [1, 4]], [:params, nil, nil, nil, nil, nil, nil, nil], [:bodystmt, [[:method_add_block, [:method_add_arg, [:fcall, [:@ident, \"foo\", [1, 7]]], []], [:brace_block, nil, [[:sclass, [:var_ref, [:@kw, \"self\", [1, 22]]], [:bodystmt, [[:return, [:args_add_block, [[:@int, \"1\", [1, 35]]], false]]], nil, nil, nil]]]]]], nil, nil, nil]]]]\n",
+    "[:program, [[:method_add_block, [:command_call, [:method_add_block, [:command_call, [:var_ref, [:@const, \"TracePoint\", [1, 0]]], [:@period, \".\", [1, 10]], [:@ident, \"new\", [1, 11]], [:args_add_block, [[:symbol_literal, [:symbol, [:@ident, \"call\", [1, 16]]]]], false]], [:do_block, [:block_var, [:params, [[:@ident, \"tp\", [1, 25]]], nil, nil, nil, nil, nil, nil], false], [:bodystmt, [[:void_stmt]], nil, nil, nil]]], [:@period, \".\", [2, 3]], [:@ident, \"enable\", [2, 4]], nil], [:do_block, nil, [:bodystmt, [[:void_stmt]], nil, nil, nil]]]]]\n",
+    "[:program, [[:call, [:method_add_block, [:command_call, [:method_add_block, [:command_call, [:vcall, [:@ident, \"a\", [1, 0]]], [:@period, \".\", [1, 1]], [:@ident, \"b\", [1, 2]], [:args_add_block, [[:@int, \"1\", [1, 4]]], false]], [:do_block, nil, [:bodystmt, [[:void_stmt]], nil, nil, nil]]], [:@period, \".\", [1, 12]], [:@ident, \"c\", [1, 13]], nil], [:do_block, nil, [:bodystmt, [[:void_stmt]], nil, nil, nil]]], [:@period, \".\", [1, 21]], [:@ident, \"d\", [1, 22]]]]]\n",
+    "[:program, [[:method_add_arg, [:call, [:method_add_block, [:command, [:@ident, \"foo\", [1, 0]], [:args_add_block, [[:@int, \"1\", [1, 4]]], false]], [:do_block, nil, [:bodystmt, [[:void_stmt]], nil, nil, nil]]], [:@period, \".\", [1, 12]], [:@ident, \"bar\", [1, 13]]], [:arg_paren, [:args_add_block, [[:@int, \"2\", [1, 17]]], false]]]]]\n",
+    "[:program, [[:call, [:call, [:method_add_block, [:command, [:@ident, \"foo\", [1, 0]], [:args_add_block, [[:@int, \"1\", [1, 4]]], false]], [:do_block, nil, [:bodystmt, [[:void_stmt]], nil, nil, nil]]], [:@period, \".\", [1, 12]], [:@ident, \"bar\", [1, 13]]], [:@period, \".\", [1, 16]], [:@ident, \"baz\", [1, 17]]]]]\n",
+);
+
+#[test]
+fn test_stdlib_libraries_ripper_grammar_forms_execution() {
+    let output = run_example("stdlib_libraries/ripper_grammar_forms.rb");
+    assert_eq!(output, RIPPER_GRAMMAR_FORMS_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_libraries_ripper_grammar_forms_no_parens_execution() {
+    let output = run_example("stdlib_libraries/ripper_grammar_forms_no_parens.rb");
+    assert_eq!(output, RIPPER_GRAMMAR_FORMS_OUTPUT);
+}
+
+const FORWARDING: &str = concat!(
+    "2\n",
+    "3\n",
+    "5\n",
+    "2\n",
+    "3\n",
+    "\"5\"\n",
+    "[10, 18]\n",
+    "false\n",
+    "Line\n",
+    "true\n",
+    "true\n",
+    "-1\n",
+    ":count\n",
+    "[:min, :max]\n",
+    "tests/_examples/stdlib_libraries/forwarding.rb:49: warning: Secretive#hidden at tests/_examples/stdlib_libraries/forwarding.rb:47 forwarding to private method Secretive::Inner#hidden\n",
+    ":reached\n",
+    "[\"a\"]\n",
+    "through stdout\n",
+    "\"1.4.0\"\n",
+    "nil\n",
+);
+
+const FORWARDING_NO_PARENS: &str = concat!(
+    "2\n",
+    "3\n",
+    "5\n",
+    "2\n",
+    "3\n",
+    "\"5\"\n",
+    "[10, 18]\n",
+    "false\n",
+    "Line\n",
+    "true\n",
+    "true\n",
+    "-1\n",
+    ":count\n",
+    "[:min, :max]\n",
+    "tests/_examples/stdlib_libraries/forwarding_no_parens.rb:49: warning: Secretive#hidden at tests/_examples/stdlib_libraries/forwarding_no_parens.rb:47 forwarding to private method Secretive::Inner#hidden\n",
+    ":reached\n",
+    "[\"a\"]\n",
+    "through stdout\n",
+    "\"1.4.0\"\n",
+    "nil\n",
+);
+
+#[test]
+fn test_stdlib_libraries_forwarding_execution() {
+    let output = run_example("stdlib_libraries/forwarding.rb");
+    assert_eq!(output, FORWARDING);
+}
+
+#[test]
+fn test_stdlib_libraries_forwarding_no_parens_execution() {
+    let output = run_example("stdlib_libraries/forwarding_no_parens.rb");
+    assert_eq!(output, FORWARDING_NO_PARENS);
+}
