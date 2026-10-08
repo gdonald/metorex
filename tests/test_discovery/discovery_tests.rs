@@ -204,14 +204,11 @@ fn run_discovery_runtime_error_detected() {
 }
 
 #[test]
-fn test_file_result_has_duration() {
+fn test_file_result_durations_fit_within_the_total() {
     let dir = Path::new(EXAMPLES_DIR).join("test_discovery");
     let result = run_test_discovery(&dir).unwrap();
-    assert!(result.total_duration_ms < 10000); // should complete quickly
-    for r in &result.results {
-        // duration should be a reasonable value (not overflow or negative)
-        assert!(r.duration_ms < 10000);
-    }
+    let summed: u128 = result.results.iter().map(|file| file.duration_ms).sum();
+    assert!(summed <= result.total_duration_ms);
 }
 
 // ── test_discovery on non-directory (test_discovery.rs lines 75-77) ─────────

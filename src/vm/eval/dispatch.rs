@@ -11,6 +11,94 @@ use crate::vm::core::VirtualMachine;
 use crate::vm::utils::{is_truthy, position_to_location};
 
 impl VirtualMachine {
+    /// The Block a block or lambda literal makes, closing over the variables
+    /// in scope where it was written. Kept out of `evaluate_expression_inner`,
+    /// whose frame is on the stack once for every expression a nested call is
+    /// in the middle of.
+    #[inline(never)]
+    fn evaluate_block_literal(&mut self, expression: &Expression) -> Result<Object, MetorexError> {
+        let Expression::Lambda {
+            parameters,
+            parameter_defaults,
+            body,
+            captured_vars,
+            outer_locals,
+            is_lambda,
+            position,
+            ..
+        } = expression
+        else {
+            unreachable!("only a Lambda expression is handed here")
+        };
+        let mut captured = indexmap::IndexMap::new();
+        if let Some(names) = captured_vars {
+            if names.is_empty() {
+                // Empty vec signals automatic capture of all current scope variables.
+                // This is used for true lambdas (lambda do ... end, arrow syntax).
+                captured = self.environment().current_scope_var_refs();
+            } else {
+                // Explicit list of variables to capture
+                for name in names {
+                    if let Some(value_ref) = self.environment().get_ref(name) {
+                        captured.insert(name.clone(), value_ref);
+                    }
+                }
+            }
+        }
+        // If captured_vars is None, capture all current scope variables
+        // so blocks work correctly across method boundaries (which use
+        // isolated scopes).
+        if captured.is_empty() && captured_vars.is_none() {
+            captured = self.environment().current_scope_var_refs();
+        }
+        let mut block = BlockStatement::with_def_scope(
+            parameters.clone(),
+            parameter_defaults.clone(),
+            body.clone(),
+            captured,
+            self.def_scope_stack.clone(),
+            self.enclosing_method_names(),
+            *is_lambda,
+        );
+        block.defining_owner = self.enclosing_method_owner().and_then(|(owner, _)| owner);
+        block.outer_locals = Rc::new(outer_locals.clone());
+        // The block's body belongs to the file it was written in,
+        // wherever it is later called from.
+        // A block the core library opens stands in for Ruby's C code,
+        // which names no source location at all.
+        if !position.prelude {
+            // The main script is named the way it was given, as
+            // `__FILE__` names it.
+            block.source_file = self.current_source_file.clone().or_else(|| {
+                self.reported_current_file()
+                    .map(|path| path.display().to_string())
+            });
+            // Where the block was opened, which is the line
+            // `source_location` names however far down the body starts.
+            block.opened_at = Some(position.line);
+            block.opened_column = Some(position.column.saturating_sub(1));
+            if let Some(file) = block.source_file.clone() {
+                let mut within = self
+                    .running_code
+                    .last()
+                    .map(|running| running.within.as_ref().clone())
+                    .unwrap_or_default();
+                within.push((file, position.line));
+                block.written_within = Rc::new(within);
+            }
+        }
+        // The scopes open here are what the body reads its own
+        // lexical nesting as, whatever scope it is later called from.
+        block.captured_nesting = match self.method_nesting_stack.last() {
+            Some(captured) => captured.clone(),
+            None => self.snapshot_lexical_nesting(),
+        };
+        block.home_frame = self.lexical_home_frame.unwrap_or(self.current_method_frame);
+        block.written_in = Some(self.enclosing_scope_label());
+        block.written_depth = Some(self.block_nesting_depth());
+        Ok(Object::Block(Rc::new(block)))
+    }
+
     /// Dispatch over an expression variant. Each branch is small; large branches
     /// delegate to a helper in `vm/eval/`.
     pub(crate) fn evaluate_expression_inner(
@@ -243,84 +331,7 @@ impl VirtualMachine {
             }
 
             // ── Closures, grouping ──────────────────────────────────────────
-            Expression::Lambda {
-                parameters,
-                parameter_defaults,
-                body,
-                captured_vars,
-                outer_locals,
-                is_lambda,
-                position,
-                ..
-            } => {
-                let mut captured = indexmap::IndexMap::new();
-                if let Some(names) = captured_vars {
-                    if names.is_empty() {
-                        // Empty vec signals automatic capture of all current scope variables.
-                        // This is used for true lambdas (lambda do ... end, arrow syntax).
-                        captured = self.environment().current_scope_var_refs();
-                    } else {
-                        // Explicit list of variables to capture
-                        for name in names {
-                            if let Some(value_ref) = self.environment().get_ref(name) {
-                                captured.insert(name.clone(), value_ref);
-                            }
-                        }
-                    }
-                }
-                // If captured_vars is None, capture all current scope variables
-                // so blocks work correctly across method boundaries (which use
-                // isolated scopes).
-                if captured.is_empty() && captured_vars.is_none() {
-                    captured = self.environment().current_scope_var_refs();
-                }
-                let mut block = BlockStatement::with_def_scope(
-                    parameters.clone(),
-                    parameter_defaults.clone(),
-                    body.clone(),
-                    captured,
-                    self.def_scope_stack.clone(),
-                    self.enclosing_method_names(),
-                    *is_lambda,
-                );
-                block.defining_owner = self.enclosing_method_owner().and_then(|(owner, _)| owner);
-                block.outer_locals = Rc::new(outer_locals.clone());
-                // The block's body belongs to the file it was written in,
-                // wherever it is later called from.
-                // A block the core library opens stands in for Ruby's C code,
-                // which names no source location at all.
-                if !position.prelude {
-                    // The main script is named the way it was given, as
-                    // `__FILE__` names it.
-                    block.source_file = self.current_source_file.clone().or_else(|| {
-                        self.reported_current_file()
-                            .map(|path| path.display().to_string())
-                    });
-                    // Where the block was opened, which is the line
-                    // `source_location` names however far down the body starts.
-                    block.opened_at = Some(position.line);
-                    block.opened_column = Some(position.column.saturating_sub(1));
-                    if let Some(file) = block.source_file.clone() {
-                        let mut within = self
-                            .running_code
-                            .last()
-                            .map(|running| running.within.as_ref().clone())
-                            .unwrap_or_default();
-                        within.push((file, position.line));
-                        block.written_within = Rc::new(within);
-                    }
-                }
-                // The scopes open here are what the body reads its own
-                // lexical nesting as, whatever scope it is later called from.
-                block.captured_nesting = match self.method_nesting_stack.last() {
-                    Some(captured) => captured.clone(),
-                    None => self.snapshot_lexical_nesting(),
-                };
-                block.home_frame = self.lexical_home_frame.unwrap_or(self.current_method_frame);
-                block.written_in = Some(self.enclosing_scope_label());
-                block.written_depth = Some(self.block_nesting_depth());
-                Ok(Object::Block(Rc::new(block)))
-            }
+            Expression::Lambda { .. } => self.evaluate_block_literal(expression),
             Expression::Grouped { expression, .. } => self.evaluate_expression(expression),
 
             // ── Operators ───────────────────────────────────────────────────

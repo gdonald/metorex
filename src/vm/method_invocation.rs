@@ -409,40 +409,8 @@ impl VirtualMachine {
             return Ok(converted);
         }
 
-        // A subclass of String holds its characters in an instance variable,
-        // since a plain String is a primitive rather than an instance.
         if descends_from(&class, "String") {
-            if class.name() == "String" {
-                let spelled = self.string_from_new_arguments(&arguments, position)?;
-                self.pending_block.take();
-                return Ok(spelled);
-            }
-            // A subclass that writes its own `initialize` decides what the
-            // characters are, and what it was handed need not be a String,
-            // so it starts with none. One that does not takes the characters
-            // it was built with.
-            let defines_initialize = class.find_method("initialize").is_some();
-            // The characters it starts with are what `String.new` makes of
-            // nothing, which are bytes rather than text.
-            let starting = if defines_initialize {
-                self.string_from_new_arguments(&[], position)?
-            } else {
-                self.string_from_new_arguments(&arguments, position)?
-            };
-            let instance = crate::object::Instance::new(Rc::clone(&class));
-            instance.borrow_mut().set_var(
-                crate::vm::native_methods::STRING_SUBCLASS_VAR.to_string(),
-                starting,
-            );
-            let made = Object::Instance(instance);
-            if !defines_initialize {
-                self.pending_block.take();
-                return Ok(made);
-            }
-            if let Some((owner, method)) = self.lookup_method(&made, "initialize") {
-                self.invoke_method(owner, method, made.clone(), arguments.clone(), position)?;
-            }
-            return Ok(made);
+            return self.build_string(class, arguments, position);
         }
 
         // `Range.new(first, last, exclusive)` builds the same value a literal
@@ -736,11 +704,7 @@ impl VirtualMachine {
             let exception = Object::exception(class.name(), message);
             // A NameError keeps the local variables of the code that built
             // it, which `#local_variables` answers.
-            let creating_frame_locals = if descends_from(&class, "NameError") {
-                self.local_variable_names(Vec::new(), position).ok()
-            } else {
-                None
-            };
+            let creating_frame_locals = self.name_error_locals(&class, position);
             // An anonymous class has no name to look up later, so the class
             // itself travels with the exception.
             if let Object::Exception(details) = &exception {
@@ -849,6 +813,60 @@ impl VirtualMachine {
     }
 
     /// Whether `class` is SystemCallError or one of its Errno subclasses.
+    /// A String, or an instance of a subclass of String, which holds its
+    /// characters in an instance variable since a plain String is a
+    /// primitive rather than an instance. Kept out of `build_from_class`, whose
+    /// frame is on the stack once for every object built in a nested call.
+    #[inline(never)]
+    fn build_string(
+        &mut self,
+        class: Rc<Class>,
+        arguments: Vec<Object>,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        if class.name() == "String" {
+            let spelled = self.string_from_new_arguments(&arguments, position)?;
+            self.pending_block.take();
+            return Ok(spelled);
+        }
+        // A subclass that writes its own `initialize` decides what the
+        // characters are, and what it was handed need not be a String,
+        // so it starts with none. One that does not takes the characters
+        // it was built with.
+        let defines_initialize = class.find_method("initialize").is_some();
+        // The characters it starts with are what `String.new` makes of
+        // nothing, which are bytes rather than text.
+        let starting = if defines_initialize {
+            self.string_from_new_arguments(&[], position)?
+        } else {
+            self.string_from_new_arguments(&arguments, position)?
+        };
+        let instance = crate::object::Instance::new(Rc::clone(&class));
+        instance.borrow_mut().set_var(
+            crate::vm::native_methods::STRING_SUBCLASS_VAR.to_string(),
+            starting,
+        );
+        let made = Object::Instance(instance);
+        if !defines_initialize {
+            self.pending_block.take();
+            return Ok(made);
+        }
+        if let Some((owner, method)) = self.lookup_method(&made, "initialize") {
+            self.invoke_method(owner, method, made.clone(), arguments.clone(), position)?;
+        }
+        Ok(made)
+    }
+
+    /// The local variables of the code building an instance of `class`, when
+    /// it is a NameError, which keeps them for `#local_variables`.
+    #[inline(never)]
+    fn name_error_locals(&mut self, class: &Rc<Class>, position: Position) -> Option<Object> {
+        if !descends_from(class, "NameError") {
+            return None;
+        }
+        self.local_variable_names(Vec::new(), position).ok()
+    }
+
     fn is_system_call_error(class: &Rc<Class>) -> bool {
         let mut cursor = Some(Rc::clone(class));
         while let Some(current) = cursor {

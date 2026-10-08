@@ -996,7 +996,7 @@ const POPEN_OPTIONS_OUTPUT: &str = concat!(
     "\"foo\\n\"\n",
     "true\n",
     "\"logged\"\n",
-    "\"metorex: No such file or directory -- does_not_exist (LoadError)\\n\"\n"
+    "\"No such file or directory -- does_not_exist (LoadError)\\n\"\n"
 );
 
 #[test]
