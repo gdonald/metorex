@@ -82,7 +82,7 @@ impl VirtualMachine {
                         })
                         .unwrap_or(Object::Nil);
                     let binding = crate::object::Binding::with_receiver(
-                        block.captured_vars().clone(),
+                        block.captured_vars().clone().into_iter().collect(),
                         receiver,
                     );
                     return Ok(Some(Object::Binding(Rc::new(binding))));

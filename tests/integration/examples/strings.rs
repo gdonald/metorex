@@ -485,3 +485,24 @@ fn test_strings_multibyte_byteslices_parens_execution() {
     let output = run_example("strings/multibyte_byteslices_parens.rb");
     assert_eq!(output, MULTIBYTE_BYTESLICES_OUTPUT);
 }
+
+const STRING_SUBCLASS_INITIALIZE: &str = concat!(
+    "\"Crate\"\n",
+    "\"Shipping::\"\n",
+    "\"Shipping::Crate\"\n",
+    "QualifiedName\n",
+    "true\n",
+    "2\n",
+);
+
+#[test]
+fn test_strings_string_subclass_initialize_execution() {
+    let output = run_example("strings/string_subclass_initialize.rb");
+    assert_eq!(output, STRING_SUBCLASS_INITIALIZE);
+}
+
+#[test]
+fn test_strings_string_subclass_initialize_no_parens_execution() {
+    let output = run_example("strings/string_subclass_initialize_no_parens.rb");
+    assert_eq!(output, STRING_SUBCLASS_INITIALIZE);
+}

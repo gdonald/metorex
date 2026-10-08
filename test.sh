@@ -68,14 +68,19 @@ run_linux() {
   if [ "$arch" = "$(host_arch)" ]; then
     # One link per CPU runs the container out of memory once there are more
     # instrumented test binaries than its memory holds at once, so the build
-    # is held to fewer jobs.
+    # is held to fewer jobs. The vendored Ruby suite under ruby/ is left out
+    # of the measurement, since it is not metorex's own code.
     step "linux/$arch: coverage" scripts/linux.sh \
-      cargo tarpaulin --all-features --workspace --timeout 120 --jobs 8 --out xml
+      cargo llvm-cov --all-features --jobs 8 \
+        --ignore-filename-regex 'ruby/' \
+        --cobertura --output-path cobertura.xml
   else
     # Coverage cannot run under emulation, so what is checked here is the
     # part that broke CI before: that the tests build the way it builds them.
+    # cargo-llvm-cov 0.9 made `--no-run` a report-only flag, so the build
+    # takes its environment from `show-env` and stops short of running.
     step "linux/$arch: coverage builds" scripts/linux.sh \
-      env RUSTFLAGS="--cfg=tarpaulin -Clink-dead-code" cargo test --no-run
+      bash -c 'eval "$(cargo llvm-cov show-env --sh)" && cargo test --all-features --no-run'
   fi
 }
 

@@ -412,21 +412,22 @@ impl VirtualMachine {
         // A subclass of String holds its characters in an instance variable,
         // since a plain String is a primitive rather than an instance.
         if descends_from(&class, "String") {
-            let spelled = self.string_from_new_arguments(&arguments, position)?;
             if class.name() == "String" {
+                let spelled = self.string_from_new_arguments(&arguments, position)?;
                 self.pending_block.take();
                 return Ok(spelled);
             }
             // A subclass that writes its own `initialize` decides what the
-            // characters are, so it starts with none; one that does not takes
-            // the characters it was built with.
+            // characters are, and what it was handed need not be a String,
+            // so it starts with none. One that does not takes the characters
+            // it was built with.
             let defines_initialize = class.find_method("initialize").is_some();
             // The characters it starts with are what `String.new` makes of
             // nothing, which are bytes rather than text.
             let starting = if defines_initialize {
                 self.string_from_new_arguments(&[], position)?
             } else {
-                spelled
+                self.string_from_new_arguments(&arguments, position)?
             };
             let instance = crate::object::Instance::new(Rc::clone(&class));
             instance.borrow_mut().set_var(
@@ -670,6 +671,7 @@ impl VirtualMachine {
             let mut named_key = None;
             let mut named_name = None;
             let mut named_args = None;
+            let mut named_private_call = None;
             let mut arguments = arguments;
             if let Some(Object::Dict(entries)) = arguments.last() {
                 let entries = entries.borrow();
@@ -701,12 +703,15 @@ impl VirtualMachine {
                         rendered => rendered.to_string(),
                     },
                 }
-            } else if (2..=3).contains(&arguments.len()) && descends_from(&class, "NameError") {
+            } else if ((2..=3).contains(&arguments.len()) && descends_from(&class, "NameError"))
+                || (arguments.len() == 4 && descends_from(&class, "NoMethodError"))
+            {
                 // `NameError.new(message, name)` records the name the lookup
                 // was for, which `#name` answers as the object given, and
                 // `NoMethodError.new(message, name, args)` its arguments too.
                 named_name = Some(arguments[1].clone());
                 named_args = arguments.get(2).cloned();
+                named_private_call = arguments.get(3).map(|held| Object::Bool(held.is_truthy()));
                 match &arguments[0] {
                     Object::String(text) => text.as_str().to_string(),
                     other => self.coerce_name_argument(other, position)?,
@@ -729,6 +734,13 @@ impl VirtualMachine {
                 ));
             };
             let exception = Object::exception(class.name(), message);
+            // A NameError keeps the local variables of the code that built
+            // it, which `#local_variables` answers.
+            let creating_frame_locals = if descends_from(&class, "NameError") {
+                self.local_variable_names(Vec::new(), position).ok()
+            } else {
+                None
+            };
             // An anonymous class has no name to look up later, so the class
             // itself travels with the exception.
             if let Object::Exception(details) = &exception {
@@ -766,6 +778,16 @@ impl VirtualMachine {
                     details
                         .instance_vars
                         .insert(crate::vm::NO_METHOD_ARGS_KEY.to_string(), value);
+                }
+                if let Some(locals) = creating_frame_locals {
+                    details
+                        .instance_vars
+                        .insert(crate::vm::LOCAL_VARIABLES_KEY.to_string(), locals);
+                }
+                if let Some(value) = named_private_call {
+                    details
+                        .instance_vars
+                        .insert(crate::vm::PRIVATE_CALL_KEY.to_string(), value);
                 }
             }
             Self::record_signal_state(&class, &exception);

@@ -4,7 +4,6 @@
 use indexmap::IndexMap;
 use metorex::object::{BlockStatement, Class, Exception, Instance, Method, Object, ObjectHash};
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 // ============================================================================
@@ -52,7 +51,11 @@ fn test_create_complex_types() {
     let method_obj = Object::Method(method);
 
     // Block
-    let block = Rc::new(BlockStatement::new(vec![], vec![], HashMap::new()));
+    let block = Rc::new(BlockStatement::new(
+        vec![],
+        vec![],
+        indexmap::IndexMap::new(),
+    ));
     let block_obj = Object::Block(block);
 
     // Exception
@@ -371,7 +374,11 @@ fn test_non_hashable_types() {
     assert!(method_obj.hash().is_none());
 
     // Blocks should not be hashable
-    let block = Rc::new(BlockStatement::new(vec![], vec![], HashMap::new()));
+    let block = Rc::new(BlockStatement::new(
+        vec![],
+        vec![],
+        indexmap::IndexMap::new(),
+    ));
     let block_obj = Object::Block(block);
     assert!(block_obj.hash().is_none());
 

@@ -88,7 +88,8 @@ See [ROADMAP.md](ROADMAP.md) for detailed implementation plans.
 - **A chain with the dot leading the line**: newlines and comments may sit between a call and the dot that continues it
 - **Safe navigation**: `a&.b` answers nil for a nil receiver without running the method
 - **Quoted symbols in `alias`**: `alias :'new' :'old'` names either method that way
-- **Libraries metorex carries**: `require` finds `expect`, `fiber`, `open-uri`, `base64`, `shellwords`, `abbrev`, `singleton`, `observer`, `securerandom`, `digest`, `delegate`, `weakref`, `logger`, `monitor`, `tmpdir`, `tempfile`, `bigdecimal`, `zlib`, `erb`, `open3`, `syslog`, `openssl`, `cgi`, `socket`, `net/http`, `net/ftp`, `English`, `io/nonblock`, `yaml`, `rbconfig`, `rbconfig/sizeof`, `resolv`, `optparse`, `rubygems`, `mkmf`, `random/formatter`, `json`, `objspace`, `objspace/trace`, `ripper`, `irb/color`, and `stringio` without a directory on the load path
+- **Libraries metorex carries**: `require` finds `expect`, `fiber`, `open-uri`, `base64`, `shellwords`, `abbrev`, `singleton`, `observer`, `securerandom`, `digest`, `delegate`, `weakref`, `logger`, `monitor`, `tmpdir`, `tempfile`, `bigdecimal`, `zlib`, `erb`, `open3`, `syslog`, `openssl`, `cgi`, `socket`, `net/http`, `net/ftp`, `English`, `io/nonblock`, `yaml`, `rbconfig`, `rbconfig/sizeof`, `resolv`, `optparse`, `rubygems`, `mkmf`, `random/formatter`, `json`, `objspace`, `objspace/trace`, `ripper`, `irb/color`, `did_you_mean`, and `stringio` without a directory on the load path
+- **did_you_mean**: the report of a NameError, NoMethodError, KeyError, LoadError or NoMatchingPatternKeyError ends with what the misspelled name may have meant, as MRI's does, from the locals, methods, constants, Hash keys and loadable features that were there. `DidYouMean` loads at startup and `--disable=did_you_mean` leaves it out. `detailed_message(did_you_mean: false)` leaves the suggestion off, `#corrections` lists them, and `DidYouMean::SpellChecker`, `TreeSpellChecker` and `Formatter` are there to call. A NameError answers the local variables in scope where it was raised, and a NoMethodError whether the call named no receiver or `self`
 - **Percent literals with any delimiter**: `%!text!`, `%@text@`, and `%_text_` all read as strings, they fill in their `#{}` parts, and `%x(...)` runs its text as a command. A `%` that follows a value still divides
 - **`not` with parentheses**: `not(x)` takes what the parentheses hold, so a call may be chained onto the answer
 - **A group with a trailing modifier**: `(123 if true)` and `(count += 1 until done)` answer what the modifier left
@@ -1176,11 +1177,12 @@ cargo run -- my_script.rb
 # Discover and run test files in a directory
 cargo run -- --test tests/
 
-# Install code coverage tool (required for cargo tarpaulin)
-cargo install cargo-tarpaulin
+# Install the coverage tool (needs the llvm-tools component)
+rustup component add llvm-tools-preview
+cargo install cargo-llvm-cov
 
-# Run code coverage
-cargo tarpaulin --out Stdout
+# Run code coverage (the vendored Ruby suite under ruby/ is left out)
+cargo llvm-cov --ignore-filename-regex 'ruby/'
 
 # Run Ruby spec suite (requires submodules)
 scripts/run_ruby_spec.sh

@@ -50,6 +50,13 @@ impl VirtualMachine {
             "srand" => self.seed_generator(arguments, position),
             "sleep" => self.sleep_for(arguments, position),
             "__timeout_open__" => self.open_timeout(arguments, position),
+            // The names `require` finds a library metorex carries under,
+            // which did_you_mean suggests from alongside the load path.
+            "__embedded_library_names__" => Ok(Object::array(
+                crate::vm::stdlib::embedded_library_names()
+                    .map(|name| Object::string(name.to_string()))
+                    .collect(),
+            )),
             // A class whose instances cannot be made, as C's
             // `rb_undef_alloc_func` says of one.
             "__undefine_allocator__" => {

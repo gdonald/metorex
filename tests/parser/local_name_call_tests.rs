@@ -39,7 +39,7 @@ fn a_spaced_parenthesis_after_a_local_name_opens_the_first_argument() {
 fn a_pending_autoload_in_an_enclosing_scope_comes_ahead_of_an_outer_constant() {
     assert_eq!(
         inspected(
-            "module Outer\n  class Item; def self.kind = :outer; end\n  module Inner\n    autoload :Item, '/nonexistent/item_file_for_this_test.rb'\n    def self.kind = (Item.kind rescue $!.class)\n  end\nend\nOuter::Inner.kind"
+            "module Outer\n  class Item; def self.kind = :outer; end\n  module Inner\n    autoload :Item, '/nonexistent/item_file_for_this_test.rb'\n    def self.kind\n      Item.kind\n    rescue LoadError => error\n      error.class\n    end\n  end\nend\nOuter::Inner.kind"
         ),
         "LoadError"
     );

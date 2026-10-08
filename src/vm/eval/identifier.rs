@@ -23,6 +23,35 @@ impl VirtualMachine {
         }
     }
 
+    /// The NameError for a bare name nothing answers. It carries the object
+    /// the name was looked up on, `main` included, and the local variables in
+    /// scope, which `#receiver` and `#local_variables` answer.
+    #[inline(never)]
+    pub(crate) fn undefined_name_error(&mut self, name: &str, position: Position) -> MetorexError {
+        let error = undefined_variable_error(name, self.name_error_receiver(name), position);
+        if name.starts_with(char::is_uppercase) {
+            return error;
+        }
+        let locals = self.local_variable_names(Vec::new(), position).ok();
+        let looked_up_on = self.eval_self(position).ok();
+        if let MetorexError::UncaughtException {
+            exception: Object::Exception(details),
+            ..
+        } = &error
+        {
+            let mut details = details.borrow_mut();
+            if details.receiver.is_none() {
+                details.receiver = looked_up_on.map(Box::new);
+            }
+            if let Some(locals) = locals {
+                details
+                    .instance_vars
+                    .insert(crate::vm::LOCAL_VARIABLES_KEY.to_string(), locals);
+            }
+        }
+        error
+    }
+
     /// A NameError for a constant nothing defines, raised on `Object`.
     pub(crate) fn constant_name_error(&self, message: &str, name: &str) -> Object {
         let exception = Object::exception("NameError", message);
@@ -245,11 +274,7 @@ impl VirtualMachine {
             {
                 return self.invoke_method(owner, method, main, vec![], position);
             }
-            return Err(undefined_variable_error(
-                name,
-                self.name_error_receiver(name),
-                position,
-            ));
+            return Err(self.undefined_name_error(name, position));
         };
 
         // Constant lookup: bare `NAME` inside a class/method resolves to the
@@ -434,11 +459,7 @@ impl VirtualMachine {
         {
             return self.dispatch_const_missing(&written_in, name, position);
         }
-        Err(undefined_variable_error(
-            name,
-            self.name_error_receiver(name),
-            position,
-        ))
+        Err(self.undefined_name_error(name, position))
     }
 }
 

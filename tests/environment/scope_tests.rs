@@ -355,7 +355,7 @@ fn test_scope_default() {
 
 /// A scope a block runs in, reading through the names the block closed over.
 fn scope_with_captured(name: &str, cell: Rc<RefCell<Object>>) -> Scope {
-    let mut captured = std::collections::HashMap::new();
+    let mut captured = indexmap::IndexMap::new();
     captured.insert(name.to_string(), cell);
     let mut scope = Scope::new();
     scope.attach_captured(Rc::new(captured));

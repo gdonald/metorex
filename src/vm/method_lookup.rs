@@ -560,6 +560,7 @@ impl VirtualMachine {
                         || (matches!(receiver, Object::Exception(_))
                             && crate::vm::native_methods::EVERY_EXCEPTION_METHOD
                                 .contains(&name))
+                        || self.exception_answers_natively(receiver, name)
                         || crate::vm::native_methods::is_native_kernel_method(name)
                         || self.answers_natively(receiver, name)
                         || self.object_table_method(name).is_some()
@@ -696,6 +697,7 @@ impl VirtualMachine {
             && !matches!(receiver, Object::Class(_) | Object::Module(_))
             && self.visibility_owner(receiver, name).is_none()
             && !self.answers_natively(receiver, name)
+            && !self.exception_answers_natively(receiver, name)
         {
             return true;
         }
@@ -1104,6 +1106,25 @@ impl VirtualMachine {
                     && !self.object_method_hides_native(receiver, method_name, &method)
                 {
                     return Some((class, method));
+                }
+                // An exception the interpreter raised carries only its class
+                // name, and the class that name resolves to holds what a
+                // program reopened or prepended there.
+                if let Object::Exception(details) = receiver
+                    && details.borrow().class.is_none()
+                {
+                    let exception_type = details.borrow().exception_type.clone();
+                    let named = match self.globals().get(&exception_type) {
+                        Some(class @ Object::Class(_)) => Some(class),
+                        _ => self.resolve_qualified_constant(&exception_type),
+                    };
+                    if let Some(Object::Class(class)) = named
+                        && let Some(method) = class.find_method(method_name)
+                        && !method.body.is_empty()
+                        && !self.object_method_hides_native(receiver, method_name, &method)
+                    {
+                        return Some((class, method));
+                    }
                 }
                 let class = self.builtins().class_of(receiver);
                 class

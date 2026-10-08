@@ -69,7 +69,7 @@ Metorex is organized as a single Rust crate with the following structure:
 - **Run `scripts/misplaced_tests.sh` to verify test placement**
 - **Code coverage should be 100%** - measure with:
   ```bash
-  cargo tarpaulin --out Stdout
+  cargo llvm-cov --ignore-filename-regex 'ruby/'
   ```
 - **All tests must pass before submitting a pull request**
 

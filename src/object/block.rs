@@ -7,7 +7,6 @@ use crate::error::MetorexError;
 use crate::lexer::Position;
 use crate::vm::VirtualMachine;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 use super::Object;
@@ -59,7 +58,7 @@ pub struct BlockStatement {
     pub body: Vec<Statement>,
     /// Captured variables from outer scope (shared mutable references),
     /// shared by every call of the block rather than copied into each.
-    pub captured_vars: Rc<HashMap<String, Rc<RefCell<Object>>>>,
+    pub captured_vars: Rc<indexmap::IndexMap<String, Rc<RefCell<Object>>>>,
     /// Lexical class/module nesting at the moment the block was defined.
     /// Restored during invocation so a bare `Foo = 1` inside the body lands
     /// on the same enclosing module that an unbroken straight-line statement
@@ -134,7 +133,7 @@ impl BlockStatement {
     pub fn new(
         parameters: Vec<String>,
         body: Vec<Statement>,
-        captured_vars: HashMap<String, Rc<RefCell<Object>>>,
+        captured_vars: indexmap::IndexMap<String, Rc<RefCell<Object>>>,
     ) -> Self {
         Self {
             parameters,
@@ -167,7 +166,7 @@ impl BlockStatement {
         parameters: Vec<String>,
         parameter_defaults: Vec<(usize, crate::ast::Expression)>,
         body: Vec<Statement>,
-        captured_vars: HashMap<String, Rc<RefCell<Object>>>,
+        captured_vars: indexmap::IndexMap<String, Rc<RefCell<Object>>>,
         captured_def_scope: Vec<Rc<Class>>,
         defining_method: Option<(String, String)>,
         is_lambda: bool,
@@ -197,7 +196,7 @@ impl BlockStatement {
     }
 
     /// Get the captured variables
-    pub fn captured_vars(&self) -> &HashMap<String, Rc<RefCell<Object>>> {
+    pub fn captured_vars(&self) -> &indexmap::IndexMap<String, Rc<RefCell<Object>>> {
         &self.captured_vars
     }
 

@@ -144,7 +144,12 @@ report { objects.inherited Array, 2 }
 p([objects.require_feature(File.join(__dir__, "required_by_c")), $required_by_c])
 
 p([objects.respond_to?(:unavailable), objects.respond_to?(:unavailable, true)])
-report { objects.unavailable }
+# NotImplementedError is a ScriptError, which `report` does not rescue.
+begin
+  objects.unavailable
+rescue NotImplementedError => error
+  puts "#{error.class}: #{error.message}"
+end
 
 holder = Widget.new
 p objects.ivar_set holder, :@visible, 1

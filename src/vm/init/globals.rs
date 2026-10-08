@@ -226,6 +226,10 @@ pub(crate) fn register_native_functions(globals: &mut GlobalRegistry) {
         Object::NativeFunction("__timeout_open__".to_string()),
     );
     globals.set(
+        "__embedded_library_names__",
+        Object::NativeFunction("__embedded_library_names__".to_string()),
+    );
+    globals.set(
         "__timeout_close__",
         Object::NativeFunction("__timeout_close__".to_string()),
     );

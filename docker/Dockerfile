@@ -9,11 +9,12 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # `binutils` carries the tools RbConfig names, such as the one that strips a
 # binary. `libcrypt-dev` carries the library `String#crypt` links against,
-# which Linux keeps separate from the C library. `libssl-dev` is what the
-# coverage tool builds against. `netbase` carries /etc/services, which a port
-# named by its service reads. `tzdata` and `tzdata-legacy` carry the zones a
-# time in a named place is read against, down to the older names a spec still
-# writes. `libyaml-dev` is what Ruby loads YAML through.
+# which Linux keeps separate from the C library. `mold` is the linker the
+# Rust builds use, since linking dominates a rebuild. `netbase` carries
+# /etc/services, which a port named by its service reads. `tzdata` and
+# `tzdata-legacy` carry the zones a time in a named place is read against, down
+# to the older names a spec still writes. `libyaml-dev` is what Ruby loads YAML
+# through.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
        binutils \
@@ -21,8 +22,8 @@ RUN apt-get update \
        ca-certificates \
        curl \
        libcrypt-dev \
-       libssl-dev \
        libyaml-dev \
+       mold \
        netbase \
        pkg-config \
        procps \
@@ -58,7 +59,7 @@ ENV RUSTUP_HOME=/usr/local/rustup \
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
   | sh -s -- -y --default-toolchain stable --profile minimal \
-       --component rustfmt --component clippy
+       --component rustfmt --component clippy --component llvm-tools-preview
 
 # The container runs as an account of its own rather than as root, since a
 # test that asks what a file refuses passes for root whatever the file says.
@@ -76,7 +77,8 @@ RUN if existing=$(getent passwd "$UID"); then userdel --remove "${existing%%:*}"
 
 # Coverage compiles the tests its own way, so the tool CI measures with is
 # part of the image rather than something to install when a run needs it.
-RUN cargo install cargo-tarpaulin --locked
+# cargo-llvm-cov drives the llvm-tools component added above.
+RUN cargo install cargo-llvm-cov --locked
 
 # The toolchain is left writable so that account can build with it, and the
 # registry belongs to it in the image, so the volume mounted over that path

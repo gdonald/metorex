@@ -51,7 +51,7 @@ impl VirtualMachine {
         }
         let mut names: Vec<String> = self
             .environment()
-            .local_variable_names()
+            .binding_variable_names()
             .into_iter()
             .filter(|name| {
                 name != "self"

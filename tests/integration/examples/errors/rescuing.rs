@@ -134,3 +134,26 @@ fn test_errors_ensure_return_drops_error_no_parens_execution() {
     let output = run_example("errors/ensure_return_drops_error_no_parens.rb");
     assert_eq!(output, expected);
 }
+
+const SCRIPT_ERRORS_PAST_BARE_RESCUE: &str = concat!(
+    "\"ScriptError handler caught LoadError\"\n",
+    "\"ScriptError handler caught NotImplementedError\"\n",
+    "\"bare rescue caught ArgumentError\"\n",
+    "\"bare rescue caught ArgumentError\"\n",
+    "false\n",
+    "true\n",
+    ":passed_the_modifier\n",
+    ":modifier_caught\n",
+);
+
+#[test]
+fn test_errors_script_errors_past_bare_rescue_execution() {
+    let output = run_example("errors/script_errors_past_bare_rescue.rb");
+    assert_eq!(output, SCRIPT_ERRORS_PAST_BARE_RESCUE);
+}
+
+#[test]
+fn test_errors_script_errors_past_bare_rescue_no_parens_execution() {
+    let output = run_example("errors/script_errors_past_bare_rescue_no_parens.rb");
+    assert_eq!(output, SCRIPT_ERRORS_PAST_BARE_RESCUE);
+}

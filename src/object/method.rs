@@ -4,7 +4,6 @@ use crate::ast::{Expression, Statement};
 use crate::callable::Callable;
 use crate::error::SourceLocation;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 use super::Object;
@@ -55,7 +54,7 @@ pub struct Method {
     /// Source location where the method is defined
     pub source_location: Option<SourceLocation>,
     /// Captured closure variables (from define_method blocks)
-    pub captured_vars: Option<HashMap<String, Rc<RefCell<Object>>>>,
+    pub captured_vars: Option<indexmap::IndexMap<String, Rc<RefCell<Object>>>>,
     /// True if this method was undefined via undef_method (calling it raises an error)
     pub is_undefined: bool,
     /// Lexical class/module nesting captured from the Proc this method was

@@ -169,7 +169,7 @@ impl Environment {
     /// This is used for lambda closure capture with mutable closures
     pub fn current_scope_var_refs(
         &self,
-    ) -> std::collections::HashMap<String, std::rc::Rc<std::cell::RefCell<Object>>> {
+    ) -> indexmap::IndexMap<String, std::rc::Rc<std::cell::RefCell<Object>>> {
         self.current_scope().borrow().collect_all_var_refs()
     }
 

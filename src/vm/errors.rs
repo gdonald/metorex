@@ -174,7 +174,52 @@ impl crate::vm::VirtualMachine {
     /// How a NoMethodError names its receiver, asking a class that wrote a
     /// `name` of its own what it is called. A class named the ordinary way
     /// answers through `receiver_wording`.
+    /// Record on a NoMethodError for `method_name` whether the call that
+    /// raised it named no receiver or named `self`, and the local variables
+    /// of the code that made the call. The innermost call of that name the
+    /// error passes back through is the one that raised it, so a call further
+    /// out leaves what that one recorded.
+    #[inline(never)]
+    pub(crate) fn note_failed_call(
+        &mut self,
+        result: &Result<Object, MetorexError>,
+        method_name: &str,
+        private_call: bool,
+        position: Position,
+    ) {
+        let Err(MetorexError::UncaughtException {
+            exception: Object::Exception(details),
+            ..
+        }) = result
+        else {
+            return;
+        };
+        {
+            let held = details.borrow();
+            if held.name.as_deref() != Some(method_name)
+                || held.instance_vars.contains_key(crate::vm::PRIVATE_CALL_KEY)
+            {
+                return;
+            }
+        }
+        let locals = self.local_variable_names(Vec::new(), position).ok();
+        let mut details = details.borrow_mut();
+        details.instance_vars.insert(
+            crate::vm::PRIVATE_CALL_KEY.to_string(),
+            Object::Bool(private_call),
+        );
+        if let Some(locals) = locals {
+            details
+                .instance_vars
+                .entry(crate::vm::LOCAL_VARIABLES_KEY.to_string())
+                .or_insert(locals);
+        }
+    }
+
     pub(crate) fn receiver_wording_for(&mut self, receiver: &Object, position: Position) -> String {
+        if self.is_the_main_object(receiver) {
+            return "main".to_string();
+        }
         let named = match receiver {
             Object::Class(class) | Object::Module(class) => {
                 self.written_class_name(class, position)

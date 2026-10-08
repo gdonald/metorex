@@ -330,3 +330,22 @@ fn test_methods_private_top_level_methods_no_parens_execution() {
     let output = run_example("methods/private_top_level_methods_no_parens.rb");
     assert_eq!(output, PRIVATE_TOP_LEVEL_METHODS);
 }
+
+const YIELD_IN_METHOD_CLAUSES: &str = concat!(
+    "\"recovered from first try\"\n",
+    "ran in ensure\n",
+    ":body\n",
+    "\"answered from else\"\n",
+);
+
+#[test]
+fn test_methods_yield_in_method_clauses_execution() {
+    let output = run_example("methods/yield_in_method_clauses.rb");
+    assert_eq!(output, YIELD_IN_METHOD_CLAUSES);
+}
+
+#[test]
+fn test_methods_yield_in_method_clauses_no_parens_execution() {
+    let output = run_example("methods/yield_in_method_clauses_no_parens.rb");
+    assert_eq!(output, YIELD_IN_METHOD_CLAUSES);
+}

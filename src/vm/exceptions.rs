@@ -801,7 +801,9 @@ impl VirtualMachine {
             if type_name == "Object" || type_name == "BasicObject" {
                 return Ok(true);
             }
-            // Well-known ancestor catches: StandardError/Exception catches most errors.
+            // Well-known names below StandardError are placed without
+            // resolving their class. Anything else, a ScriptError among them,
+            // is placed by its class chain below.
             if (type_name == "StandardError" || type_name == "Exception")
                 && Self::is_standard_exception_name(&exception_type_name)
             {
@@ -862,8 +864,6 @@ impl VirtualMachine {
                 | "ArgumentError"
                 | "NameError"
                 | "NoMethodError"
-                | "LoadError"
-                | "NotImplementedError"
                 | "ZeroDivisionError"
                 | "FloatDomainError"
                 | "IndexError"

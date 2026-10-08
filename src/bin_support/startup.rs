@@ -127,9 +127,6 @@ pub(crate) fn apply_cli_flags(vm: &mut VirtualMachine, cli: &Cli) {
     if features.gems {
         vm.define_feature_module("Gem");
     }
-    if features.did_you_mean {
-        vm.define_feature_module("DidYouMean");
-    }
     // Ruby's `-w` turns on the deprecation warnings a plain run keeps quiet,
     // and `-d` and `-v` turn them on the same way.
     // `-W` with a number says how loud a run is: 0 quiet, 1 the default, and
@@ -216,7 +213,13 @@ pub(crate) fn apply_cli_flags(vm: &mut VirtualMachine, cli: &Cli) {
     for path in installed_library_paths() {
         vm.append_installed_load_path(path);
     }
-    for lib in &cli.require_libs {
+    // Ruby loads did_you_mean before the libraries `-r` names, once the
+    // load path it suggests features from is settled.
+    let did_you_mean = features.did_you_mean.then_some("did_you_mean");
+    for lib in did_you_mean
+        .into_iter()
+        .chain(cli.require_libs.iter().map(String::as_str))
+    {
         if let Err(err) = vm.require_startup_library(lib) {
             eprintln!("Runtime error: {}", err);
             process::exit(1);

@@ -153,7 +153,7 @@ fn test_method_type_name() {
 
 #[test]
 fn test_block_type_name() {
-    let block = BlockStatement::new(vec![], vec![], HashMap::new());
+    let block = BlockStatement::new(vec![], vec![], indexmap::IndexMap::new());
     let obj = Object::Block(Rc::new(block));
     assert_eq!(obj.type_name(), "Block");
 }

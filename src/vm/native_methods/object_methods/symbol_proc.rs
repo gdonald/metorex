@@ -43,7 +43,7 @@ pub(crate) fn symbol_to_proc_block(
             expression: call,
             position,
         }],
-        std::collections::HashMap::new(),
+        indexmap::IndexMap::new(),
     );
     // Ruby's symbol proc is a lambda, so it counts its arguments strictly.
     made.is_lambda = true;

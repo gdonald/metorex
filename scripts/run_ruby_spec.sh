@@ -22,6 +22,18 @@ fi
 # sequential run when debugging interleaving issues.
 JOBS="${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}"
 
+# Sharding splits the queue across separate runners, such as parallel CI pods.
+# SHARD_TOTAL is how many shards there are, SHARD_INDEX which one this is, zero
+# based. The default is one shard that runs the whole queue. Indices are handed
+# out round-robin, so each shard draws from every spec directory rather than
+# one contiguous block, which keeps the shards close in size.
+SHARD_TOTAL="${SHARD_TOTAL:-1}"
+SHARD_INDEX="${SHARD_INDEX:-0}"
+if [ "$SHARD_INDEX" -lt 0 ] || [ "$SHARD_INDEX" -ge "$SHARD_TOTAL" ]; then
+  echo "run_ruby_spec.sh: SHARD_INDEX must be in 0..$((SHARD_TOTAL - 1))" >&2
+  exit 2
+fi
+
 # Aggregate counts. Updated after the parallel run drains, then printed by
 # the EXIT trap so partial totals still surface if something blows up.
 TOTAL_FILES=0
@@ -3378,7 +3390,9 @@ run_one_pass() {
   {
     i=0
     while [ "$i" -lt "$SPEC_COUNT" ]; do
-      printf '%s\0%s\0' "$i" "${SPEC_PATHS[$i]}"
+      if [ "$((i % SHARD_TOTAL))" -eq "$SHARD_INDEX" ]; then
+        printf '%s\0%s\0' "$i" "${SPEC_PATHS[$i]}"
+      fi
       i=$((i + 1))
     done
   } | xargs -0 -n 2 -P "$JOBS" "$WORKER"

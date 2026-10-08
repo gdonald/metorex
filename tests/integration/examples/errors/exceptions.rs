@@ -264,3 +264,84 @@ fn test_errors_recursing_too_deep_no_parens_execution() {
     let output = run_example("errors/recursing_too_deep_no_parens.rb");
     assert_eq!(output, RECURSING_TOO_DEEP_OUTPUT);
 }
+
+const DID_YOU_MEAN_SUGGESTIONS: &str = concat!(
+    "[NameError, [:first_name]]\n",
+    "\"undefined local variable or method 'firts_name' for main (NameError)\\nDid you mean?  first_name\"\n",
+    "[NameError, [:first_name]]\n",
+    "\"undefined local variable or method 'firts_name' for main (NameError)\\nDid you mean?  first_name\"\n",
+    "[NameError, [\"String\"]]\n",
+    "\"uninitialized constant Strng (NameError)\\nDid you mean?  String\"\n",
+    "[NoMethodError, [:capacity]]\n",
+    "\"undefined method 'capcity' for an instance of Shelf (NoMethodError)\\nDid you mean?  capacity\"\n",
+    "[NoMethodError, [:label]]\n",
+    "\"undefined method 'lable' for an instance of Shelf (NoMethodError)\\nDid you mean?  label\"\n",
+    "[KeyError, [\":name\"]]\n",
+    "\"key not found: :nme (KeyError)\\nDid you mean?  :name\"\n",
+    "[KeyError, [\"\\\"alpha\\\"\"]]\n",
+    "\"key not found: \\\"alpah\\\" (KeyError)\\nDid you mean?  \\\"alpha\\\"\"\n",
+    "[KeyError, [\":name\"]]\n",
+    "\"key not found: \\\"name\\\" (KeyError)\\nDid you mean?  :name\"\n",
+    "[LoadError, [\"fileutils\"]]\n",
+    "\"cannot load such file -- fileutil (LoadError)\\nDid you mean?  fileutils\"\n",
+    "[NoMatchingPatternKeyError, [\":name\"]]\n",
+    "\"{name: 1}: key not found: :nmae (NoMatchingPatternKeyError)\\nDid you mean?  :name\"\n",
+    "[NoMethodError, []]\n",
+    "\"undefined method 'nothing_close' for an instance of Shelf (NoMethodError)\"\n",
+    "\"undefined method 'capcity' for an instance of Shelf (NoMethodError)\"\n",
+    "\"\\e[1mundefined method 'capcity' for an instance of Shelf (\\e[1;4mNoMethodError\\e[m\\e[1m)\\e[m\\n\\e[1mDid you mean?  capacity\\e[m\"\n",
+    "\"undefined method 'capcity' for an instance of Shelf\"\n",
+    "[\"apple\"]\n",
+    "[\"banana\"]\n",
+    "[]\n",
+    "[\"net/http\", \"net/ftp\"]\n",
+    "\"\\nDid you mean?  first\\n               second\"\n",
+    "\"\"\n",
+    "0.9611\n",
+    "3\n",
+    "missing (KeyError)\n",
+    "Did you mean?  :name\n",
+    "missing (KeyError)\n",
+);
+
+#[test]
+fn test_errors_did_you_mean_suggestions_execution() {
+    let output = run_example("errors/did_you_mean_suggestions.rb");
+    assert_eq!(output, DID_YOU_MEAN_SUGGESTIONS);
+}
+
+#[test]
+fn test_errors_did_you_mean_suggestions_no_parens_execution() {
+    let output = run_example("errors/did_you_mean_suggestions_no_parens.rb");
+    assert_eq!(output, DID_YOU_MEAN_SUGGESTIONS);
+}
+
+const NAME_ERROR_DETAILS: &str = concat!(
+    "[main, [:total, :error, :pantry], true]\n",
+    "\"label for misspelled_total\"\n",
+    "\"[annotated] undefined local variable or method 'misspelled_total' for main (NameError)\"\n",
+    "[:inside_block, :outer]\n",
+    "[Pantry, []]\n",
+    "[NoMethodError, \"undefined method 'missing_call' for main\", true, true]\n",
+    "[\"undefined method 'missing_call' for main\", true]\n",
+    "[\"undefined method 'counted' for an instance of Pantry\", true]\n",
+    "[\"undefined method 'counted' for an instance of Pantry\", false]\n",
+    "[\"undefined method 'missing_call' for an instance of String\", false, true]\n",
+    "true\n",
+    "false\n",
+    "true\n",
+    "true\n",
+    "false\n",
+);
+
+#[test]
+fn test_errors_name_error_details_execution() {
+    let output = run_example("errors/name_error_details.rb");
+    assert_eq!(output, NAME_ERROR_DETAILS);
+}
+
+#[test]
+fn test_errors_name_error_details_no_parens_execution() {
+    let output = run_example("errors/name_error_details_no_parens.rb");
+    assert_eq!(output, NAME_ERROR_DETAILS);
+}

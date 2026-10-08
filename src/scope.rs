@@ -49,7 +49,7 @@ pub struct Scope {
 
 /// The names a block closes over, each with the cell it shares with the
 /// scope it was written in.
-pub type CapturedNames = Rc<HashMap<String, Rc<RefCell<Object>>>>;
+pub type CapturedNames = Rc<indexmap::IndexMap<String, Rc<RefCell<Object>>>>;
 
 impl Scope {
     /// Creates a new scope with no parent (global scope)
@@ -315,8 +315,16 @@ impl Scope {
             }
         }
 
-        // Now add this scope's variables (potentially overriding parent values)
-        for (name, value_ref) in &self.variables {
+        // Now add this scope's variables (potentially overriding parent values),
+        // in the order they were bound, which is the order a block written
+        // here reports them in.
+        let bound_in_order = self.ordered_names().chain(
+            self.variables
+                .keys()
+                .filter(|name| !self.order.contains(name)),
+        );
+        for name in bound_in_order {
+            let value_ref = &self.variables[name];
             all_vars.insert(name.clone(), value_ref.borrow().clone());
         }
 
@@ -416,10 +424,6 @@ impl Scope {
                 }
             }
         }
-        // A capture is taken from a map, so the order it comes back in is
-        // not the order the enclosing scope declared the names. Sorting
-        // makes what `local_variables` reports the same on every run.
-        closed_over.sort();
         names.extend(closed_over);
         names
     }
@@ -445,33 +449,43 @@ impl Scope {
     /// Collects all variable references from the entire scope chain
     /// Returns a HashMap with shared references to all visible variables
     /// Used for closure capture to enable mutable closures
-    pub fn collect_all_var_refs(&self) -> HashMap<String, Rc<RefCell<Object>>> {
-        let mut all_vars = HashMap::new();
+    pub fn collect_all_var_refs(&self) -> indexmap::IndexMap<String, Rc<RefCell<Object>>> {
+        let mut all_vars = indexmap::IndexMap::new();
 
-        // Start from parent and work backwards, so that closer scopes override
-        // farther ones. A method body ends the walk: the scope above it holds
-        // the program's own top-level locals, which a block written inside a
-        // method does not close over.
-        if !self.is_method_boundary
-            && let Some(parent) = &self.parent
-        {
-            all_vars = parent.borrow().collect_all_var_refs();
-        }
-        if let Some(captured) = &self.captured {
-            for (name, value_ref) in captured.iter() {
-                all_vars.insert(name.clone(), value_ref.clone());
-            }
-        }
-
-        // Now add this scope's variables (potentially overriding parent values)
-        for (name, value_ref) in &self.variables {
+        // This scope's own variables come first, in the order they were
+        // bound, then what it closed over, then what encloses it. A name
+        // already taken stays with the closer scope, and the order is the
+        // order `local_variables` reports them in.
+        let bound_in_order = self.ordered_names().chain(
+            self.variables
+                .keys()
+                .filter(|name| !self.order.contains(name)),
+        );
+        for name in bound_in_order {
             // A name the program never declared is not one a block closes
             // over: a block reading `it` takes the argument it was handed
             // rather than the `it` of the block around it.
             if self.hoisted_names.contains(name) || self.hidden_names.contains(name) {
                 continue;
             }
-            all_vars.insert(name.clone(), value_ref.clone());
+            all_vars.insert(name.clone(), self.variables[name].clone());
+        }
+        if let Some(captured) = &self.captured {
+            for (name, value_ref) in captured.iter() {
+                all_vars
+                    .entry(name.clone())
+                    .or_insert_with(|| value_ref.clone());
+            }
+        }
+        // A method body ends the walk: the scope above it holds the program's
+        // own top-level locals, which a block written inside a method does not
+        // close over.
+        if !self.is_method_boundary
+            && let Some(parent) = &self.parent
+        {
+            for (name, value_ref) in parent.borrow().collect_all_var_refs() {
+                all_vars.entry(name).or_insert(value_ref);
+            }
         }
 
         all_vars

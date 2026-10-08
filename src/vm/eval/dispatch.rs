@@ -1,7 +1,6 @@
 // Expression-evaluation dispatch: a thin `match` over `Expression` variants
 // that delegates each variant to a helper in the sibling modules.
 
-use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::ast::{BinaryOp, Expression};
@@ -254,7 +253,7 @@ impl VirtualMachine {
                 position,
                 ..
             } => {
-                let mut captured = HashMap::new();
+                let mut captured = indexmap::IndexMap::new();
                 if let Some(names) = captured_vars {
                     if names.is_empty() {
                         // Empty vec signals automatic capture of all current scope variables.
@@ -475,6 +474,12 @@ impl VirtualMachine {
                     *position,
                 );
                 self.release_attached_blocks(attached);
+                self.note_failed_call(
+                    &result,
+                    method,
+                    crate::vm::method_lookup::names_self(receiver),
+                    *position,
+                );
                 result
             }
             Expression::Call {
@@ -491,6 +496,9 @@ impl VirtualMachine {
                     *position,
                 );
                 self.release_attached_blocks(attached);
+                if let Expression::Identifier { name, .. } = callee.as_ref() {
+                    self.note_failed_call(&result, name, true, *position);
+                }
                 result
             }
             Expression::Super {

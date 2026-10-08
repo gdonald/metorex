@@ -86,14 +86,15 @@ fn array_conversion_from_string_wraps() {
 }
 
 #[test]
-fn require_missing_file_raises_load_error_caught_as_standard_error() {
-    // LoadError < StandardError — a bare rescue should also catch it.
+fn require_missing_file_raises_a_load_error_a_bare_rescue_lets_past() {
     let result = run(r#"
 def try_load
   begin
     require("zz_definitely_not_here_xyz")
     "not caught"
   rescue => e
+    "caught as a StandardError"
+  rescue LoadError
     "caught"
   end
 end

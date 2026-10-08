@@ -884,3 +884,21 @@ fn test_introspection_native_methods_answered_no_parens_execution() {
     let output = run_example("introspection/native_methods_answered_no_parens.rb");
     assert_eq!(output, NATIVE_METHODS_ANSWERED);
 }
+
+const LOCAL_VARIABLES_IN_BLOCKS: &str = concat!(
+    "[:innermost, :item, :inside, :outer]\n",
+    "[:first, :second, :rest, :key, :block]\n",
+    "[:argument, :shadowed]\n",
+);
+
+#[test]
+fn test_introspection_local_variables_in_blocks_execution() {
+    let output = run_example("introspection/local_variables_in_blocks.rb");
+    assert_eq!(output, LOCAL_VARIABLES_IN_BLOCKS);
+}
+
+#[test]
+fn test_introspection_local_variables_in_blocks_no_parens_execution() {
+    let output = run_example("introspection/local_variables_in_blocks_no_parens.rb");
+    assert_eq!(output, LOCAL_VARIABLES_IN_BLOCKS);
+}

@@ -1,7 +1,6 @@
 // Method Tests - Method structure, Callable trait, and BlockStatement
 
 use metorex::object::{BlockStatement, Method, Object};
-use std::collections::HashMap;
 use std::rc::Rc;
 
 #[test]
@@ -99,7 +98,7 @@ fn test_block_closure_callable_trait() {
     use metorex::object::Callable;
 
     let params = vec!["x".to_string()];
-    let block = BlockStatement::new(params.clone(), vec![], HashMap::new());
+    let block = BlockStatement::new(params.clone(), vec![], indexmap::IndexMap::new());
 
     assert_eq!(block.name(), "<block>");
     assert_eq!(block.parameters(), &params[..]);
@@ -111,7 +110,7 @@ fn test_block_closure_callable_trait() {
 fn test_block_closure_captured_vars() {
     use std::cell::RefCell;
 
-    let mut captured = HashMap::new();
+    let mut captured = indexmap::IndexMap::new();
     captured.insert("outer".to_string(), Rc::new(RefCell::new(Object::Int(10))));
     captured.insert("count".to_string(), Rc::new(RefCell::new(Object::Int(0))));
 
@@ -130,7 +129,7 @@ fn test_block_closure_captured_vars() {
 
 #[test]
 fn test_block_closure_empty_captures() {
-    let block = BlockStatement::new(vec!["x".to_string()], vec![], HashMap::new());
+    let block = BlockStatement::new(vec!["x".to_string()], vec![], indexmap::IndexMap::new());
 
     assert!(block.captured_vars().is_empty());
 }

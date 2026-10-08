@@ -84,7 +84,11 @@ fn type_name_method() {
 #[test]
 fn type_name_block() {
     use metorex::object::BlockStatement;
-    let b = Rc::new(BlockStatement::new(vec![], vec![], HashMap::new()));
+    let b = Rc::new(BlockStatement::new(
+        vec![],
+        vec![],
+        indexmap::IndexMap::new(),
+    ));
     assert_eq!(Object::Block(b).type_name(), "Block");
 }
 
@@ -232,7 +236,11 @@ fn display_method() {
 #[test]
 fn display_block() {
     use metorex::object::BlockStatement;
-    let b = Rc::new(BlockStatement::new(vec![], vec![], HashMap::new()));
+    let b = Rc::new(BlockStatement::new(
+        vec![],
+        vec![],
+        indexmap::IndexMap::new(),
+    ));
     assert!(format!("{}", Object::Block(b)).starts_with("#<Proc:0x"));
 }
 

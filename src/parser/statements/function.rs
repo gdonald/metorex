@@ -373,61 +373,15 @@ impl Parser {
             }
             Ok(())
         })();
+        // The method's own rescue, else and ensure clauses belong to its body,
+        // where `yield` and `return` reach the method as well.
+        let wrapped = collected
+            .and_then(|()| self.wrap_in_method_clauses(std::mem::take(&mut body), start_pos));
         self.method_anonymous_block.pop();
         self.def_body_depth -= 1;
         self.jump_target_depth = enclosing_jump_targets;
         self.refuse_unlooped_redos_after(redo_scope_start)?;
-        collected?;
-
-        // Check for method-level rescue/ensure (implicit begin)
-        if self.check(&[TokenKind::Rescue, TokenKind::Ensure]) {
-            let mut rescue_clauses = Vec::new();
-            while self.match_token(&[TokenKind::Rescue]) {
-                rescue_clauses.push(self.parse_rescue_clause()?);
-                self.skip_whitespace();
-            }
-
-            let else_clause = if self.match_token(&[TokenKind::Else]) {
-                self.skip_whitespace();
-                let mut else_body = Vec::new();
-                while !self.check(&[TokenKind::Ensure, TokenKind::End]) && !self.is_at_end() {
-                    self.skip_whitespace();
-                    if self.check(&[TokenKind::Ensure, TokenKind::End]) {
-                        break;
-                    }
-                    else_body.push(self.parse_statement()?);
-                    self.skip_whitespace();
-                }
-                Some(else_body)
-            } else {
-                None
-            };
-
-            let ensure_block = if self.match_token(&[TokenKind::Ensure]) {
-                self.skip_whitespace();
-                let mut ensure_body = Vec::new();
-                while !self.check(&[TokenKind::End]) && !self.is_at_end() {
-                    self.skip_whitespace();
-                    if self.check(&[TokenKind::End]) {
-                        break;
-                    }
-                    ensure_body.push(self.parse_statement()?);
-                    self.skip_whitespace();
-                }
-                Some(ensure_body)
-            } else {
-                None
-            };
-
-            // Wrap the body in a Begin statement
-            body = vec![Statement::Begin {
-                body,
-                rescue_clauses,
-                else_clause,
-                ensure_block,
-                position: start_pos,
-            }];
-        }
+        let body = wrapped?;
 
         let closing = self
             .expect(TokenKind::End, "Expected 'end' after function body")?
@@ -465,6 +419,65 @@ impl Parser {
                 start_pos,
             ))
         }
+    }
+
+    /// A method body wrapped in a Begin carrying the method's own rescue,
+    /// else and ensure clauses, or the body as it was when it has none.
+    fn wrap_in_method_clauses(
+        &mut self,
+        mut body: Vec<Statement>,
+        start_pos: crate::lexer::Position,
+    ) -> Result<Vec<Statement>, MetorexError> {
+        if !self.check(&[TokenKind::Rescue, TokenKind::Ensure]) {
+            return Ok(body);
+        }
+        let mut rescue_clauses = Vec::new();
+        while self.match_token(&[TokenKind::Rescue]) {
+            rescue_clauses.push(self.parse_rescue_clause()?);
+            self.skip_whitespace();
+        }
+
+        let else_clause = if self.match_token(&[TokenKind::Else]) {
+            self.skip_whitespace();
+            let mut else_body = Vec::new();
+            while !self.check(&[TokenKind::Ensure, TokenKind::End]) && !self.is_at_end() {
+                self.skip_whitespace();
+                if self.check(&[TokenKind::Ensure, TokenKind::End]) {
+                    break;
+                }
+                else_body.push(self.parse_statement()?);
+                self.skip_whitespace();
+            }
+            Some(else_body)
+        } else {
+            None
+        };
+
+        let ensure_block = if self.match_token(&[TokenKind::Ensure]) {
+            self.skip_whitespace();
+            let mut ensure_body = Vec::new();
+            while !self.check(&[TokenKind::End]) && !self.is_at_end() {
+                self.skip_whitespace();
+                if self.check(&[TokenKind::End]) {
+                    break;
+                }
+                ensure_body.push(self.parse_statement()?);
+                self.skip_whitespace();
+            }
+            Some(ensure_body)
+        } else {
+            None
+        };
+
+        // Wrap the body in a Begin statement
+        body = vec![Statement::Begin {
+            body,
+            rescue_clauses,
+            else_clause,
+            ensure_block,
+            position: start_pos,
+        }];
+        Ok(body)
     }
 
     /// Parse function parameters

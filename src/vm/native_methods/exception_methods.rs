@@ -250,6 +250,26 @@ impl VirtualMachine {
             }
             // NameError#receiver / NoMethodError#receiver — the object the
             // call was made on, nil when unset.
+            // NameError#local_variables answers the locals in scope where the
+            // name was looked up, and none for an error a program built.
+            "local_variables" if self.exception_descends_from(exception, "NameError") => {
+                let held = exception
+                    .borrow()
+                    .instance_vars
+                    .get(crate::vm::LOCAL_VARIABLES_KEY)
+                    .cloned();
+                Ok(Some(held.unwrap_or_else(|| Object::array(Vec::new()))))
+            }
+            // NoMethodError#private_call? answers whether the failed call
+            // named no receiver or named `self`.
+            "private_call?" if self.exception_descends_from(exception, "NoMethodError") => {
+                let held = exception
+                    .borrow()
+                    .instance_vars
+                    .get(crate::vm::PRIVATE_CALL_KEY)
+                    .cloned();
+                Ok(Some(held.unwrap_or(Object::Bool(false))))
+            }
             "receiver" => {
                 let details = exception.borrow();
                 if let Some(value) = details.receiver.clone() {
@@ -722,6 +742,51 @@ impl VirtualMachine {
                 Ok(Some(Object::string(rendered)))
             }
             _ => Ok(None), // No native method found, let it fall through
+        }
+    }
+
+    /// Whether an exception answers `name` with a native method its own
+    /// class has, beyond the ones every exception answers.
+    pub(crate) fn exception_answers_natively(&self, receiver: &Object, name: &str) -> bool {
+        const BY_CLASS: &[(&str, &[&str])] = &[
+            ("NameError", &["name", "receiver", "local_variables"]),
+            ("NoMethodError", &["args", "private_call?"]),
+            ("KeyError", &["key", "receiver"]),
+            ("FrozenError", &["receiver"]),
+            ("NoMatchingPatternKeyError", &["key", "matchee"]),
+            ("LoadError", &["path"]),
+            ("SystemExit", &["status", "success?"]),
+            ("UncaughtThrowError", &["tag", "value"]),
+        ];
+        let Object::Exception(exception) = receiver else {
+            return false;
+        };
+        BY_CLASS.iter().any(|(class, names)| {
+            names.contains(&name) && self.exception_descends_from(exception, class)
+        })
+    }
+
+    /// Whether an exception is an instance of the class named `ancestor` or
+    /// of a class below it. One the interpreter raised carries only its class
+    /// name, which is resolved to the class it names.
+    pub(crate) fn exception_descends_from(
+        &self,
+        exception: &std::cell::RefCell<crate::object::Exception>,
+        ancestor: &str,
+    ) -> bool {
+        let details = exception.borrow();
+        if let Some(class) = &details.class {
+            return crate::vm::method_invocation::descends_from(class, ancestor);
+        }
+        let named = match self.globals().get(&details.exception_type) {
+            Some(class @ Object::Class(_)) => Some(class),
+            _ => self.resolve_qualified_constant(&details.exception_type),
+        };
+        match named {
+            Some(Object::Class(class)) => {
+                crate::vm::method_invocation::descends_from(&class, ancestor)
+            }
+            _ => details.exception_type == ancestor,
         }
     }
 

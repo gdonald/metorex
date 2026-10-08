@@ -34,11 +34,7 @@ fn symbol_to_proc_block(sym: &str) -> BlockStatement {
         },
         position: pos,
     }];
-    let mut made = BlockStatement::new(
-        vec!["x".to_string()],
-        body,
-        std::collections::HashMap::new(),
-    );
+    let mut made = BlockStatement::new(vec!["x".to_string()], body, indexmap::IndexMap::new());
     // What the callable stands for, which is what it says of itself in place
     // of a file and a line.
     made.from_symbol = Some(sym.to_string());
@@ -97,7 +93,7 @@ fn method_to_proc_block(target: &Object, position: Position) -> BlockStatement {
             expression: call,
             position,
         }],
-        std::collections::HashMap::new(),
+        indexmap::IndexMap::new(),
     );
     made.parameter_defaults = parameter_defaults;
     // A Method takes its arguments exactly, so the block standing for one is
@@ -144,7 +140,7 @@ pub(crate) fn proc_for_c_function(target: Object) -> Object {
             expression: call,
             position,
         }],
-        std::collections::HashMap::new(),
+        indexmap::IndexMap::new(),
     );
     std::rc::Rc::make_mut(&mut made.captured_vars).insert(
         "__method_proc_target".to_string(),

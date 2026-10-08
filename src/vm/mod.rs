@@ -126,6 +126,12 @@ pub(crate) const THROW_VALUE_KEY: &str = "__throw_value__";
 /// `@` name, so a program's own instance variables cannot collide with it.
 pub(crate) const NAME_ERROR_NAME_KEY: &str = "__name_value__";
 
+/// Where a NoMethodError keeps whether the failed call named no receiver or
+/// named `self`, which `#private_call?` answers, and a NameError the local
+/// variables in scope where it was raised, which `#local_variables` answers.
+pub(crate) const PRIVATE_CALL_KEY: &str = "__private_call__";
+pub(crate) const LOCAL_VARIABLES_KEY: &str = "__local_variables__";
+
 /// Where a NoMethodError keeps the arguments the failed call was made with,
 /// which `#args` answers. Not an `@` name, so a program's own instance
 /// variables cannot collide with it.

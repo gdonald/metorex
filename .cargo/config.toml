@@ -1,0 +1,8 @@
+# mold links the Linux builds. Linking dominates a rebuild, and mold is several
+# times faster at it than the default linker. It is scoped to the Linux targets
+# the container builds, so a native macOS build is left on its own linker.
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+[target.aarch64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]

@@ -43,109 +43,171 @@ pub(crate) fn written_for_c(file: &str) -> bool {
         .is_some_and(|named| C_EXTENSIONS.contains(&named))
 }
 
+/// The libraries metorex carries: the names `require` reaches each by, and
+/// its source.
+const EMBEDDED_LIBRARIES: &[(&[&str], &str)] = &[
+    (&["base64"], include_str!("base64.rb")),
+    (
+        &["bigdecimal", "bigdecimal/util"],
+        include_str!("bigdecimal.rb"),
+    ),
+    (&["zlib"], include_str!("zlib.rb")),
+    (&["open3"], include_str!("open3.rb")),
+    (&["syslog"], include_str!("syslog.rb")),
+    (&["openssl"], include_str!("openssl.rb")),
+    (&["cgi", "cgi/escape", "cgi/util"], include_str!("cgi.rb")),
+    (
+        &["net/http", "net/https", "net/protocol"],
+        include_str!("net_http.rb"),
+    ),
+    (&["net/ftp"], include_str!("net_ftp.rb")),
+    (&["English", "english"], include_str!("english.rb")),
+    (&["io/nonblock"], include_str!("io_nonblock.rb")),
+    (&["rbconfig"], include_str!("rbconfig.rb")),
+    (&["rbconfig/sizeof"], include_str!("rbconfig_sizeof.rb")),
+    (&["yaml", "psych"], include_str!("yaml.rb")),
+    (&["resolv"], include_str!("resolv.rb")),
+    (&["rubygems"], include_str!("rubygems.rb")),
+    (&["rubygems/text"], include_str!("rubygems/text.rb")),
+    (
+        &["rubygems/user_interaction"],
+        include_str!("rubygems/user_interaction.rb"),
+    ),
+    (
+        &["rubygems/gemcutter_utilities"],
+        include_str!("rubygems/gemcutter_utilities.rb"),
+    ),
+    (
+        &["rubygems/command_manager"],
+        include_str!("rubygems/command_manager.rb"),
+    ),
+    (&["rubygems/command"], include_str!("rubygems/command.rb")),
+    (
+        &["rubygems/safe_yaml"],
+        include_str!("rubygems/safe_yaml.rb"),
+    ),
+    (
+        &["rubygems/commands/owner_command"],
+        include_str!("rubygems/commands/owner_command.rb"),
+    ),
+    (&["optparse", "optionparser"], include_str!("optparse.rb")),
+    (&["random/formatter"], include_str!("random_formatter.rb")),
+    (&["socket"], include_str!("socket.rb")),
+    (&["erb"], include_str!("erb.rb")),
+    (&["abbrev"], include_str!("abbrev.rb")),
+    (&["etc"], include_str!("etc.rb")),
+    (&["mkmf"], include_str!("mkmf.rb")),
+    (&["pp"], include_str!("pp.rb")),
+    (&["fcntl"], include_str!("fcntl.rb")),
+    (&["expect"], include_str!("expect.rb")),
+    (&["fiber"], include_str!("fiber.rb")),
+    (&["open-uri"], include_str!("open_uri.rb")),
+    (&["find"], include_str!("find.rb")),
+    (&["getoptlong"], include_str!("getoptlong.rb")),
+    (&["io/console"], include_str!("io_console.rb")),
+    (&["ipaddr"], include_str!("ipaddr.rb")),
+    (&["coverage"], include_str!("coverage.rb")),
+    (&["csv"], include_str!("csv.rb")),
+    (&["date"], include_str!("date.rb")),
+    (&["delegate"], include_str!("delegate.rb")),
+    (
+        &[
+            "did_you_mean",
+            "did_you_mean/core_ext/name_error",
+            "did_you_mean/formatter",
+            "did_you_mean/jaro_winkler",
+            "did_you_mean/levenshtein",
+            "did_you_mean/spell_checker",
+            "did_you_mean/spell_checkers/key_error_checker",
+            "did_you_mean/spell_checkers/method_name_checker",
+            "did_you_mean/spell_checkers/name_error_checkers",
+            "did_you_mean/spell_checkers/null_checker",
+            "did_you_mean/spell_checkers/pattern_key_name_checker",
+            "did_you_mean/spell_checkers/require_path_checker",
+            "did_you_mean/tree_spell_checker",
+            "did_you_mean/version",
+        ],
+        include_str!("did_you_mean.rb"),
+    ),
+    (&["weakref"], include_str!("weakref.rb")),
+    (&["logger"], include_str!("logger.rb")),
+    (&["monitor"], include_str!("monitor.rb")),
+    (
+        &["forwardable", "forwardable/impl"],
+        include_str!("forwardable.rb"),
+    ),
+    (&["tsort"], include_str!("tsort.rb")),
+    (&["io/wait"], include_str!("io_wait.rb")),
+    (&["pty"], include_str!("pty.rb")),
+    (&["continuation"], include_str!("continuation.rb")),
+    (&["pstore"], include_str!("pstore.rb")),
+    (&["benchmark"], include_str!("benchmark.rb")),
+    (&["un"], include_str!("un.rb")),
+    (&["fileutils"], include_str!("fileutils.rb")),
+    (&["tmpdir"], include_str!("tmpdir.rb")),
+    (&["tempfile"], include_str!("tempfile.rb")),
+    // Every name the digest library is reached by loads the one
+    // file, which carries all of the algorithms metorex has.
+    (
+        &[
+            "digest",
+            "digest/md5",
+            "digest/sha1",
+            "digest/sha2",
+            "digest/rmd160",
+            "digest/bubblebabble",
+        ],
+        include_str!("digest.rb"),
+    ),
+    (&["matrix"], include_str!("matrix.rb")),
+    (&["drb", "drb/drb"], include_str!("drb.rb")),
+    (&["fiddle"], include_str!("fiddle.rb")),
+    (&["irb"], include_str!("irb.rb")),
+    (&["irb/color"], include_str!("irb_color.rb")),
+    (&["json"], include_str!("json.rb")),
+    (&["objspace"], include_str!("objspace.rb")),
+    (&["objspace/trace"], include_str!("objspace_trace.rb")),
+    (&["observer"], include_str!("observer.rb")),
+    (&["ostruct"], include_str!("ostruct.rb")),
+    (&["pathname"], include_str!("pathname.rb")),
+    (&["prime"], include_str!("prime.rb")),
+    (&["ripper"], include_str!("ripper.rb")),
+    // The scanner and the grammar, which Ruby writes in C, load with
+    // the core class that dispatches their events.
+    (
+        &["ripper/core"],
+        concat!(
+            include_str!("ripper_core.rb"),
+            include_str!("ripper_scanner.rb"),
+            include_str!("ripper_grammar.rb")
+        ),
+    ),
+    (&["ripper/filter"], include_str!("ripper_filter.rb")),
+    (&["ripper/lexer"], include_str!("ripper_lexer.rb")),
+    (&["ripper/sexp"], include_str!("ripper_sexp.rb")),
+    (&["securerandom"], include_str!("securerandom.rb")),
+    (&["shellwords"], include_str!("shellwords.rb")),
+    (&["singleton"], include_str!("singleton.rb")),
+    (&["stringio"], include_str!("stringio.rb")),
+    (&["strscan"], include_str!("strscan.rb")),
+    (&["time"], include_str!("time.rb")),
+    (&["timeout"], include_str!("timeout.rb")),
+    (&["uri"], include_str!("uri.rb")),
+];
+
 /// The source of a library metorex carries, or None for a name it does not
 /// have. A file on the load path wins over one of these.
 pub(crate) fn embedded_library(name: &str) -> Option<&'static str> {
     let trimmed = name.strip_suffix(".rb").unwrap_or(name);
-    match trimmed {
-        "base64" => Some(include_str!("base64.rb")),
-        "bigdecimal" | "bigdecimal/util" => Some(include_str!("bigdecimal.rb")),
-        "zlib" => Some(include_str!("zlib.rb")),
-        "open3" => Some(include_str!("open3.rb")),
-        "syslog" => Some(include_str!("syslog.rb")),
-        "openssl" => Some(include_str!("openssl.rb")),
-        "cgi" | "cgi/escape" | "cgi/util" => Some(include_str!("cgi.rb")),
-        "net/http" | "net/https" | "net/protocol" => Some(include_str!("net_http.rb")),
-        "net/ftp" => Some(include_str!("net_ftp.rb")),
-        "English" | "english" => Some(include_str!("english.rb")),
-        "io/nonblock" => Some(include_str!("io_nonblock.rb")),
-        "rbconfig" => Some(include_str!("rbconfig.rb")),
-        "rbconfig/sizeof" => Some(include_str!("rbconfig_sizeof.rb")),
-        "yaml" | "psych" => Some(include_str!("yaml.rb")),
-        "resolv" => Some(include_str!("resolv.rb")),
-        "rubygems" => Some(include_str!("rubygems.rb")),
-        "rubygems/text" => Some(include_str!("rubygems/text.rb")),
-        "rubygems/user_interaction" => Some(include_str!("rubygems/user_interaction.rb")),
-        "rubygems/gemcutter_utilities" => Some(include_str!("rubygems/gemcutter_utilities.rb")),
-        "rubygems/command_manager" => Some(include_str!("rubygems/command_manager.rb")),
-        "rubygems/command" => Some(include_str!("rubygems/command.rb")),
-        "rubygems/safe_yaml" => Some(include_str!("rubygems/safe_yaml.rb")),
-        "rubygems/commands/owner_command" => {
-            Some(include_str!("rubygems/commands/owner_command.rb"))
-        }
-        "optparse" | "optionparser" => Some(include_str!("optparse.rb")),
-        "random/formatter" => Some(include_str!("random_formatter.rb")),
-        "socket" => Some(include_str!("socket.rb")),
-        "erb" => Some(include_str!("erb.rb")),
-        "abbrev" => Some(include_str!("abbrev.rb")),
-        "etc" => Some(include_str!("etc.rb")),
-        "mkmf" => Some(include_str!("mkmf.rb")),
-        "pp" => Some(include_str!("pp.rb")),
-        "fcntl" => Some(include_str!("fcntl.rb")),
-        "expect" => Some(include_str!("expect.rb")),
-        "fiber" => Some(include_str!("fiber.rb")),
-        "open-uri" => Some(include_str!("open_uri.rb")),
-        "find" => Some(include_str!("find.rb")),
-        "getoptlong" => Some(include_str!("getoptlong.rb")),
-        "io/console" => Some(include_str!("io_console.rb")),
-        "ipaddr" => Some(include_str!("ipaddr.rb")),
-        "coverage" => Some(include_str!("coverage.rb")),
-        "csv" => Some(include_str!("csv.rb")),
-        "date" => Some(include_str!("date.rb")),
-        "delegate" => Some(include_str!("delegate.rb")),
-        "weakref" => Some(include_str!("weakref.rb")),
-        "logger" => Some(include_str!("logger.rb")),
-        "monitor" => Some(include_str!("monitor.rb")),
-        "forwardable" | "forwardable/impl" => Some(include_str!("forwardable.rb")),
-        "tsort" => Some(include_str!("tsort.rb")),
-        "io/wait" => Some(include_str!("io_wait.rb")),
-        "pty" => Some(include_str!("pty.rb")),
-        "continuation" => Some(include_str!("continuation.rb")),
-        "pstore" => Some(include_str!("pstore.rb")),
-        "benchmark" => Some(include_str!("benchmark.rb")),
-        "un" => Some(include_str!("un.rb")),
-        "fileutils" => Some(include_str!("fileutils.rb")),
-        "tmpdir" => Some(include_str!("tmpdir.rb")),
-        "tempfile" => Some(include_str!("tempfile.rb")),
-        // Every name the digest library is reached by loads the one
-        // file, which carries all of the algorithms metorex has.
-        "digest"
-        | "digest/md5"
-        | "digest/sha1"
-        | "digest/sha2"
-        | "digest/rmd160"
-        | "digest/bubblebabble" => Some(include_str!("digest.rb")),
-        "matrix" => Some(include_str!("matrix.rb")),
-        "drb" | "drb/drb" => Some(include_str!("drb.rb")),
-        "fiddle" => Some(include_str!("fiddle.rb")),
-        "irb" => Some(include_str!("irb.rb")),
-        "irb/color" => Some(include_str!("irb_color.rb")),
-        "json" => Some(include_str!("json.rb")),
-        "objspace" => Some(include_str!("objspace.rb")),
-        "objspace/trace" => Some(include_str!("objspace_trace.rb")),
-        "observer" => Some(include_str!("observer.rb")),
-        "ostruct" => Some(include_str!("ostruct.rb")),
-        "pathname" => Some(include_str!("pathname.rb")),
-        "prime" => Some(include_str!("prime.rb")),
-        "ripper" => Some(include_str!("ripper.rb")),
-        // The scanner and the grammar, which Ruby writes in C, load with
-        // the core class that dispatches their events.
-        "ripper/core" => Some(concat!(
-            include_str!("ripper_core.rb"),
-            include_str!("ripper_scanner.rb"),
-            include_str!("ripper_grammar.rb")
-        )),
-        "ripper/filter" => Some(include_str!("ripper_filter.rb")),
-        "ripper/lexer" => Some(include_str!("ripper_lexer.rb")),
-        "ripper/sexp" => Some(include_str!("ripper_sexp.rb")),
-        "securerandom" => Some(include_str!("securerandom.rb")),
-        "shellwords" => Some(include_str!("shellwords.rb")),
-        "singleton" => Some(include_str!("singleton.rb")),
-        "stringio" => Some(include_str!("stringio.rb")),
-        "strscan" => Some(include_str!("strscan.rb")),
-        "time" => Some(include_str!("time.rb")),
-        "timeout" => Some(include_str!("timeout.rb")),
-        "uri" => Some(include_str!("uri.rb")),
-        _ => None,
-    }
+    EMBEDDED_LIBRARIES
+        .iter()
+        .find(|(names, _)| names.contains(&trimmed))
+        .map(|(_, source)| *source)
+}
+
+/// Every name `require` finds a library metorex carries under.
+pub(crate) fn embedded_library_names() -> impl Iterator<Item = &'static str> {
+    EMBEDDED_LIBRARIES
+        .iter()
+        .flat_map(|(names, _)| names.iter().copied())
 }
