@@ -17,6 +17,15 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <time.h>
+/* The headers MRI's ruby.h brings in, which an extension written for it
+   relies on having without including them itself. */
+#include <assert.h>
+#include <ctype.h>
+#include <errno.h>
+#include <inttypes.h>
+#include <math.h>
+#include <strings.h>
+#include <sys/stat.h>
 
 #include "ruby/st.h"
 

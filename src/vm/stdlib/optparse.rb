@@ -159,7 +159,8 @@ class OptionParser
     until letters.empty?
       letter = letters[0]
       letters = letters[1..-1].to_s
-      switch = @switches.find { |held_switch| held_switch.short == letter }
+      # A switch defined later stands ahead of an earlier one of the same name.
+      switch = @switches.reverse_each.find { |held_switch| held_switch.short == letter }
       raise InvalidOption, "invalid option: -#{letter}" if switch.nil?
       if switch.argument.nil?
         record_option switch, true, into
@@ -181,7 +182,7 @@ class OptionParser
       name = name["no-".length..-1]
     end
     wanted = name.gsub "-", "_"
-    switch = @switches.find { |held_switch| held_switch.long == wanted }
+    switch = @switches.reverse_each.find { |held_switch| held_switch.long == wanted }
     raise InvalidOption, "invalid option: #{held}" if switch.nil?
     value = if switch.argument.nil?
               !negated

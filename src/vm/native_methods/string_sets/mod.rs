@@ -13,6 +13,7 @@ mod clusters;
 mod dispatch;
 mod reading_back;
 
+pub(crate) use byte_runs::text_in_encoding;
 pub(crate) use character_sets::*;
 pub(crate) use clusters::*;
 pub(crate) use reading_back::*;

@@ -19,7 +19,18 @@ counted("Kernel#sleep") { sleep(0.2).class }
 counted("Kernel#system") { system("sleep 0.2") }
 counted("Kernel#`") { `sleep 0.2; echo hi` }
 counted("IO.popen") { IO.popen("sleep 0.2; echo hi") { |child| child.read } }
-counted("IO.popen writing") { IO.popen("sleep 0.2; cat > /dev/null", "w") { |child| child.write("x" * 200_000) } }
+# The child reads nothing until a thread opens the gate, and that thread runs
+# only once the write waits, so the pipe fills before the child drains it.
+counted "IO.popen writing" do
+  Dir.mktmpdir do |directory|
+    gate = File.join directory, "gate"
+    File.mkfifo gate
+    IO.popen ["sh", "-c", "read go < \"$0\"; cat > /dev/null", gate], "w" do |child|
+      Thread.new { File.write gate, "go\n" }
+      child.write "x" * 200_000
+    end
+  end
+end
 counted("Process.wait") { Process.wait(spawn("sleep 0.2")).class }
 counted("Process.wait2") { Process.wait2(spawn("sleep 0.2"))[1].success? }
 counted("Process.waitpid") { Process.waitpid(spawn("sleep 0.2")).class }

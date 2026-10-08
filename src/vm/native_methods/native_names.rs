@@ -89,7 +89,7 @@ const NATIVE_METHODS_BY_OWNER: &[(&str, &[&str])] = &[
             "to_r",
         ],
     ),
-    ("FalseClass", &["&", "^", "|"]),
+    ("FalseClass", &["&", "===", "^", "inspect", "to_s", "|"]),
     (
         "Float",
         &[
@@ -206,8 +206,11 @@ const NATIVE_METHODS_BY_OWNER: &[(&str, &[&str])] = &[
         "NilClass",
         &[
             "&",
+            "===",
             "=~",
             "^",
+            "inspect",
+            "nil?",
             "rationalize",
             "to_a",
             "to_c",
@@ -215,6 +218,7 @@ const NATIVE_METHODS_BY_OWNER: &[(&str, &[&str])] = &[
             "to_h",
             "to_i",
             "to_r",
+            "to_s",
             "|",
         ],
     ),
@@ -355,7 +359,7 @@ const NATIVE_METHODS_BY_OWNER: &[(&str, &[&str])] = &[
             "upcase",
         ],
     ),
-    ("TrueClass", &["&", "^", "|"]),
+    ("TrueClass", &["&", "===", "^", "inspect", "to_s", "|"]),
 ];
 
 /// Whether the class or module named `owner` answers `name` natively.
@@ -363,6 +367,13 @@ fn owner_answers(owner: &str, name: &str) -> bool {
     NATIVE_METHODS_BY_OWNER
         .iter()
         .any(|(held, names)| *held == owner && names.contains(&name))
+}
+
+/// Whether nil, true or false answers `name` with a native method of its own
+/// class, as against one every object has.
+pub(crate) fn value_answers_natively(receiver: &Object, name: &str) -> bool {
+    crate::builtin_classes::value_class_name(receiver)
+        .is_some_and(|named| owner_answers(named, name))
 }
 
 /// Whether instances of `class` answer `name` natively: by the class

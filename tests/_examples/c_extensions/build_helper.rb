@@ -3,6 +3,8 @@
 require "mkmf"
 require "fileutils"
 
+MakeMakefile::Logging.quiet = true
+
 def build_extension(source, target, directory)
   FileUtils.cp(File.join(__dir__, source), File.join(directory, "#{target}.c"))
   Dir.chdir(directory) do

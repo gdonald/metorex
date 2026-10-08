@@ -1765,3 +1765,123 @@ fn test_stdlib_libraries_option_parser_orders_no_parens_execution() {
     let output = run_example("stdlib_libraries/option_parser_orders_no_parens.rb");
     assert_eq!(output, OPTION_PARSER_ORDERS);
 }
+
+const CONFIGURE_CHECKS: &str = concat!(
+    "checking for stdio.h... yes\n",
+    "true\n",
+    "checking for no_such_header.h... no\n",
+    "false\n",
+    "checking for sqrt() in -lm... yes\n",
+    "true\n",
+    "checking for nothing() in -lno_such_library_xyz... no\n",
+    "false\n",
+    "checking for printf() in stdio.h... yes\n",
+    "true\n",
+    "checking for no_such_function_xyz()... no\n",
+    "false\n",
+    "checking for strlen() in stdio.h,string.h... yes\n",
+    "true\n",
+    "checking for errno in errno.h... yes\n",
+    "true\n",
+    "checking for no_such_variable_xyz in stdio.h... no\n",
+    "false\n",
+    "checking for size_t in stddef.h... yes\n",
+    "true\n",
+    "checking for struct no_such_type in stdio.h... no\n",
+    "false\n",
+    "checking for EOF in stdio.h... yes\n",
+    "true\n",
+    "checking for NO_SUCH_MACRO_XYZ in stdio.h... no\n",
+    "false\n",
+    "checking for EOF in stdio.h... yes\n",
+    "true\n",
+    "checking for NO_SUCH_CONST_XYZ in stdio.h... no\n",
+    "false\n",
+    "[nil, nil]\n",
+    "[\"/def/inc\", \"/def/lib\"]\n",
+    "[\"-DHAVE_STDIO_H\", \"-DHAVE_PRINTF\", \"-DHAVE_STRLEN\", \"-DHAVE_ERRNO\", \"-DHAVE_TYPE_SIZE_T\", \"-DHAVE_CONST_EOF\"]\n",
+    "\"-lm \"\n",
+    "[\"-I/def/inc\"]\n",
+    "[\"/def/lib\"]\n",
+    "\"MY_LIB_H\"\n",
+    "\"foo()\"\n",
+    "\"foo\"\n",
+    "creating Makefile\n",
+    "[\"-DHAVE_CONST_EOF\", \"-DHAVE_ERRNO\", \"-DHAVE_PRINTF\", \"-DHAVE_STDIO_H\", \"-DHAVE_STRLEN\", \"-DHAVE_TYPE_SIZE_T\", \"-lm\"]\n",
+    "checking for stdio.h... yes\n",
+    "checking for no_such.h... no\n",
+    "checking for sqrt() in -lm... yes\n",
+    "checking for printf() in stdio.h... yes\n",
+    "checking for size_t in stddef.h... yes\n",
+    "checking for EOF in stdio.h... yes\n",
+    "creating Makefile\n",
+    "[\"-DHAVE_CONST_EOF\", \"-DHAVE_PRINTF\", \"-DHAVE_STDIO_H\", \"-DHAVE_TYPE_SIZE_T\", \"-lm\"]\n",
+);
+
+#[test]
+fn test_stdlib_libraries_configure_checks_execution() {
+    let output = run_example("stdlib_libraries/configure_checks.rb");
+    assert_eq!(output, CONFIGURE_CHECKS);
+}
+
+#[test]
+fn test_stdlib_libraries_configure_checks_no_parens_execution() {
+    let output = run_example("stdlib_libraries/configure_checks_no_parens.rb");
+    assert_eq!(output, CONFIGURE_CHECKS);
+}
+
+const COLORIZED_CODE: &str = concat!(
+    "\"\\e[34m\\e[1m# A comment\\e[0m\\n\"\n",
+    "\"\\e[36mrequire\\e[0m \\e[31m\\e[1m\\\"\\e[0m\\e[31mset\\e[0m\\e[31m\\e[1m\\\"\\e[0m\\n\"\n",
+    "\"\\e[32mmodule\\e[0m \\e[34m\\e[1m\\e[4mShipping\\e[0m\\n\"\n",
+    "\"  \\e[32mclass\\e[0m \\e[34m\\e[1m\\e[4mCrate\\e[0m < \\e[34m\\e[1m\\e[4mStruct\\e[0m.\\e[36mnew\\e[0m(\\e[33m:\\e[0m\\e[33mwidth\\e[0m, \\e[33m:\\e[0m\\e[33mheight\\e[0m)\\n\"\n",
+    "\"    \\e[34m\\e[1m\\e[4mRATE\\e[0m = \\e[35m\\e[1m1.5\\e[0m\\n\"\n",
+    "\"    \\e[32mdef\\e[0m \\e[36m\\e[1mvolume\\e[0m(depth = \\e[34m\\e[1m2\\e[0m) = \\e[36mwidth\\e[0m * \\e[36mheight\\e[0m * depth\\n\"\n",
+    "\"    \\e[32mdef\\e[0m \\e[36m\\e[1mlabel\\e[0m\\n\"\n",
+    "\"      \\e[31m\\e[1m\\\"\\e[0m\\e[31m\\#{\\e[0m\\e[36mwidth\\e[0m\\e[31m}\\e[0m\\e[31mx\\e[0m\\e[31m\\#{\\e[0m\\e[36mheight\\e[0m\\e[31m}\\e[0m\\e[31m \\e[0m\\e[31m#\\e[0m@name\\e[31m $0 \\e[0m\\e[31m#\\e[0m\\e[32m\\e[1m$1\\e[0m\\e[31m\\e[1m\\\"\\e[0m\\n\"\n",
+    "\"    \\e[32mend\\e[0m\\n\"\n",
+    "\"    \\e[32malias\\e[0m \\e[36m\\e[1msize\\e[0m \\e[36m\\e[1mvolume\\e[0m\\n\"\n",
+    "\"    \\e[32mundef\\e[0m \\e[33mlabel\\e[0m\\n\"\n",
+    "\"  \\e[32mend\\e[0m\\n\"\n",
+    "\"\\e[32mend\\e[0m\\n\"\n",
+    "\"crate = \\e[34m\\e[1m\\e[4mShipping\\e[0m::\\e[34m\\e[1m\\e[4mCrate\\e[0m.\\e[36mnew\\e[0m \\e[34m\\e[1m3\\e[0m, \\e[34m\\e[1m4r\\e[0m\\n\"\n",
+    "\"\\e[36mp\\e[0m crate.\\e[36mvolume\\e[0m, \\e[33m:\\e[0m\\e[33msym\\e[0m, \\e[33m:\\\"\\e[0m\\e[33mquoted \\e[0m\\e[33m\\#{\\e[0m\\e[34m\\e[1m1\\e[0m\\e[33m}\\e[0m\\e[33m\\\"\\e[0m, \\e[33m%i[\\e[0m\\e[33ma\\e[0m \\e[33mb\\e[0m\\e[33m]\\e[0m, \\e[31m\\e[1m%w[\\e[0m\\e[31mc\\e[0m \\e[31md\\e[0m\\e[31m\\e[1m]\\e[0m, {\\e[35mkey:\\e[0m \\e[34m\\e[1m1\\e[0m, \\e[35m\\\"str\\\":\\e[0m \\e[34m\\e[1m2\\e[0m}\\n\"\n",
+    "\"\\e[36mp\\e[0m \\e[36m\\e[1mnil\\e[0m, \\e[36m\\e[1mtrue\\e[0m, \\e[36m\\e[1mfalse\\e[0m, \\e[36m\\e[1mself\\e[0m, \\e[36m\\e[1m__FILE__\\e[0m, \\e[36m\\e[1m__LINE__\\e[0m, \\e[34m\\e[1m?a\\e[0m, \\e[34m\\e[1m2i\\e[0m, \\e[34m\\e[1m0x1f\\e[0m, \\e[35m\\e[1m1e3\\e[0m, \\e[32m\\e[1m$stdout\\e[0m, \\e[32m\\e[1m$~\\e[0m\\n\"\n",
+    "\"\\e[36mputs\\e[0m \\e[31m\\e[1m`\\e[0m\\e[31mecho hi\\e[0m\\e[31m\\e[1m`\\e[0m \\e[32mif\\e[0m \\e[32mdefined?\\e[0m(crate) && !\\e[36m\\e[1mfalse\\e[0m \\e[32mor\\e[0m \\e[32mnot\\e[0m \\e[36m\\e[1mtrue\\e[0m\\n\"\n",
+    "\"x = \\e[31m\\e[1m/\\e[0m\\e[31mab+c\\e[0m\\e[31m\\e[1m/i\\e[0m =~ \\e[31m\\e[1m\\\"\\e[0m\\e[31mabbc\\e[0m\\e[31m\\e[1m\\\"\\e[0m\\n\"\n",
+    "\"value = [\\e[34m\\e[1m1\\e[0m, \\e[34m\\e[1m2\\e[0m].\\e[36mmap\\e[0m { it ** \\e[34m\\e[1m2\\e[0m }.\\e[36msum\\e[0m \\e[32mrescue\\e[0m \\e[34m\\e[1m0\\e[0m\\n\"\n",
+    "\"first, crate.width = \\e[34m\\e[1m1\\e[0m, \\e[34m\\e[1m2\\e[0m\\n\"\n",
+    "\"\\e[32mcase\\e[0m value \\e[32mwhen\\e[0m \\e[34m\\e[1m5\\e[0m \\e[32mthen\\e[0m \\e[36mp\\e[0m \\e[34m\\e[1m1\\e[0m \\e[32melse\\e[0m \\e[36mp\\e[0m \\e[34m\\e[1m2\\e[0m \\e[32mend\\e[0m\\n\"\n",
+    "\"y = \\e[31m<<~TEXT\\e[0m\\n\"\n",
+    "\"\\e[31m  heredoc \\e[0m\\e[31m\\#{\\e[0mvalue\\e[31m}\\e[0m\\e[31m\\e[0m\\n\"\n",
+    "\"\\e[31mTEXT\\e[0m\\n\"\n",
+    "\"\\e[34m\\e[1m=begin\\e[0m\\n\"\n",
+    "\"\\e[34m\\e[1mdoc\\e[0m\\n\"\n",
+    "\"\\e[34m\\e[1m=end\\e[0m\\n\"\n",
+    "\"\\e[32m__END__\\e[0m\\n\"\n",
+    "\"trailing\\n\"\n",
+    "true\n",
+    "\"width + \\e[36mdepth\\e[0m\\n\"\n",
+    "\"def (\\n  x^A\"\n",
+    "\"\u{feff}\\e[34m\\e[1m# marked\\e[0m\\n\"\n",
+    "\"\\e[31m\\e[1mtext\\e[0m\"\n",
+    "\"text\"\n",
+    "\"\\e[0m\"\n",
+    "\"\"\n",
+    "true\n",
+    "false\n",
+    "false\n",
+    "p :piped\n",
+);
+
+#[test]
+fn test_stdlib_libraries_colorized_code_execution() {
+    let output = run_example("stdlib_libraries/colorized_code.rb");
+    assert_eq!(output, COLORIZED_CODE);
+}
+
+#[test]
+fn test_stdlib_libraries_colorized_code_no_parens_execution() {
+    let output = run_example("stdlib_libraries/colorized_code_no_parens.rb");
+    assert_eq!(output, COLORIZED_CODE);
+}

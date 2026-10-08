@@ -456,3 +456,32 @@ fn test_strings_inspect_interpolation_marks_no_parens_execution() {
     let output = run_example("strings/inspect_interpolation_marks_no_parens.rb");
     assert_eq!(output, INSPECT_INTERPOLATION_MARKS_OUTPUT);
 }
+
+const MULTIBYTE_BYTESLICES_OUTPUT: &str = concat!(
+    "na\u{ef}ve\n",
+    "\"na\u{ef}ve\"\n",
+    "5\n",
+    "#<Encoding:UTF-8>\n",
+    "true\n",
+    "na\u{ef}ve plan\n",
+    "10\n",
+    "[\u{2500}]\n",
+    "[226, 148, 128]\n",
+    "\"\\xC3\"\n",
+    "false\n",
+    "1\n",
+    "\u{feff}# heading\n",
+    "[239, 187, 191, 120]\n",
+);
+
+#[test]
+fn test_strings_multibyte_byteslices_execution() {
+    let output = run_example("strings/multibyte_byteslices.rb");
+    assert_eq!(output, MULTIBYTE_BYTESLICES_OUTPUT);
+}
+
+#[test]
+fn test_strings_multibyte_byteslices_parens_execution() {
+    let output = run_example("strings/multibyte_byteslices_parens.rb");
+    assert_eq!(output, MULTIBYTE_BYTESLICES_OUTPUT);
+}

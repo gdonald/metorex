@@ -119,6 +119,7 @@ pub(crate) fn embedded_library(name: &str) -> Option<&'static str> {
         "drb" | "drb/drb" => Some(include_str!("drb.rb")),
         "fiddle" => Some(include_str!("fiddle.rb")),
         "irb" => Some(include_str!("irb.rb")),
+        "irb/color" => Some(include_str!("irb_color.rb")),
         "json" => Some(include_str!("json.rb")),
         "objspace" => Some(include_str!("objspace.rb")),
         "objspace/trace" => Some(include_str!("objspace_trace.rb")),

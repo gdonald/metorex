@@ -860,6 +860,30 @@ impl VirtualMachine {
         (!method.is_undefined).then_some((object_class, method))
     }
 
+    /// Whether `method`, found for an exception, nil, true or false, is one
+    /// every object has from Object, Kernel or BasicObject, while the value's
+    /// own class answers `method_name` natively ahead of it.
+    fn object_method_hides_native(
+        &self,
+        receiver: &Object,
+        method_name: &str,
+        method: &Rc<Method>,
+    ) -> bool {
+        let answered_natively = match receiver {
+            Object::Exception(_) => {
+                crate::vm::native_methods::EVERY_EXCEPTION_METHOD.contains(&method_name)
+            }
+            Object::Nil | Object::Bool(_) => {
+                crate::vm::native_methods::value_answers_natively(receiver, method_name)
+            }
+            _ => false,
+        };
+        answered_natively
+            && self
+                .object_table_method(method_name)
+                .is_some_and(|(_, every_object_has)| Rc::ptr_eq(&every_object_has, method))
+    }
+
     /// Whether a class or module receiver would answer `method_name` with an
     /// instance method every object has from Object, Kernel or BasicObject.
     pub(crate) fn object_method_behind_native(&self, receiver: &Object, method_name: &str) -> bool {
@@ -1065,6 +1089,7 @@ impl VirtualMachine {
                     && let Some(Object::Class(reopened)) = self.globals().get(named)
                     && let Some(method) = reopened.find_method(method_name)
                     && !method.body.is_empty()
+                    && !self.object_method_hides_native(receiver, method_name, &method)
                 {
                     return Some((reopened, method));
                 }
@@ -1076,11 +1101,17 @@ impl VirtualMachine {
                     // A body-less stub stands in for a native method, so it
                     // must not shadow the implementation.
                     && !method.body.is_empty()
+                    && !self.object_method_hides_native(receiver, method_name, &method)
                 {
                     return Some((class, method));
                 }
                 let class = self.builtins().class_of(receiver);
-                class.find_method(method_name).map(|method| (class, method))
+                class
+                    .find_method(method_name)
+                    .filter(|method| {
+                        !self.object_method_hides_native(receiver, method_name, method)
+                    })
+                    .map(|method| (class, method))
             }
         }
     }

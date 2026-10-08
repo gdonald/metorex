@@ -119,9 +119,12 @@ impl VirtualMachine {
                 }
                 let stop = (from + count).min(total);
                 let cut = &bytes[from as usize..stop as usize];
-                let made = crate::object::StringValue::from_bytes(bytes_as_text(cut));
-                made.set_encoding(string_value.encoding_name());
-                Ok(Some(Object::String(Rc::new(made))))
+                Ok(Some(
+                    crate::vm::native_methods::string_sets::text_in_encoding(
+                        cut,
+                        &string_value.encoding_name(),
+                    ),
+                ))
             }
             "bytes" | "each_byte" => {
                 if !arguments.is_empty() {

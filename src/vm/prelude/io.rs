@@ -684,9 +684,6 @@ class IO
       to_child[0].close if writes
     end
     joined = reads ? from_child[0] : to_child[1]
-    # Reading waits for the child to write, and writing for it to read.
-    joined.nonblock = false
-    to_child[1].nonblock = false if reads && writes
     stream = __over__ joined.__stream_handle__, nil, mode
     stream.__send__ :__popen_forked__, pid, (reads && writes ? to_child[1] : nil), mode
     unless stream_options[:external_encoding].nil? && stream_options[:internal_encoding].nil?

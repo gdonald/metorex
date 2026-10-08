@@ -197,3 +197,32 @@ fn test_errors_backtrace_frame_labels_no_parens_execution() {
     let output = run_example("errors/backtrace/frame_labels_no_parens.rb");
     assert_eq!(output, BACKTRACE_FRAME_LABELS_OUTPUT);
 }
+
+const OBJECT_MIXIN: &str = concat!(
+    "\"disk full\"\n",
+    "\"disk full\"\n",
+    "true\n",
+    "\"bad size\"\n",
+    "\"own message\"\n",
+    "\"reported ab\"\n",
+    "\"reported \"\n",
+    "true\n",
+    "[\"\", \"true\", \"false\"]\n",
+    "nil\n",
+    "true\n",
+    "false\n",
+    "reported text\n",
+    "|true|false\n",
+);
+
+#[test]
+fn test_errors_message_object_mixin_execution() {
+    let output = run_example("errors/message/object_mixin.rb");
+    assert_eq!(output, OBJECT_MIXIN);
+}
+
+#[test]
+fn test_errors_message_object_mixin_parens_execution() {
+    let output = run_example("errors/message/object_mixin_parens.rb");
+    assert_eq!(output, OBJECT_MIXIN);
+}
