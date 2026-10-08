@@ -97,14 +97,24 @@ pub(crate) fn embedded_library(name: &str) -> Option<&'static str> {
         "logger" => Some(include_str!("logger.rb")),
         "monitor" => Some(include_str!("monitor.rb")),
         "forwardable" | "forwardable/impl" => Some(include_str!("forwardable.rb")),
+        "tsort" => Some(include_str!("tsort.rb")),
+        "io/wait" => Some(include_str!("io_wait.rb")),
+        "pty" => Some(include_str!("pty.rb")),
+        "continuation" => Some(include_str!("continuation.rb")),
+        "pstore" => Some(include_str!("pstore.rb")),
+        "benchmark" => Some(include_str!("benchmark.rb")),
+        "un" => Some(include_str!("un.rb")),
         "fileutils" => Some(include_str!("fileutils.rb")),
         "tmpdir" => Some(include_str!("tmpdir.rb")),
         "tempfile" => Some(include_str!("tempfile.rb")),
         // Every name the digest library is reached by loads the one
         // file, which carries all of the algorithms metorex has.
-        "digest" | "digest/md5" | "digest/sha1" | "digest/sha2" | "digest/bubblebabble" => {
-            Some(include_str!("digest.rb"))
-        }
+        "digest"
+        | "digest/md5"
+        | "digest/sha1"
+        | "digest/sha2"
+        | "digest/rmd160"
+        | "digest/bubblebabble" => Some(include_str!("digest.rb")),
         "matrix" => Some(include_str!("matrix.rb")),
         "drb" | "drb/drb" => Some(include_str!("drb.rb")),
         "fiddle" => Some(include_str!("fiddle.rb")),

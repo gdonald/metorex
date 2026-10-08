@@ -241,7 +241,10 @@ impl VirtualMachine {
                         other => other?,
                     };
                     match flow {
-                        ControlFlow::Next => {}
+                        // A statement that answers nothing, such as an `if`
+                        // whose branch did not run, leaves the block's value
+                        // nil.
+                        ControlFlow::Next => last_value = Object::Nil,
                         ControlFlow::Value(value) => {
                             last_value = value;
                         }
@@ -507,7 +510,7 @@ impl VirtualMachine {
                                 other => other?,
                             };
                             match flow {
-                                ControlFlow::Next => {}
+                                ControlFlow::Next => last_value = Object::Nil,
                                 ControlFlow::Value(value) => last_value = value,
                                 ControlFlow::Retry { .. } | ControlFlow::Redo { .. } => {
                                     again = true;

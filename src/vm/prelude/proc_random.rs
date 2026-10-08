@@ -235,17 +235,16 @@ class Random
 
   # A run of bytes, four to each word the generator answers.
   def bytes count
-    held = []
-    taken = 0
-    while taken < count
-      word = next_word
-      4.times do
-        break if taken >= count
-        held.push((word >> ((taken % 4) * 8)) & 0xff)
-        taken += 1
+    unless count.is_a? Integer
+      unless count.respond_to? :to_int
+        named = count.nil? ? "nil" : count.class.to_s
+        raise TypeError, "no implicit conversion of #{named} into Integer"
       end
+      count = count.to_int
     end
-    held.pack "C*"
+    raise ArgumentError, "negative string size (or size too big)" if count < 0
+    drawn, @index = Random.__tempered_bytes__ @state, @index, count
+    drawn
   end
 
   # A Float in [0, 1) when nothing bounds it, and a number under the bound

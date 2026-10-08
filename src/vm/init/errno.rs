@@ -320,3 +320,40 @@ pub(crate) fn errno_description(number: i32) -> String {
         None => rendered,
     }
 }
+
+/// The SystemCallError MRI raises for a failed system call: the Errno class
+/// the error number names, and a message of the system's reason, the C
+/// function that made the call, and what it was made on.
+pub(crate) fn system_call_error(
+    problem: &std::io::Error,
+    function: &str,
+    detail: &str,
+    position: crate::lexer::Position,
+) -> crate::error::MetorexError {
+    let class = problem
+        .raw_os_error()
+        .and_then(errno_class_name)
+        .unwrap_or("SystemCallError");
+    let spelled = problem.to_string();
+    let reason = spelled.split(" (os error").next().unwrap_or(&spelled);
+    crate::vm::errors::simple_exception(
+        class,
+        &format!("{reason} @ {function} - {detail}"),
+        position,
+    )
+}
+
+/// The error for a failed call on two paths. MRI names only the second when
+/// it already exists, and both otherwise.
+pub(crate) fn two_path_error(
+    problem: &std::io::Error,
+    function: &str,
+    from: &str,
+    to: &str,
+    position: crate::lexer::Position,
+) -> crate::error::MetorexError {
+    if problem.raw_os_error() == Some(libc::EEXIST) {
+        return system_call_error(problem, "syserr_fail2_in", to, position);
+    }
+    system_call_error(problem, function, &format!("({from}, {to})"), position)
+}

@@ -75,6 +75,16 @@ impl VirtualMachine {
                 return self.invoke_method(owner, method, receiver, arguments, position);
             }
         }
+        // A class's own native methods come ahead of the instance methods it
+        // has as an object.
+        if self.object_method_behind_native(&receiver, name) {
+            let class = self.builtins().class_of(&receiver);
+            if let Some(result) =
+                self.call_native_method(class.as_ref(), &receiver, name, &arguments, position)?
+            {
+                return Ok(result);
+            }
+        }
         if let Some((owner, method)) = self.lookup_method(&receiver, name)
             && !method.is_undefined
         {
@@ -88,6 +98,9 @@ impl VirtualMachine {
         }
         if let Some(result) = self.call_object_method(&receiver, name, &arguments, position)? {
             return Ok(result);
+        }
+        if let Some((object_class, method)) = self.object_table_method(name) {
+            return self.invoke_method(object_class, method, receiver, arguments, position);
         }
         // A name the object carries no method for reaches `method_missing`,
         // which is where a program of its own decides what to do with it.

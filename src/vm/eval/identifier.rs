@@ -116,13 +116,12 @@ impl VirtualMachine {
         if let Some(val) = self.environment().get(name) {
             // A method on `self` wins over a same-named Kernel function, so a
             // bare `to_s` inside a class reaches that class's `to_s` rather
-            // than the top-level one.
+            // than the top-level one, and a method that needs arguments
+            // refuses the call the way it would anywhere else.
             if matches!(val, Object::NativeFunction(_))
                 && let Some(current_self) = self.environment().get("self")
                 && let Some((class, method)) = self.lookup_method(&current_self, name)
                 && !method.is_undefined
-                && method.parameters.is_empty()
-                && method.variadic_param.is_none()
             {
                 return self.invoke_method(class, method, current_self, vec![], position);
             }

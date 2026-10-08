@@ -212,3 +212,40 @@ fn test_metaprogramming_extend_with_several_modules_no_parens_execution() {
     let output = run_example("metaprogramming/extend_with_several_modules_no_parens.rb");
     assert_eq!(output, EXTEND_WITH_SEVERAL_MODULES);
 }
+
+const ALIAS_IN_CORE_SUBCLASSES: &str = concat!(
+    ":a\n", ":b\n", "2\n", "6\n", ":none\n", "5\n", "6\n", "\"HI\"\n",
+);
+
+#[test]
+fn test_metaprogramming_alias_in_core_subclasses_execution() {
+    let output = run_example("metaprogramming/alias_in_core_subclasses.rb");
+    assert_eq!(output, ALIAS_IN_CORE_SUBCLASSES);
+}
+
+#[test]
+fn test_metaprogramming_alias_in_core_subclasses_no_parens_execution() {
+    let output = run_example("metaprogramming/alias_in_core_subclasses_no_parens.rb");
+    assert_eq!(output, ALIAS_IN_CORE_SUBCLASSES);
+}
+
+const PUBLIC_THROUGH_EXTEND_SELF: &str = concat!(
+    "true\n",
+    "nil\n",
+    "true\n",
+    "false\n",
+    "[true, false]\n",
+    "[false, true]\n",
+);
+
+#[test]
+fn test_metaprogramming_public_through_extend_self_execution() {
+    let output = run_example("metaprogramming/public_through_extend_self.rb");
+    assert_eq!(output, PUBLIC_THROUGH_EXTEND_SELF);
+}
+
+#[test]
+fn test_metaprogramming_public_through_extend_self_no_parens_execution() {
+    let output = run_example("metaprogramming/public_through_extend_self_no_parens.rb");
+    assert_eq!(output, PUBLIC_THROUGH_EXTEND_SELF);
+}

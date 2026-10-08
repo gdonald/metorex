@@ -34,9 +34,11 @@ impl VirtualMachine {
                 };
                 std::os::unix::fs::symlink(&*target.as_str(), &*link.as_str()).map_err(
                     |problem| {
-                        crate::vm::errors::simple_exception(
-                            "Errno::EEXIST",
-                            &format!("File exists @ rb_file_s_symlink - {link}: {problem}"),
+                        crate::vm::init::two_path_error(
+                            &problem,
+                            "rb_file_s_symlink",
+                            &target.as_str(),
+                            &link.as_str(),
                             position,
                         )
                     },

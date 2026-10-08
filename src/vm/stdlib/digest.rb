@@ -236,6 +236,20 @@ module Digest
     end
   end
 
+  class RMD160 < Digest::Base
+    def algorithm
+      "RMD160"
+    end
+
+    def digest_length
+      20
+    end
+
+    def block_length
+      64
+    end
+  end
+
   class SHA256 < Digest::Base
     def algorithm
       "SHA256"

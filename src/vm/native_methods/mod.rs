@@ -104,3 +104,47 @@ pub(crate) fn scale_by_power_of_two(value: f64, exponent: i64) -> f64 {
     }
     value
 }
+
+/// Words in a Mersenne Twister's state.
+const TWISTER_SIZE: usize = 624;
+
+/// How far ahead of each word the twist reads its partner.
+const TWISTER_SHIFT: usize = 397;
+
+/// Twist every word of a Mersenne Twister's state into the next set.
+fn twist(state: &mut [u32]) {
+    for at in 0..TWISTER_SIZE {
+        let held = (state[at] & 0x8000_0000) | (state[(at + 1) % TWISTER_SIZE] & 0x7fff_ffff);
+        let mut mixed = state[(at + TWISTER_SHIFT) % TWISTER_SIZE] ^ (held >> 1);
+        if held & 1 == 1 {
+            mixed ^= 0x9908_b0df;
+        }
+        state[at] = mixed;
+    }
+}
+
+/// `count` bytes drawn from a Mersenne Twister, four from each word, low
+/// byte first, starting at word `index`, with the index the next draw starts
+/// at. The state is twisted in place each time its words run out.
+pub(crate) fn tempered_bytes(
+    state: &mut [u32],
+    mut index: usize,
+    count: usize,
+) -> (Vec<u8>, usize) {
+    let mut bytes = Vec::with_capacity(count);
+    while bytes.len() < count {
+        if index >= TWISTER_SIZE {
+            twist(state);
+            index = 0;
+        }
+        let mut word = state[index];
+        index += 1;
+        word ^= word >> 11;
+        word ^= (word << 7) & 0x9d2c_5680;
+        word ^= (word << 15) & 0xefc6_0000;
+        word ^= word >> 18;
+        let wanted = (count - bytes.len()).min(4);
+        bytes.extend_from_slice(&word.to_le_bytes()[..wanted]);
+    }
+    (bytes, index)
+}

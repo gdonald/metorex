@@ -92,9 +92,12 @@ impl VirtualMachine {
             // A builtin class answers many of its methods natively,
             // with no entry to copy. A stub carrying the name keeps
             // the alias reaching the native one.
+            // A class below one, such as a Hash of the program's own, reaches
+            // the same native method.
             if !found
-                && let Some(probe) = sample_of_class(class_rc.name())
-                && self.responds_to(&probe, &old_name)
+                && (sample_of_class(class_rc.name())
+                    .is_some_and(|probe| self.responds_to(&probe, &old_name))
+                    || crate::vm::native_methods::class_answers_natively(class_rc, &old_name, true))
             {
                 let mut stub = Method::with_owner(
                     new_name.clone(),

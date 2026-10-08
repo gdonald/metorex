@@ -63,14 +63,18 @@ bundled gem one at a time.
 
 - [ ] 4.1. Default libraries
   - [x] 4.1.1. `forwardable`: `def_delegator`, `def_delegators`, `delegate` and `instance_delegate`, with `SingleForwardable`
-  - [ ] 4.1.2. `tsort`: `tsort`, `each_strongly_connected_component`, `strongly_connected_components` and `TSort::Cyclic`
-  - [ ] 4.1.3. `io/wait`: the require succeeds, and `IO#wait`, `wait_readable`, `wait_writable` and `ready?` answer as MRI's do
-  - [ ] 4.1.4. `pty`: `PTY.spawn`, `PTY.open` and `PTY.check`
-  - [ ] 4.1.5. `continuation`: `Kernel#callcc` and `Continuation#call`, at least for a continuation called while its frame is still on the stack
-  - [ ] 4.1.6. `digest/rmd160`: `Digest::RMD160`
-  - [ ] 4.1.7. `pstore`: `PStore` with `transaction`, `[]`, `[]=`, `delete`, `roots`, `abort` and `commit`
-  - [ ] 4.1.8. `benchmark`: `Benchmark.measure`, `realtime`, `bm` and `bmbm`
+  - [x] 4.1.2. `tsort`: `tsort`, `each_strongly_connected_component`, `strongly_connected_components` and `TSort::Cyclic`
+  - [x] 4.1.3. `io/wait`: the require succeeds, and `IO#wait`, `wait_readable`, `wait_writable` and `ready?` answer as MRI's do
+  - [x] 4.1.4. `pty`: `PTY.spawn`, `PTY.open` and `PTY.check`
+  - [x] 4.1.5. `continuation`: `Kernel#callcc` and `Continuation#call`, at least for a continuation called while its frame is still on the stack
+  - [x] 4.1.6. `digest/rmd160`: `Digest::RMD160`
+  - [x] 4.1.7. `pstore`: `PStore` with `transaction`, `[]`, `[]=`, `delete`, `roots`, `abort` and `commit`
+  - [x] 4.1.8. `benchmark`: `Benchmark.measure`, `realtime`, `bm` and `bmbm`
   - [ ] 4.1.9. `un`: `ruby -run -e cp` and the rest of the commands it defines
+    - [x] 4.1.9.1. `FileUtils` answers every method MRI's does, as module functions a class can include, with the `verbose:` and `noop:` messages MRI writes and the `Verbose`, `NoWrite` and `DryRun` modules. Metorex lacks `cp_r`, `cp_lr`, `ln`, `ln_sf`, `ln_sr`, `install`, `chown`, `chown_R`, `chmod_R`, `copy_entry`, `copy_stream`, `compare_stream`, `uptodate?`, `link_entry`, `commands`, `options` and `options_of`, writes nothing for `verbose: true`, and takes only numeric modes in `chmod`. Acceptance: each method's result, its effect on the files and its verbose message match MRI's
+    - [x] 4.1.9.2. `ruby -run -e` runs `cp`, `ln`, `mv`, `rm`, `mkdir`, `rmdir`, `install`, `chmod`, `touch`, `wait_writable`, `httpd` and `help` with the options MRI's `un` reads. `OptionParser#order!` hands each argument that is not an option to its block, which metorex's does not. Acceptance: each command with each of its options leaves the files and prints what MRI does
+    - [ ] 4.1.9.3. `ruby -run -e mkmf` with `-d`, `-h`, `-l`, `-f`, `-v`, `-t`, `-m` and `-c`, which need `dir_config`, `have_header`, `have_library`, `have_func`, `have_var`, `have_type`, `have_macro` and `have_const` in metorex's `mkmf`. Acceptance: each check answers what MRI's does for a header, library, function, variable, type, macro and constant that exist and for ones that do not, and the Makefile written carries what they found
+    - [ ] 4.1.9.4. `ruby -run -e colorize`, which needs `IRB::Color.colorize_code` from `require "irb/color"`. Acceptance: the colorized output of a file holding each kind of token matches MRI's byte for byte
   - [ ] 4.1.10. `did_you_mean`: suggestions appended to NameError, NoMethodError and KeyError messages, as MRI prints them by default
   - [ ] 4.1.11. `error_highlight`: the `^^^^` line under the failing call in an uncaught error report, as MRI prints it by default
   - [ ] 4.1.12. `syntax_suggest`: the report MRI adds to a SyntaxError about a missing `end`
@@ -107,6 +111,8 @@ bundled gem one at a time.
 - [ ] 6.12. `Process::Status` reports what MRI's does. `p $?` prints `#<Process::Status:0x...>` where MRI prints `#<Process::Status: pid 6895 SIGKILL (signal 9)>`, and `to_s` answers the same where MRI answers `pid 6894 exit 0`. `coredump?` is not defined, and `stopped?` is always false, so `Process.waitpid2(pid, Process::WUNTRACED)` on a stopped child does not answer MRI's `stopped SIGSTOP (signal 17)`. `system("exit 3")` answers 127, since a command that starts with a shell builtin is not run through `/bin/sh` as MRI runs it. Acceptance: `to_s`, `inspect`, `stopped?`, `stopsig` and `coredump?` match MRI for an exited, a signaled and a stopped child, and `system("exit 3")` leaves `$?.exitstatus` at 3
 - [ ] 6.13. Addresses come back in the order the operating system answers them. `Socket.resolved` puts IPv4 addresses before IPv6 ones, so on macOS `Addrinfo.tcp("localhost", 80)` is `127.0.0.1:80` where MRI's is `[::1]:80`, and `Addrinfo.getaddrinfo(nil, 80, nil, :STREAM)` lists `127.0.0.1` before `::1` where MRI lists `::1` first. An empty host differs too: `Addrinfo.getaddrinfo("", 80, :INET6, :STREAM)` answers `[]` where MRI raises `Socket::ResolutionError`, and `Addrinfo.getaddrinfo("", 80, :INET, :STREAM)` inspects as `0.0.0.0:80 TCP` where MRI shows `0.0.0.0:80 TCP ()`. Acceptance: those four match MRI on macOS and Linux
 - [ ] 6.14. The core methods metorex lacks and Time's ancestors. `Array#rfind` and `Method#box` raise NoMethodError, where MRI 4.0 defines both, and `Time.ancestors` ends `[Comparable, Object]` where MRI's ends `[Kernel, BasicObject]`. Acceptance: `[1, 2, 3].rfind { _1 < 3 }` answers 2, `Method#box` answers what MRI's does, and `Time.ancestors` matches MRI's
+- [ ] 6.15. A continuation resumes after its `callcc` block has returned. `saved = nil; count = callcc { |k| saved = k; 0 }; puts count; saved.call(count + 1) if count < 2` prints 0, 1 and 2 in MRI, and raises NotImplementedError in metorex, whose continuations only return from a block still running. Acceptance: that program prints what MRI's does
+- [ ] 6.16. Backtraces name the program file the way it was given, and an uncaught NameError or NoMethodError names its line. Run as `metorex bt_probe.rb`, `begin; nope; rescue NameError => e; p e.backtrace; end` answers the absolute path of the file where MRI answers `bt_probe.rb:2:in '<main>'`, and the uncaught report of a bare `nope` reads `bt_probe.rb:0:in '<main>'`, at line 0 with the absolute path, where MRI reads `bt_probe.rb:1:in '<main>'`. An uncaught NameError raised inside `def go` reports `<main>` where MRI reports `Object#go` with the method's line. Acceptance: those backtraces and reports match MRI's for a file given by a relative path and for `-e`
 
 ## 7. Platforms and guarded specs
 

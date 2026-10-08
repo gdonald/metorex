@@ -146,6 +146,19 @@ impl VirtualMachine {
                 {
                     return Ok(Some(result));
                 }
+                // A method written on Object, as a top-level `def` is, which
+                // `public_send` reaches only when it is public.
+                if let Some((object_class, found)) = self.object_table_method(&method)
+                    && (method_name != "public_send" || !object_class.is_method_private(&method))
+                {
+                    return Ok(Some(self.invoke_method(
+                        object_class,
+                        found,
+                        receiver.clone(),
+                        rest_args,
+                        position,
+                    )?));
+                }
                 // Every Kernel function is a private method of every object,
                 // and `send` reaches a private method the way a bare call
                 // does.

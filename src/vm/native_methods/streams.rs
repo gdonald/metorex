@@ -316,6 +316,49 @@ impl VirtualMachine {
             // A descriptor named by number, which this program did not open.
             "adopt" => Ok(Object::Int(self.open_streams.borrow(count as RawFd) as i64)),
             // Another handle on the same descriptor, closed on its own.
+            // A pseudo-terminal pair, answered as the two descriptors and the
+            // name of the terminal end.
+            "openpty" => match crate::vm::native_functions::open_terminal_pair() {
+                Ok((controlling, terminal, name)) => Ok(Object::array(vec![
+                    Object::Int(i64::from(controlling)),
+                    Object::Int(i64::from(terminal)),
+                    Object::string(name),
+                ])),
+                Err(problem) => Err(stream_error(&problem, "openpty", position)),
+            },
+            // A program run with a fresh pseudo-terminal as its terminal. The
+            // fifth argument is the words to run and the sixth the names the
+            // child's environment changes, each with its value or nil.
+            "pty_spawn" => {
+                let mut words = Vec::new();
+                if let Some(Object::Array(given)) = arguments.get(4) {
+                    for word in given.borrow().iter() {
+                        words.push(self.get_string_representation(word, position)?);
+                    }
+                }
+                let mut environment = Vec::new();
+                if let Some(Object::Array(given)) = arguments.get(5) {
+                    for pair in given.borrow().iter() {
+                        let Object::Array(pair) = pair else { continue };
+                        let pair = pair.borrow();
+                        let named = self.get_string_representation(&pair[0], position)?;
+                        let value = match &pair[1] {
+                            Object::Nil => None,
+                            held => Some(self.get_string_representation(held, position)?),
+                        };
+                        environment.push((named, value));
+                    }
+                }
+                match crate::vm::native_functions::start_in_terminal(&words, &environment) {
+                    Ok((child, controlling, copy, name)) => Ok(Object::array(vec![
+                        Object::Int(i64::from(child)),
+                        Object::Int(i64::from(controlling)),
+                        Object::Int(i64::from(copy)),
+                        Object::string(name),
+                    ])),
+                    Err(problem) => Err(stream_error(&problem, "pty_spawn", position)),
+                }
+            }
             "dup" => {
                 let Some(number) = self.open_streams.number_of(handle) else {
                     return Err(closed_error(position));
@@ -648,20 +691,34 @@ impl VirtualMachine {
                 let Some(number) = self.open_streams.number_of(handle) else {
                     return Err(closed_error(position));
                 };
-                Ok(Object::Bool(descriptor_ready(number, count != 0, 0)))
+                let wanted = if count != 0 {
+                    Readiness::Writing
+                } else {
+                    Readiness::Reading
+                };
+                Ok(Object::Bool(descriptor_ready(number, wanted, 0)))
             }
             // Wait until the descriptor is ready, or until the wait runs out.
             // The count carries the milliseconds to wait, where a negative
             // count waits without limit.
-            "wait" => {
-                let Some(number) = self.open_streams.number_of(handle) else {
-                    return Err(closed_error(position));
+            // A socket keeps its descriptor in a registry of its own, so it
+            // is waited on by the descriptor's number, which the handle
+            // carries here.
+            "wait_descriptor" | "wait" => {
+                let number = if &*action.as_str() == "wait_descriptor" {
+                    handle as RawFd
+                } else {
+                    let Some(number) = self.open_streams.number_of(handle) else {
+                        return Err(closed_error(position));
+                    };
+                    number
                 };
-                Ok(Object::Bool(descriptor_ready(
-                    number,
-                    &*text == "write",
-                    count,
-                )))
+                let wanted = match &*text {
+                    "write" => Readiness::Writing,
+                    "priority" => Readiness::Priority,
+                    _ => Readiness::Reading,
+                };
+                Ok(Object::Bool(descriptor_ready(number, wanted, count)))
             }
             // The descriptor a path names, opened for reading or for writing.
             "open" => {
@@ -1092,11 +1149,21 @@ fn descriptor_is_ready(number: i32) -> bool {
     unsafe { libc::poll(&mut asked, 1, 0) != 0 }
 }
 
-/// Whether a descriptor is ready to read, or to write, within `waited`
+/// What a descriptor is waited on for.
+#[derive(Clone, Copy, PartialEq)]
+enum Readiness {
+    Reading,
+    Writing,
+    /// Urgent data, which `select` reports among its exceptional
+    /// conditions and `poll` as POLLPRI.
+    Priority,
+}
+
+/// Whether a descriptor is ready the way `wanted` asks within `waited`
 /// milliseconds. Ruby waits through `poll` on Linux and through `select`
 /// elsewhere, and the two disagree about some descriptors: `select` on macOS
 /// reports the read end of a pipe as writable.
-fn descriptor_ready(number: libc::c_int, writing: bool, waited: i64) -> bool {
+fn descriptor_ready(number: libc::c_int, wanted: Readiness, waited: i64) -> bool {
     #[cfg(not(target_os = "linux"))]
     if (number as usize) < libc::FD_SETSIZE {
         // SAFETY: the set is zeroed and holds one descriptor below
@@ -1114,23 +1181,23 @@ fn descriptor_ready(number: libc::c_int, writing: bool, waited: i64) -> bool {
             } else {
                 &mut limit
             };
-            let (reading_set, writing_set) = if writing {
-                (std::ptr::null_mut(), &mut watched as *mut libc::fd_set)
-            } else {
-                (&mut watched as *mut libc::fd_set, std::ptr::null_mut())
+            let mut sets: [*mut libc::fd_set; 3] = [std::ptr::null_mut(); 3];
+            let slot = match wanted {
+                Readiness::Reading => 0,
+                Readiness::Writing => 1,
+                Readiness::Priority => 2,
             };
-            return libc::select(
-                number + 1,
-                reading_set,
-                writing_set,
-                std::ptr::null_mut(),
-                limit_pointer,
-            ) > 0;
+            sets[slot] = &mut watched;
+            return libc::select(number + 1, sets[0], sets[1], sets[2], limit_pointer) > 0;
         }
     }
     let mut watched = libc::pollfd {
         fd: number,
-        events: if writing { libc::POLLOUT } else { libc::POLLIN },
+        events: match wanted {
+            Readiness::Reading => libc::POLLIN,
+            Readiness::Writing => libc::POLLOUT,
+            Readiness::Priority => libc::POLLPRI,
+        },
         revents: 0,
     };
     // SAFETY: `watched` is one entry, which is what the count handed

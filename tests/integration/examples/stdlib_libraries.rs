@@ -1121,3 +1121,647 @@ fn test_stdlib_libraries_forwarding_no_parens_execution() {
     let output = run_example("stdlib_libraries/forwarding_no_parens.rb");
     assert_eq!(output, FORWARDING_NO_PARENS);
 }
+
+const TOPOLOGICAL_SORT: &str = concat!(
+    "[\"fetch\", \"build\", \"test\", \"deploy\"]\n",
+    "[[\"fetch\"], [\"build\"], [\"test\"], [\"deploy\"]]\n",
+    "[\"fetch\"]\n",
+    "[\"build\"]\n",
+    "[\"test\"]\n",
+    "[\"deploy\"]\n",
+    "[\"fetch\", \"build\", \"test\", \"deploy\"]\n",
+    "[[\"fetch\"], [\"build\"], [\"test\"]]\n",
+    "[[2, 3], [1], [4]]\n",
+    "\"topological sort failed: [2, 3]\"\n",
+    "StandardError\n",
+    "[4, 2, 3, 1]\n",
+    "[[4], [2], [3], [1]]\n",
+    "Enumerator\n",
+    "[4]\n",
+    "[2]\n",
+    "[3]\n",
+    "[1]\n",
+    "\"0.2.0\"\n",
+    "NotImplementedError\n",
+);
+
+#[test]
+fn test_stdlib_libraries_topological_sort_execution() {
+    let output = run_example("stdlib_libraries/topological_sort.rb");
+    assert_eq!(output, TOPOLOGICAL_SORT);
+}
+
+#[test]
+fn test_stdlib_libraries_topological_sort_no_parens_execution() {
+    let output = run_example("stdlib_libraries/topological_sort_no_parens.rb");
+    assert_eq!(output, TOPOLOGICAL_SORT);
+}
+
+const IO_WAIT_LIBRARY: &str = concat!(
+    "TrueClass\n",
+    "false\n",
+    "nil\n",
+    "nil\n",
+    "nil\n",
+    "true\n",
+    "true\n",
+    "1\n",
+    "true\n",
+    "4\n",
+    "true\n",
+    "true\n",
+    "true\n",
+    "true\n",
+    "true\n",
+    "2\n",
+    "nil\n",
+    "true\n",
+    "\"time interval must not be negative\"\n",
+    "nil\n",
+    "nil\n",
+    "true\n",
+    "true\n",
+    "true\n",
+);
+
+#[test]
+fn test_stdlib_libraries_io_wait_library_execution() {
+    let output = run_example("stdlib_libraries/io_wait_library.rb");
+    assert_eq!(output, IO_WAIT_LIBRARY);
+}
+
+#[test]
+fn test_stdlib_libraries_io_wait_library_no_parens_execution() {
+    let output = run_example("stdlib_libraries/io_wait_library_no_parens.rb");
+    assert_eq!(output, IO_WAIT_LIBRARY);
+}
+
+const PSEUDO_TERMINALS: &str = concat!(
+    "[:check, :getpty, :open, :spawn]\n",
+    "RuntimeError\n",
+    "[File, File, Integer]\n",
+    "false\n",
+    "\"hello\\r\\n\"\n",
+    "3\n",
+    "nil\n",
+    "[IO, File]\n",
+    "true\n",
+    "true\n",
+    "true\n",
+    "\"typed\\r\\n\"\n",
+    "\"back\\n\"\n",
+    "[IO, File]\n",
+    ":answer\n",
+    "nil\n",
+    "Process::Status\n",
+    "true\n",
+    "\"block form\\r\\n\"\n",
+    "\"hi\\r\\n\"\n",
+    "7\n",
+    "true\n",
+);
+
+#[test]
+fn test_stdlib_libraries_pseudo_terminals_execution() {
+    let output = run_example("stdlib_libraries/pseudo_terminals.rb");
+    assert_eq!(output, PSEUDO_TERMINALS);
+}
+
+#[test]
+fn test_stdlib_libraries_pseudo_terminals_no_parens_execution() {
+    let output = run_example("stdlib_libraries/pseudo_terminals_no_parens.rb");
+    assert_eq!(output, PSEUDO_TERMINALS);
+}
+
+const CONTINUATIONS: &str = concat!(
+    "true\n",
+    "3\n",
+    "10\n",
+    "nil\n",
+    "[1, 2]\n",
+    "5\n",
+    "[Continuation, true]\n",
+    "4\n",
+    "nil\n",
+    "200\n",
+    "[:[], :call]\n",
+    "NoMethodError\n",
+    "true\n",
+);
+
+#[test]
+fn test_stdlib_libraries_continuations_execution() {
+    let output = run_example("stdlib_libraries/continuations.rb");
+    assert_eq!(output, CONTINUATIONS);
+}
+
+#[test]
+fn test_stdlib_libraries_continuations_no_parens_execution() {
+    let output = run_example("stdlib_libraries/continuations_no_parens.rb");
+    assert_eq!(output, CONTINUATIONS);
+}
+
+/// Run `code` with `-e`, answering what it wrote to stderr.
+fn stderr_of(code: &str) -> String {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_metorex"))
+        .arg("-e")
+        .arg(code)
+        .output()
+        .expect("failed to run metorex");
+    String::from_utf8(output.stderr).expect("stderr was not utf8")
+}
+
+#[test]
+fn test_continuation_warning_names_the_library_file() {
+    let written = stderr_of("require 'continuation'");
+    assert_eq!(
+        written,
+        "<metorex>/continuation.rb: warning: callcc is obsolete; use Fiber instead\n"
+    );
+}
+
+#[test]
+fn test_continuation_resumed_after_its_block_returned_is_refused() {
+    let written = stderr_of(
+        "$VERBOSE = nil; require 'continuation'; saved = nil; callcc { |k| saved = k }; saved.call",
+    );
+    assert!(
+        written.contains(
+            "a continuation cannot be resumed once its callcc block has returned (NotImplementedError)"
+        ),
+        "{written}"
+    );
+}
+
+const RIPEMD_DIGESTS: &str = concat!(
+    "\"9c1185a5c5e9fc54612808977ee8f548b2258d31\"\n",
+    "\"8eb208f7e05d987a9b044a8e98c6b087f15a0bfc\"\n",
+    "\"aa69deee9a8922e92f8105e007f76110f381e9cf\"\n",
+    "\"XQaJ70nS+uVyuIGxI6hf+iFZXzY=\"\n",
+    "\"8eb208f7e05d987a9b044a8e98c6b087f15a0bfc\"\n",
+    "20\n",
+    "64\n",
+    "\"8eb208f7e05d987a9b044a8e98c6b087f15a0bfc\"\n",
+    "20\n",
+    "#<Encoding:BINARY (ASCII-8BIT)>\n",
+    "\"8eb208f7e05d987a9b044a8e98c6b087f15a0bfc\"\n",
+    "Digest::Base\n",
+);
+
+#[test]
+fn test_stdlib_libraries_ripemd_digests_execution() {
+    let output = run_example("stdlib_libraries/ripemd_digests.rb");
+    assert_eq!(output, RIPEMD_DIGESTS);
+}
+
+#[test]
+fn test_stdlib_libraries_ripemd_digests_no_parens_execution() {
+    let output = run_example("stdlib_libraries/ripemd_digests_no_parens.rb");
+    assert_eq!(output, RIPEMD_DIGESTS);
+}
+
+const PERSISTENT_STORES: &str = concat!(
+    "true\n",
+    ":answered\n",
+    "true\n",
+    "[[1, 2], [:list, \"name\"], [:list, \"name\"], true, false, \"x\", 5]\n",
+    "[PStore::Error, \"undefined key 'missing'\"]\n",
+    "nil\n",
+    "[1, 2]\n",
+    "nil\n",
+    "[1, 2, 4]\n",
+    "[1, 2, 4]\n",
+    "nil\n",
+    "[\"name\"]\n",
+    "[PStore::Error, \"not in transaction\"]\n",
+    "[PStore::Error, \"in read-only transaction\"]\n",
+    "[PStore::Error, \"nested transaction\"]\n",
+    "[PStore::Error, \"in read-only transaction\"]\n",
+    "StandardError\n",
+    "false\n",
+    "{\"name\" => \"x\"}\n",
+    "false\n",
+    "\"x\"\n",
+    "[:[], :[]=, :abort, :commit, :delete, :fetch, :key?, :keys, :path, :root?, :roots, :transaction, :ultra_safe, :ultra_safe=]\n",
+    "[]\n",
+    "false\n",
+);
+
+#[test]
+fn test_stdlib_libraries_persistent_stores_execution() {
+    let output = run_example("stdlib_libraries/persistent_stores.rb");
+    assert_eq!(output, PERSISTENT_STORES);
+}
+
+#[test]
+fn test_stdlib_libraries_persistent_stores_no_parens_execution() {
+    let output = run_example("stdlib_libraries/persistent_stores_no_parens.rb");
+    assert_eq!(output, PERSISTENT_STORES);
+}
+
+const BENCHMARKS: &str = concat!(
+    "1.9375\n",
+    "\"fixed\"\n",
+    "[\"fixed\", 1.5, 0.25, 0.125, 0.0625, 2.0]\n",
+    "{label: \"fixed\", utime: 1.5, stime: 0.25, cutime: 0.125, cstime: 0.0625, real: 2.0}\n",
+    "  N   N   N (  N)\n",
+    "fixed:  1.50| 0.25| 0.12| 0.06| 1.94|( 2.00) extra\n",
+    "[\"\", 2.5, 1.25, 1.125, 1.0625, 3.0]\n",
+    "4.0\n",
+    "0.75\n",
+    "0.0\n",
+    "\"\"\n",
+    "\"      user     system      total        real\\n\"\n",
+    "\"%10.6u %10.6y %10.6t %10.6r\\n\"\n",
+    "\"0.5.0\"\n",
+    "Benchmark::Tms\n",
+    "\"work\"\n",
+    "Float\n",
+    "true\n",
+    "Float\n",
+    "Float\n",
+    "\"\"\n",
+    "              user     system      total        real\n",
+    "first:    N   N   N (  N)\n",
+    "second:   N   N   N (  N)\n",
+    ">total:   N   N   N (  N)\n",
+    "2\n",
+    "[\"first:\", \"second:\"]\n",
+    "Rehearsal ------------------------------------------------\n",
+    "one            N   N   N (  N)\n",
+    "longer label   N   N   N (  N)\n",
+    "--------------------------------------- total: Nsec\n",
+    "\n",
+    "                   user     system      total        real\n",
+    "one            N   N   N (  N)\n",
+    "longer label   N   N   N (  N)\n",
+    "[\"one\", \"longer label\"]\n",
+    "Benchmark::Tms\n",
+    "true\n",
+    "true\n",
+    "\"no block\"\n",
+    "[:benchmark, :bm, :bmbm, :measure, :ms, :realtime]\n",
+);
+
+#[test]
+fn test_stdlib_libraries_benchmarks_execution() {
+    let output = run_example("stdlib_libraries/benchmarks.rb");
+    assert_eq!(output, BENCHMARKS);
+}
+
+#[test]
+fn test_stdlib_libraries_benchmarks_no_parens_execution() {
+    let output = run_example("stdlib_libraries/benchmarks_no_parens.rb");
+    assert_eq!(output, BENCHMARKS);
+}
+
+const FILE_UTILITIES: &str = concat!(
+    "mkdir a\n",
+    "mkdir => [\"a\"]\n",
+    "mkdir -m 750 b c\n",
+    "mkdir mode => [\"b\", \"c\"]\n",
+    "mkdir -p a/b/c/\n",
+    "mkdir_p => [\"a/b/c/\"]\n",
+    "mkdir -p x/y z\n",
+    "mkdir_p noop => [\"x/y\", \"z\"]\n",
+    "mkdir exists !! Errno::EEXIST: File exists @ dir_s_mkdir - a\n",
+    "touch t1 t2\n",
+    "touch => [\"t1\", \"t2\"]\n",
+    "touch -c missing\n",
+    "touch nocreate !! Errno::ENOENT: No such file or directory @ apply2files - missing\n",
+    "touch -t 200109090146.40 t1\n",
+    "touch mtime => [\"t1\"]\n",
+    "1000000000\n",
+    "cp a/one.txt copy.txt\n",
+    "cp => nil\n",
+    "cp a/one.txt t1 c\n",
+    "cp into dir => [\"a/one.txt\", \"t1\"]\n",
+    "cp same !! ArgumentError: same file: copy.txt and copy.txt\n",
+    "cp -r a a2\n",
+    "cp_r => nil\n",
+    "cp -rp a c\n",
+    "cp_r preserve => 1\n",
+    "cp -lr a a3\n",
+    "cp_lr => nil\n",
+    "ln copy.txt hard.txt\n",
+    "ln => 0\n",
+    "ln -f t2 hard.txt\n",
+    "ln force => 0\n",
+    "ln -s copy.txt soft.txt\n",
+    "ln_s => 0\n",
+    "ln_s exists !! Errno::EEXIST: File exists @ syserr_fail2_in - soft.txt\n",
+    "ln -sf t1 soft.txt\n",
+    "ln_sf => 0\n",
+    "ln -s ../a/b/two.txt c/two.txt\n",
+    "ln_sr => 0\n",
+    "ln -s ../../a/one.txt a2/b/rel.txt\n",
+    "ln_s relative => 0\n",
+    "mv t2 moved\n",
+    "mv => 0\n",
+    "mv moved copy.txt b\n",
+    "mv into dir => [\"moved\", \"copy.txt\"]\n",
+    "mv onto dir => 0\n",
+    "mv -f nope nowhere\n",
+    "mv missing force => nil\n",
+    "chmod 600 t1\n",
+    "chmod => [\"t1\"]\n",
+    "chmod u+x,go=r b/moved\n",
+    "chmod symbolic => [\"b/moved\"]\n",
+    "chmod a-x,a+X a2\n",
+    "chmod X => [\"a2\"]\n",
+    "chmod bad !! ArgumentError: invalid 'who' symbol in file mode: q\n",
+    "chmod -R g+w a2\n",
+    "chmod_R => [\"a2\"]\n",
+    "install -c -m 640 t1 inst/deep/t1\n",
+    "install => nil\n",
+    "install -c -p -m u+x t1 inst/deep/t1\n",
+    "install again => nil\n",
+    "install -c t1 inst2/\n",
+    "install dir => nil\n",
+    "compare_file => [true, false, true]\n",
+    "uptodate? => [true, false, false]\n",
+    "copy_entry => nil\n",
+    "copy_file => nil\n",
+    "copy_stream => 3\n",
+    "chown : t1\n",
+    "chown self => [\"t1\"]\n",
+    "a/ 755\n",
+    "a/b/ 755\n",
+    "a/b/c/ 755\n",
+    "a/b/two.txt 664 \"two\" links=2\n",
+    "a/one.txt 664 \"one\" links=2\n",
+    "a2/ 775\n",
+    "a2/a3/ 775\n",
+    "a2/a3/b/ 775\n",
+    "a2/a3/b/c/ 775\n",
+    "a2/a3/b/two.txt 664 \"two\" links=2\n",
+    "a2/a3/one.txt 664 \"one\" links=2\n",
+    "a2/b/ 775\n",
+    "a2/b/c/ 775\n",
+    "a2/b/rel.txt -> ../../a/one.txt\n",
+    "a2/b/two.txt 664 \"two\" links=1\n",
+    "a2/one.txt 664 \"one\" links=1\n",
+    "b/ 750\n",
+    "b/copy.txt 644 \"one\" links=1\n",
+    "b/moved 744 \"\" links=2\n",
+    "c/ 750\n",
+    "c/a/ 755\n",
+    "c/a/b/ 755\n",
+    "c/a/b/c/ 755\n",
+    "c/a/b/two.txt 644 \"two\" links=1\n",
+    "c/a/one.txt 644 \"one\" links=1\n",
+    "c/one.txt 644 \"one\" links=1\n",
+    "c/t1 644 \"\" links=1\n",
+    "c/two.txt -> ../a/b/two.txt\n",
+    "entry/ 755\n",
+    "entry/b/ 755\n",
+    "entry/b/c/ 755\n",
+    "entry/b/two.txt 644 \"two\" links=1\n",
+    "entry/one.txt 644 \"one\" links=1\n",
+    "file_copy 644 \"one\" links=1\n",
+    "hard.txt 744 \"\" links=2\n",
+    "inst/ 755\n",
+    "inst/deep/ 755\n",
+    "inst/deep/t1 640 \"\" links=1\n",
+    "inst2/ 755\n",
+    "inst2/t1 600 \"\" links=1\n",
+    "soft.txt -> t1\n",
+    "streamed 644 \"one\" links=1\n",
+    "t1 600 \"\" links=1\n",
+    "rm streamed file_copy\n",
+    "rm => [\"streamed\", \"file_copy\"]\n",
+    "rm missing !! Errno::ENOENT: No such file or directory @ apply2files - nope\n",
+    "rm -f nope t1\n",
+    "rm_f => [\"nope\", \"t1\"]\n",
+    "rm -r entry\n",
+    "rm_r => [\"entry\"]\n",
+    "rm -rf a3 a2 none\n",
+    "rm_rf => [\"a3\", \"a2\", \"none\"]\n",
+    "rmdir c\n",
+    "rmdir !! Errno::ENOTEMPTY: Directory not empty @ dir_s_rmdir - c\n",
+    "rmdir -p p/q/r\n",
+    "rmdir parents => [\"p/q/r\"]\n",
+    "remove_dir => 0\n",
+    "remove_dir file !! Errno::ENOTDIR: Not a directory - soft.txt\n",
+    "remove_entry_secure => nil\n",
+    "remove_file => 1\n",
+    "cd a\n",
+    "cd -\n",
+    "cd => true\n",
+    "a/ 755\n",
+    "a/b/ 755\n",
+    "a/b/c/ 755\n",
+    "a/b/two.txt 664 \"two\" links=1\n",
+    "a/one.txt 664 \"one\" links=1\n",
+    "b/ 750\n",
+    "b/copy.txt 644 \"one\" links=1\n",
+    "b/moved 744 \"\" links=1\n",
+    "c/ 750\n",
+    "c/a/ 755\n",
+    "c/a/b/ 755\n",
+    "c/a/b/c/ 755\n",
+    "c/a/b/two.txt 644 \"two\" links=1\n",
+    "c/a/one.txt 644 \"one\" links=1\n",
+    "c/one.txt 644 \"one\" links=1\n",
+    "c/t1 644 \"\" links=1\n",
+    "c/two.txt -> ../a/b/two.txt\n",
+    "soft.txt -> t1\n",
+    "touch v1\n",
+    "Verbose => [\"v1\"]\n",
+    "NoWrite => nil\n",
+    "rm -rf a\n",
+    "DryRun => nil\n",
+    "cp v1 v2\n",
+    "DryRun cp => nil\n",
+    "true\n",
+    "false\n",
+    "true\n",
+    "NoWrite pwd => nil\n",
+    "step: touch labelled\n",
+    "label => [\"labelled\"]\n",
+    "included => [\"inc2/one\", \"inc2/one/file\"]\n",
+    "private => false\n",
+);
+
+#[test]
+fn test_stdlib_libraries_file_utilities_execution() {
+    let output = run_example("stdlib_libraries/file_utilities.rb");
+    assert_eq!(output, FILE_UTILITIES);
+}
+
+#[test]
+fn test_stdlib_libraries_file_utilities_no_parens_execution() {
+    let output = run_example("stdlib_libraries/file_utilities_no_parens.rb");
+    assert_eq!(output, FILE_UTILITIES);
+}
+
+const RUN_COMMANDS: &str = concat!(
+    "$ mkdir -- -v a\n",
+    "mkdir a\n",
+    "exit 0\n",
+    "$ mkdir -- -p -v deep/er/est\n",
+    "mkdir -p deep/er/est\n",
+    "exit 0\n",
+    "$ mkdir -- a\n",
+    "File exists @ dir_s_mkdir - a (Errno::EEXIST)\n",
+    "exit 1\n",
+    "$ touch -- -v t1 t2\n",
+    "touch t1 t2\n",
+    "exit 0\n",
+    "$ cp -- -v one.txt copy.txt\n",
+    "cp one.txt copy.txt\n",
+    "exit 0\n",
+    "$ cp -- -rv deep a\n",
+    "cp -r deep a\n",
+    "exit 0\n",
+    "$ cp -- -p one.txt kept.txt\n",
+    "\n",
+    "exit 0\n",
+    "$ cp -- -l -v deep linked\n",
+    "cp -lr deep linked\n",
+    "exit 0\n",
+    "$ ln -- -v one.txt hard.txt\n",
+    "ln one.txt hard.txt\n",
+    "exit 0\n",
+    "$ ln -- -s -v one.txt soft.txt\n",
+    "ln -s one.txt soft.txt\n",
+    "exit 0\n",
+    "$ ln -- -sf -v t1 soft.txt\n",
+    "ln -sf t1 soft.txt\n",
+    "exit 0\n",
+    "$ mv -- -v t2 moved.txt\n",
+    "mv t2 moved.txt\n",
+    "exit 0\n",
+    "$ mv -- one.txt t1 a\n",
+    "\n",
+    "exit 0\n",
+    "$ chmod -- -v 600 copy.txt\n",
+    "chmod 600 copy.txt\n",
+    "exit 0\n",
+    "$ chmod -- -v u+x,go-r kept.txt\n",
+    "chmod u+x,go-r kept.txt\n",
+    "exit 0\n",
+    "$ install -- -v -m 640 copy.txt inst/copy.txt\n",
+    "install -c -m 640 copy.txt inst/copy.txt\n",
+    "exit 0\n",
+    "$ install -- -p -v copy.txt inst2/\n",
+    "install -c -p copy.txt inst2/\n",
+    "exit 0\n",
+    "$ rm -- -v hard.txt\n",
+    "rm hard.txt\n",
+    "exit 0\n",
+    "$ rm -- nope\n",
+    "No such file or directory @ apply2files - nope (Errno::ENOENT)\n",
+    "exit 1\n",
+    "$ rm -- -f -v nope\n",
+    "rm -f nope\n",
+    "exit 0\n",
+    "$ rm -- -r -v linked\n",
+    "rm -r linked\n",
+    "exit 0\n",
+    "$ rmdir -- -p -v deep/er/est\n",
+    "rmdir -p deep/er/est\n",
+    "exit 0\n",
+    "$ rm -- -v glob*\n",
+    "rm globa globb\n",
+    "exit 0\n",
+    "$ wait_writable -- -v -n 1 moved.txt\n",
+    "\n",
+    "exit 0\n",
+    "$ wait_writable -- missing\n",
+    "\n",
+    "exit 0\n",
+    "$ help cp mv\n",
+    "Copy SOURCE to DEST, or multiple SOURCE(s) to DIRECTORY\n",
+    "\n",
+    "  ruby -run -e cp -- [OPTION] SOURCE DEST\n",
+    "\n",
+    "  -p          preserve file attributes if possible\n",
+    "  -r          copy recursively\n",
+    "  -l          make hard link instead of copying (implies -r)\n",
+    "  -v          verbose\n",
+    "\n",
+    "\n",
+    "Rename SOURCE to DEST, or move SOURCE(s) to DIRECTORY.\n",
+    "\n",
+    "  ruby -run -e mv -- [OPTION] SOURCE DEST\n",
+    "\n",
+    "  -v          verbose\n",
+    "\n",
+    "\n",
+    "exit 0\n",
+    "$ help nonesuch\n",
+    "\n",
+    "exit 0\n",
+    "$ cp -- --help\n",
+    "\n",
+    "exit 0\n",
+    "$ httpd\n",
+    "webrick is not found. You may need to `gem install webrick` to install webrick.\n",
+    "exit 1\n",
+    "a/ 755\n",
+    "a/deep/ 755\n",
+    "a/deep/er/ 755\n",
+    "a/deep/er/est/ 755\n",
+    "a/one.txt 644 \"one\\n\"\n",
+    "a/t1 644 \"\"\n",
+    "copy.txt 600 \"one\\n\"\n",
+    "inst/ 755\n",
+    "inst/copy.txt 640 \"one\\n\"\n",
+    "inst2/ 755\n",
+    "inst2/copy.txt 600 \"one\\n\"\n",
+    "kept.txt 700 \"one\\n\"\n",
+    "moved.txt 644 \"\"\n",
+    "soft.txt -> t1\n",
+);
+
+#[test]
+fn test_stdlib_libraries_run_commands_execution() {
+    let output = run_example("stdlib_libraries/run_commands.rb");
+    assert_eq!(output, RUN_COMMANDS);
+}
+
+#[test]
+fn test_stdlib_libraries_run_commands_no_parens_execution() {
+    let output = run_example("stdlib_libraries/run_commands_no_parens.rb");
+    assert_eq!(output, RUN_COMMANDS);
+}
+
+const OPTION_PARSER_ORDERS: &str = concat!(
+    "[:p, true]\n",
+    "[:m, \"644\"]\n",
+    "[:n, \"5\"]\n",
+    "[:p, true]\n",
+    "[:r, true]\n",
+    "[:r, true]\n",
+    "[:n, \"7\"]\n",
+    "[:port, \"80\"]\n",
+    "[:port, \"81\"]\n",
+    "[:color, false]\n",
+    "[\"x\", \"y\"]\n",
+    "[]\n",
+    "[:p, true]\n",
+    "[\"x\", \"-p\"]\n",
+    "[:p, true]\n",
+    "[\"x\", \"y\", \"-m\", \"z\"]\n",
+    "[:p, true]\n",
+    "[\"a\", \"b\"]\n",
+    "[:p, true]\n",
+    "[]\n",
+    "[\"-m\"]\n",
+    "[OptionParser::InvalidOption, \"invalid option: -z\"]\n",
+    "[OptionParser::MissingArgument, \"missing argument: -n\"]\n",
+    "[OptionParser::InvalidOption, \"invalid option: --nope\"]\n",
+);
+
+#[test]
+fn test_stdlib_libraries_option_parser_orders_execution() {
+    let output = run_example("stdlib_libraries/option_parser_orders.rb");
+    assert_eq!(output, OPTION_PARSER_ORDERS);
+}
+
+#[test]
+fn test_stdlib_libraries_option_parser_orders_no_parens_execution() {
+    let output = run_example("stdlib_libraries/option_parser_orders_no_parens.rb");
+    assert_eq!(output, OPTION_PARSER_ORDERS);
+}

@@ -448,3 +448,30 @@ fn test_filesystem_null_byte_paths_no_parens_execution() {
     let output = run_example("filesystem/null_byte_paths_no_parens.rb");
     assert_eq!(output, NULL_BYTE_PATHS_OUTPUT);
 }
+
+const SYSTEM_CALL_ERRORS: &str = concat!(
+    "[Errno::EEXIST, \"File exists @ dir_s_mkdir - made\"]\n",
+    "[Errno::ENOENT, \"No such file or directory @ dir_s_mkdir - missing/inner\"]\n",
+    "[Errno::ENOENT, \"No such file or directory @ dir_s_rmdir - missing\"]\n",
+    "[Errno::ENOENT, \"No such file or directory @ apply2files - missing\"]\n",
+    "[Errno::ENOENT, \"No such file or directory @ apply2files - missing\"]\n",
+    "[Errno::EEXIST, \"File exists @ syserr_fail2_in - made\"]\n",
+    "[Errno::ENOENT, \"No such file or directory @ rb_file_s_symlink - (plain, missing/link)\"]\n",
+    "[Errno::ENOENT, \"No such file or directory @ rb_file_s_link - (missing, linked)\"]\n",
+    "[Errno::EEXIST, \"File exists @ syserr_fail2_in - made\"]\n",
+    "\"755\"\n",
+    "\"100644\"\n",
+    "4\n",
+);
+
+#[test]
+fn test_filesystem_system_call_errors_execution() {
+    let output = run_example("filesystem/system_call_errors.rb");
+    assert_eq!(output, SYSTEM_CALL_ERRORS);
+}
+
+#[test]
+fn test_filesystem_system_call_errors_no_parens_execution() {
+    let output = run_example("filesystem/system_call_errors_no_parens.rb");
+    assert_eq!(output, SYSTEM_CALL_ERRORS);
+}

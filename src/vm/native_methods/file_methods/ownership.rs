@@ -153,9 +153,11 @@ impl VirtualMachine {
                     ));
                 };
                 std::fs::hard_link(&*existing.as_str(), &*added.as_str()).map_err(|problem| {
-                    crate::vm::errors::simple_exception(
-                        "Errno::EEXIST",
-                        &format!("File exists @ rb_file_s_link - {added}: {problem}"),
+                    crate::vm::init::two_path_error(
+                        &problem,
+                        "rb_file_s_link",
+                        &existing.as_str(),
+                        &added.as_str(),
                         position,
                     )
                 })?;
@@ -207,9 +209,10 @@ impl VirtualMachine {
                         unsafe { libc::utimes(name.as_ptr(), times.as_ptr()) }
                     };
                     if answer != 0 {
-                        return Err(crate::vm::errors::simple_exception(
-                            "Errno::ENOENT",
-                            &format!("No such file or directory @ utime_failed - {path}"),
+                        return Err(crate::vm::init::system_call_error(
+                            &std::io::Error::last_os_error(),
+                            "apply2files",
+                            &path.to_string(),
                             position,
                         ));
                     }

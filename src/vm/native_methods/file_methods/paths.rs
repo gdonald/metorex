@@ -19,17 +19,7 @@ impl VirtualMachine {
                     // `to_str`, and anything else is refused.
                     let path = self.directory_path_argument(method_name, argument, position)?;
                     std::fs::remove_file(&path).map_err(|problem| {
-                        let named = match problem.raw_os_error() {
-                            Some(code) if code == libc::EACCES => "Errno::EACCES",
-                            Some(code) if code == libc::EPERM => "Errno::EPERM",
-                            Some(code) if code == libc::EISDIR => "Errno::EISDIR",
-                            _ => "Errno::ENOENT",
-                        };
-                        crate::vm::errors::simple_exception(
-                            named,
-                            &format!("{problem} @ apply2files - {path}"),
-                            position,
-                        )
+                        crate::vm::init::system_call_error(&problem, "apply2files", &path, position)
                     })?;
                     deleted += 1;
                 }

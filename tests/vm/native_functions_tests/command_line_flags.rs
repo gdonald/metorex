@@ -97,7 +97,7 @@ fn a_bare_zero_flag_asks_for_paragraph_mode() {
 }
 
 #[test]
-fn making_a_directory_takes_the_mode_it_is_given() {
+fn making_a_directory_hands_its_mode_to_the_system() {
     let result = run(r#"
 held = "/tmp/metorex_mkdir_mode_test"
 Dir.rmdir(held) if Dir.exist?(held)
@@ -106,9 +106,15 @@ answer = File.sticky?(held)
 Dir.rmdir(held)
 answer
 "#);
+    // Linux's mkdir keeps the sticky bit a mode asks for, and macOS's drops it.
+    let kept = if cfg!(target_os = "macos") {
+        "false"
+    } else {
+        "true"
+    };
     assert_eq!(
         result.map(|value| value.to_string()),
-        Some("true".to_string())
+        Some(kept.to_string())
     );
 }
 

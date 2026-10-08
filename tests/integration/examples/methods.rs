@@ -281,3 +281,52 @@ fn test_methods_super_forms_no_parens_execution() {
     let output = run_example("methods/super_forms_no_parens.rb");
     assert_eq!(output, SUPER_FORMS_OUTPUT);
 }
+
+const BARE_NAMES_OVER_KERNEL: &str = concat!(
+    "report \n",
+    "\"report \"\n",
+    "\"wrong number of arguments (given 0, expected 1)\"\n",
+);
+
+#[test]
+fn test_methods_bare_names_over_kernel_execution() {
+    let output = run_example("methods/bare_names_over_kernel.rb");
+    assert_eq!(output, BARE_NAMES_OVER_KERNEL);
+}
+
+#[test]
+fn test_methods_bare_names_over_kernel_no_parens_execution() {
+    let output = run_example("methods/bare_names_over_kernel_no_parens.rb");
+    assert_eq!(output, BARE_NAMES_OVER_KERNEL);
+}
+
+const PRIVATE_TOP_LEVEL_METHODS: &str = concat!(
+    "\"private method 'helper' called for an instance of Object\"\n",
+    "\"private method 'helper' called for an instance of String\"\n",
+    "\"private method 'helper' called for an instance of Integer\"\n",
+    "\"private method 'helper' called for an instance of Array\"\n",
+    "\"private method 'helper' called for nil\"\n",
+    "\"private method 'helper' called for true\"\n",
+    "\"private method 'helper' called for an instance of Symbol\"\n",
+    "\"private method 'helper' called for an instance of Float\"\n",
+    "\"private method 'helper' called for an instance of Hash\"\n",
+    ":top\n",
+    "[false, true]\n",
+    "NoMethodError\n",
+    ":top_level_mkdir\n",
+    "0\n",
+    "0\n",
+    "true\n",
+);
+
+#[test]
+fn test_methods_private_top_level_methods_execution() {
+    let output = run_example("methods/private_top_level_methods.rb");
+    assert_eq!(output, PRIVATE_TOP_LEVEL_METHODS);
+}
+
+#[test]
+fn test_methods_private_top_level_methods_no_parens_execution() {
+    let output = run_example("methods/private_top_level_methods_no_parens.rb");
+    assert_eq!(output, PRIVATE_TOP_LEVEL_METHODS);
+}

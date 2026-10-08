@@ -301,3 +301,41 @@ fn test_callables_closures_share_locals_no_parens_execution() {
     let output = run_example("callables/closures_share_locals_no_parens.rb");
     assert_eq!(output, CLOSURES_SHARE_LOCALS_OUTPUT);
 }
+
+const BLOCK_LAST_VALUES: &str = concat!(
+    "[\"assign\", 5]\n",
+    "[\"op assign\", 3]\n",
+    "[\"multiple assign\", [3, 4]]\n",
+    "[\"if true\", 7]\n",
+    "[\"if false\", nil]\n",
+    "[\"unless\", nil]\n",
+    "[\"if else\", 3]\n",
+    "[\"case\", nil]\n",
+    "[\"case hit\", :y]\n",
+    "[\"while\", nil]\n",
+    "[\"until\", nil]\n",
+    "[\"def\", :block_value_method]\n",
+    "[\"begin\", 4]\n",
+    "[\"begin rescue\", 6]\n",
+    "[\"ivar\", 9]\n",
+    "[\"constant\", 2]\n",
+    "[\"class\", 3]\n",
+    "[\"nested if\", nil]\n",
+    "[\"and\", nil]\n",
+    "\n",
+    "[\"puts\", nil]\n",
+    "nil\n",
+    "[nil, 4]\n",
+);
+
+#[test]
+fn test_callables_block_last_values_execution() {
+    let output = run_example("callables/block_last_values.rb");
+    assert_eq!(output, BLOCK_LAST_VALUES);
+}
+
+#[test]
+fn test_callables_block_last_values_no_parens_execution() {
+    let output = run_example("callables/block_last_values_no_parens.rb");
+    assert_eq!(output, BLOCK_LAST_VALUES);
+}

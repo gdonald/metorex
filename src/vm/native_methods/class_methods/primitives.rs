@@ -55,6 +55,37 @@ impl VirtualMachine {
         if class_rc.name() == "Socket" && method_name == "__net__" {
             return self.socket_net(arguments, position).map(Answered);
         }
+        // `Random.__tempered_bytes__(state, index, count)` draws `count`
+        // bytes from a Mersenne Twister whose words the Array holds, twisting
+        // it in place as it runs out, and answers the bytes with the index
+        // the next draw starts at.
+        if class_rc.name() == "Random"
+            && method_name == "__tempered_bytes__"
+            && let (Some(Object::Array(state)), Some(Object::Int(index)), Some(Object::Int(count))) =
+                (arguments.first(), arguments.get(1), arguments.get(2))
+        {
+            let mut words: Vec<u32> = state
+                .borrow()
+                .iter()
+                .map(|word| match word {
+                    Object::Int(held) => *held as u32,
+                    _ => 0,
+                })
+                .collect();
+            let (bytes, next) = crate::vm::native_methods::tempered_bytes(
+                &mut words,
+                *index as usize,
+                *count as usize,
+            );
+            *state.borrow_mut() = words
+                .into_iter()
+                .map(|word| Object::Int(i64::from(word)))
+                .collect();
+            return Ok(Answered(Object::array(vec![
+                crate::vm::native_methods::pack_format::bytes_to_string(&bytes),
+                Object::Int(next as i64),
+            ])));
+        }
         if class_rc.name() == "IO" && method_name == "__stream__" {
             return self.stream_action(arguments, position).map(Answered);
         }

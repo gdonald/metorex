@@ -73,31 +73,22 @@ impl VirtualMachine {
                     }
                 };
                 // Only the last name in the path is made, so a missing
-                // directory above it is reported rather than filled in.
-                std::fs::create_dir(&path).map_err(|problem| {
-                    let named = match problem.raw_os_error() {
-                        Some(code) if code == libc::EEXIST => "Errno::EEXIST",
-                        Some(code) if code == libc::EACCES => "Errno::EACCES",
-                        Some(code) if code == libc::ENOTDIR => "Errno::ENOTDIR",
-                        _ => "Errno::ENOENT",
-                    };
-                    crate::vm::errors::simple_exception(
-                        named,
-                        &format!("{problem} - {path}"),
-                        position,
-                    )
-                })?;
+                // directory above it is reported rather than filled in. The
+                // mode goes to the system call, which takes the umask off it.
+                let mut builder = std::fs::DirBuilder::new();
                 if let Some(mode) = mode {
-                    use std::os::unix::fs::PermissionsExt as _;
-                    let _ = std::fs::set_permissions(
-                        &path,
-                        std::fs::Permissions::from_mode(mode as u32),
-                    );
+                    use std::os::unix::fs::DirBuilderExt as _;
+                    builder.mode(mode as u32);
                 }
+                builder.create(&path).map_err(|problem| {
+                    crate::vm::init::system_call_error(&problem, "dir_s_mkdir", &path, position)
+                })?;
             } else if let Err(problem) = std::fs::remove_dir(&path) {
+                let spelled = problem.to_string();
+                let reason = spelled.split(" (os error").next().unwrap_or(&spelled);
                 return Err(crate::vm::errors::simple_exception(
                     directory_removal_errno(&path, &problem),
-                    &format!("{problem} - {path}"),
+                    &format!("{reason} @ dir_s_rmdir - {path}"),
                     position,
                 ));
             }

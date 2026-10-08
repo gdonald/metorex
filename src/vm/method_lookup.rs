@@ -249,6 +249,18 @@ impl VirtualMachine {
             }
         }
 
+        // A class's own methods come ahead of the instance methods it has as
+        // an object, so a native `Dir.mkdir` answers ahead of a top-level
+        // `def mkdir`, which is a private method of Object.
+        if self.object_method_behind_native(&receiver, method_name) {
+            let class = self.builtins().class_of(&receiver);
+            if let Some(result) =
+                self.call_native_method(&class, &receiver, method_name, &arguments, position)?
+            {
+                return Ok(result);
+            }
+        }
+
         // Try user-defined method lookup first
         match self.lookup_method(&receiver, method_name) {
             Some((class, method)) if !method.is_undefined => {
@@ -302,11 +314,16 @@ impl VirtualMachine {
                     ) {
                         return handled;
                     }
+                    let named = match &receiver {
+                        Object::Nil => "nil".to_string(),
+                        Object::Bool(held) => held.to_string(),
+                        _ => format!("an instance of {}", class.inspect_name()),
+                    };
                     let msg = format!(
-                        "{} method '{}' called for an instance of {}",
+                        "{} method '{}' called for {}",
                         self.visibility_word(&receiver, method_name),
                         method_name,
-                        class.inspect_name()
+                        named
                     );
                     let exc = crate::vm::errors::no_method_error(
                         &msg,
@@ -378,9 +395,17 @@ impl VirtualMachine {
 
         // Fallback: methods defined on the global Object class (mspec injects
         // describe/it/before/after there).
-        if let Some(Object::Class(object_class)) = self.globals().get("Object")
-            && let Some(method) = object_class.find_method(method_name)
-        {
+        if let Some((object_class, method)) = self.object_table_method(method_name) {
+            // A private one, as every top-level method is, refuses a call
+            // written with a receiver.
+            if !names_self(receiver_expr) && object_class.is_method_private(method_name) {
+                return Err(self.private_object_method_error(
+                    &receiver,
+                    method_name,
+                    &arguments,
+                    position,
+                ));
+            }
             return self.invoke_method(object_class, method, receiver, arguments, position);
         }
 
@@ -537,6 +562,7 @@ impl VirtualMachine {
                                 .contains(&name))
                         || crate::vm::native_methods::is_native_kernel_method(name)
                         || self.answers_natively(receiver, name)
+                        || self.object_table_method(name).is_some()
                         || (self.builtins().class_of(receiver).name() == "File"
                             && crate::vm::native_methods::class_methods::is_native_io_method(name))
                 }
@@ -636,8 +662,10 @@ impl VirtualMachine {
     /// defines it: `Some(true)` for private, `Some(false)` for protected,
     /// `None` for public or undefined.
     fn inherited_visibility(&self, class_rc: &Rc<Class>, name: &str) -> Option<bool> {
+        // A module mixed in through another one counts, so a method private
+        // in a module that `extend self` reaches through an include is seen.
         for ancestor in class_rc
-            .mixin_chain()
+            .transitive_mixins()
             .into_iter()
             .chain(std::iter::successors(class_rc.superclass(), |current| {
                 current.superclass()
@@ -774,8 +802,19 @@ impl VirtualMachine {
                 return defining_singleton;
             }
         }
+        // A value's lookup answers with its own class, so the class that
+        // defines the method is found from there, which is where a top-level
+        // method's privacy is recorded.
         let Object::Instance(instance_rc) = receiver else {
-            return self.lookup_method(receiver, name).map(|(class, _)| class);
+            return self
+                .lookup_method(receiver, name)
+                .map(|(class, _)| {
+                    class
+                        .find_method_with_owner(name)
+                        .map(|(owner, _)| owner)
+                        .unwrap_or(class)
+                })
+                .or_else(|| self.object_table_method(name).map(|(owner, _)| owner));
         };
         let instance_ref = instance_rc.borrow();
         let singleton = instance_ref.singleton_class.borrow().clone();
@@ -785,6 +824,57 @@ impl VirtualMachine {
             .and_then(|sc| sc.find_method_with_owner(name))
             .or_else(|| class.find_method_with_owner(name))
             .map(|(owner, _)| owner)
+    }
+
+    /// The NoMethodError for a private method of Object called with a
+    /// receiver. Kept out of the method-call path, which runs once for every
+    /// level of a Ruby call and would carry this one's locals in each frame.
+    #[inline(never)]
+    fn private_object_method_error(
+        &mut self,
+        receiver: &Object,
+        method_name: &str,
+        arguments: &[Object],
+        position: Position,
+    ) -> MetorexError {
+        let wording = match receiver {
+            Object::Nil => "nil".to_string(),
+            Object::Bool(held) => held.to_string(),
+            other => self.receiver_wording_for(other, position),
+        };
+        let msg = format!("private method '{method_name}' called for {wording}");
+        MetorexError::UncaughtException {
+            exception: crate::vm::errors::no_method_error(&msg, method_name, receiver, arguments),
+            location: crate::vm::utils::position_to_location(position),
+            message: msg,
+        }
+    }
+
+    /// A method written on Object, such as a top-level `def`, which a value
+    /// whose own class lookup does not reach Object still answers to.
+    pub(crate) fn object_table_method(&self, method_name: &str) -> Option<(Rc<Class>, Rc<Method>)> {
+        let Some(Object::Class(object_class)) = self.globals().get("Object") else {
+            return None;
+        };
+        let method = object_class.find_method(method_name)?;
+        (!method.is_undefined).then_some((object_class, method))
+    }
+
+    /// Whether a class or module receiver would answer `method_name` with an
+    /// instance method every object has from Object, Kernel or BasicObject.
+    pub(crate) fn object_method_behind_native(&self, receiver: &Object, method_name: &str) -> bool {
+        if !matches!(receiver, Object::Class(_) | Object::Module(_)) {
+            return false;
+        }
+        let Some((_, found)) = self.lookup_method(receiver, method_name) else {
+            return false;
+        };
+        let Some(Object::Class(object_class)) = self.globals().get("Object") else {
+            return false;
+        };
+        object_class
+            .find_method(method_name)
+            .is_some_and(|every_object_has| Rc::ptr_eq(&every_object_has, &found))
     }
 
     /// Whether the method the receiver would answer comes from the Enumerable

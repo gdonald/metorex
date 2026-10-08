@@ -69,11 +69,7 @@ fn run_with_program_stack(program: fn()) {
 fn real_main() {
     // Ruby lets `-r`, `-I`, and `-W` carry their value attached (`-rfoo`),
     // which the argument parser only understands as two words.
-    let mut arguments: Vec<String> = std::env::args_os()
-        .map(argument_text)
-        .flat_map(spelled_out_flag)
-        .flat_map(metorex::split_short_flags)
-        .collect();
+    let mut arguments = interpreter_words(std::env::args_os().map(argument_text).collect());
     // RUBYOPT is read as though its words had been written on the command
     // line, ahead of what was, so a flag written there is overridden by the
     // same flag on the line itself.
@@ -476,4 +472,55 @@ fn argument_text(argument: std::ffi::OsString) -> String {
             metorex::file_loader::escaped_source_text(raw.as_bytes())
         }
     }
+}
+
+/// The flags that take their value as the next word when it is not written
+/// attached.
+const FLAGS_TAKING_A_VALUE: &[&str] = &[
+    "-e",
+    "-r",
+    "-I",
+    "-C",
+    "-X",
+    "-F",
+    "-E",
+    "-K",
+    "--encoding",
+    "--external-encoding",
+    "--internal-encoding",
+    "--enable",
+    "--disable",
+    "--backtrace-limit",
+    "--test",
+];
+
+/// The command line with each interpreter flag written the way the argument
+/// parser reads it. The interpreter's flags end at `--` or at the first word
+/// that is neither a flag nor a flag's value, which is the program's name,
+/// and every word from there on is the program's own, left as written.
+fn interpreter_words(raw: Vec<String>) -> Vec<String> {
+    let mut written = Vec::with_capacity(raw.len());
+    let mut words = raw.into_iter();
+    written.extend(words.next());
+    let mut takes_next_word = false;
+    while let Some(word) = words.next() {
+        if takes_next_word {
+            written.push(word);
+            takes_next_word = false;
+            continue;
+        }
+        if word == "--" || word == "-" || !word.starts_with('-') {
+            written.push(word);
+            written.extend(words);
+            break;
+        }
+        for piece in spelled_out_flag(word)
+            .into_iter()
+            .flat_map(metorex::split_short_flags)
+        {
+            takes_next_word = FLAGS_TAKING_A_VALUE.contains(&piece.as_str());
+            written.push(piece);
+        }
+    }
+    written
 }

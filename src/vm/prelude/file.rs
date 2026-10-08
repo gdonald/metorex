@@ -67,6 +67,8 @@ class File
     # which is what the IO standing over it already worked out.
     worked_out = held.instance_variable_get(:@__file_mode)
     made.__send__ :__take_stream__, held.__send__(:__stream_handle__), mode || worked_out
+    made.instance_variable_set :@path, options[:path]
+    made.autoclose = held.autoclose?
     made
   end
 
@@ -717,7 +719,7 @@ class File
   # A handle that was never opened has nothing behind it, so every reading
   # of it is refused rather than answered.
   def read(*)
-    raise IOError, "uninitialized stream" if @__file_path.nil?
+    raise IOError, "uninitialized stream" if @__file_path.nil? && @handle.nil?
     super
   end
 
@@ -753,8 +755,10 @@ class File
   # Ruby hands back a fresh String each time, tagged the way the name it was
   # opened under was, so a program may change what it is given.
   def path
-    return nil if @__file_path.nil?
-    @__file_path.dup
+    # A File made over a descriptor carries the `path:` it was given.
+    named = @__file_path.nil? || @__file_path.empty? ? @path : @__file_path
+    return nil if named.nil?
+    named.dup
   end
 
   def to_path

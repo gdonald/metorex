@@ -77,7 +77,9 @@ class OptionParser
         long = name.gsub "-", "_"
       elsif held.start_with?("-") && held.length > 1
         name, wanted = held[1..-1].to_s.split(/[ =]/, 2)
-        argument = wanted unless wanted.nil? || wanted.empty?
+        # A space after the letter says the option takes a value, whether or
+        # not a name for the value follows it.
+        argument = wanted unless wanted.nil?
         short = name
       else
         description = held
@@ -96,33 +98,45 @@ class OptionParser
   end
 
   # Read the options out of `argv`, leaving what is not an option behind.
-  def order! argv = ARGV, into: nil
-    rest = []
+  # The options read in order. An argument that is not an option is handed
+  # to the block, and without a block it ends the reading, leaving it and
+  # everything after it in `argv`.
+  def order! argv = ARGV, into: nil, &block
     until argv.empty?
-      held = argv.shift
+      held = argv.first
       if held == "--"
-        rest = rest + argv
-        argv.clear
+        argv.shift
         break
       end
-      unless held.start_with? "-"
-        rest << held
+      unless held.start_with?("-") && held != "-"
+        break unless block
+        block.call(argv.shift)
         next
       end
-      take_option held, argv, into
+      take_option argv.shift, argv, into
     end
-    argv.replace rest
     argv
   end
 
   def order argv = ARGV, into: nil, &block
-    order! argv.dup, into: into
+    order! argv.dup, into: into, &block
   end
 
-  alias_method :parse!, :order!
-  alias_method :parse, :order
-  alias_method :permute!, :order!
-  alias_method :permute, :order
+  # Every option read wherever it stands, with the arguments that are not
+  # options left in `argv` in the order they came.
+  def permute! argv = ARGV, into: nil
+    rest = []
+    order!(argv, into: into) { |held| rest << held }
+    argv.replace rest + argv
+    argv
+  end
+
+  def permute argv = ARGV, into: nil
+    permute! argv.dup, into: into
+  end
+
+  alias_method :parse!, :permute!
+  alias_method :parse, :permute
 
   def to_s
     lines = [@banner || "Usage: #{@program_name} [options]"]
@@ -139,17 +153,35 @@ class OptionParser
   alias_method :help, :to_s
 
   def take_option held, argv, into
-    name = held.start_with?("--") ? held[2..-1].to_s : held[1..-1].to_s
-    name, given = name.split("=", 2)
+    return take_long_option(held, argv, into) if held.start_with?("--")
+
+    letters = held[1..-1].to_s
+    until letters.empty?
+      letter = letters[0]
+      letters = letters[1..-1].to_s
+      switch = @switches.find { |held_switch| held_switch.short == letter }
+      raise InvalidOption, "invalid option: -#{letter}" if switch.nil?
+      if switch.argument.nil?
+        record_option switch, true, into
+        next
+      end
+      value = letters.empty? ? argv.shift : letters
+      raise MissingArgument, "missing argument: -#{letter}" if value.nil?
+      record_option switch, value, into
+      break
+    end
+  end
+  private :take_option
+
+  def take_long_option held, argv, into
+    name, given = held[2..-1].to_s.split("=", 2)
     negated = false
     if name.start_with? "no-"
       negated = true
       name = name["no-".length..-1]
     end
     wanted = name.gsub "-", "_"
-    switch = @switches.find do |held_switch|
-      held_switch.long == wanted || held_switch.short == name
-    end
+    switch = @switches.find { |held_switch| held_switch.long == wanted }
     raise InvalidOption, "invalid option: #{held}" if switch.nil?
     value = if switch.argument.nil?
               !negated
@@ -158,9 +190,14 @@ class OptionParser
               raise MissingArgument, "missing argument: #{held}" if given.nil?
               given
             end
+    record_option switch, value, into
+  end
+  private :take_long_option
+
+  def record_option switch, value, into
     into[switch.key] = value unless into.nil?
     switch.handler.call value if switch.handler
     value
   end
-  private :take_option
+  private :record_option
 end

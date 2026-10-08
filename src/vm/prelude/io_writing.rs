@@ -528,6 +528,10 @@ pub(super) const SOURCE: &str = r##"
     __wait_ready__("write", timeout)
   end
 
+  def wait_priority(timeout = nil)
+    __wait_events__(PRIORITY, timeout, true)
+  end
+
   READABLE = 1
   PRIORITY = 2
   WRITABLE = 4
@@ -611,12 +615,20 @@ pub(super) const SOURCE: &str = r##"
     waited = timeout.nil? ? -1 : (timeout.to_f * 1000).to_i
     # A wait longer than the counter holds is the same as waiting forever.
     waited = -1 if waited > 2147483647 || waited < -1
+    # A stream without a handle of its own, such as a socket, is waited on
+    # by its descriptor's number.
     handle = __stream_handle__
+    action = "wait"
+    if handle.nil?
+      handle = fileno
+      action = "wait_descriptor"
+    end
     left = waited
     loop do
       ready = 0
-      ready |= READABLE if events & READABLE != 0 && IO.__stream__("wait", handle, "read", 0)
-      ready |= WRITABLE if events & WRITABLE != 0 && IO.__stream__("wait", handle, "write", 0)
+      ready |= READABLE if events & READABLE != 0 && IO.__stream__(action, handle, "read", 0)
+      ready |= WRITABLE if events & WRITABLE != 0 && IO.__stream__(action, handle, "write", 0)
+      ready |= PRIORITY if events & PRIORITY != 0 && IO.__stream__(action, handle, "priority", 0)
       return ready if ready != 0 || left == 0
       slice = left < 0 || left > WAIT_SLICE_MS ? WAIT_SLICE_MS : left
       sleep slice / 1000.0

@@ -297,7 +297,13 @@ impl VirtualMachine {
         let caller_library = self
             .loading_embedded_library
             .replace(crate::vm::stdlib::embedded_library_file(name));
+        // `__FILE__` in the library names the library, not the file that
+        // required it.
+        let caller_source = self
+            .current_source_file
+            .replace(crate::vm::stdlib::embedded_library_file(name));
         let result = self.execute_program(&statements);
+        self.current_source_file = caller_source;
         self.loading_embedded_library = caller_library;
         self.method_nesting_stack = caller_nesting;
         self.def_scope_stack = caller_def_scope;

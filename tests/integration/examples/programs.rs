@@ -274,3 +274,22 @@ fn test_programs_system_with_environment_no_parens_execution() {
     let output = run_example("programs/system_with_environment_no_parens.rb");
     assert_eq!(output, SYSTEM_WITH_ENVIRONMENT);
 }
+
+const PROGRAM_ARGUMENTS: &str = concat!(
+    "[\"-rv\", \"deep\", \"a\"]\n",
+    "[\"x\", \"-rv\"]\n",
+    "[[\"y\", \"-Iz\"], \"constant\"]\n",
+    "[\"k\"]\n",
+);
+
+#[test]
+fn test_programs_program_arguments_execution() {
+    let output = run_example("programs/program_arguments.rb");
+    assert_eq!(output, PROGRAM_ARGUMENTS);
+}
+
+#[test]
+fn test_programs_program_arguments_no_parens_execution() {
+    let output = run_example("programs/program_arguments_no_parens.rb");
+    assert_eq!(output, PROGRAM_ARGUMENTS);
+}

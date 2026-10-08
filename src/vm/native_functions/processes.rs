@@ -151,3 +151,113 @@ pub(crate) fn expanded_feature_path(path: &std::path::Path) -> std::path::PathBu
     };
     crate::vm::loading::without_dot_components(&absolute)
 }
+
+/// A pseudo-terminal pair: the controlling end, the end a program reads and
+/// writes as its terminal, and the name of that end.
+pub(crate) fn open_terminal_pair() -> std::io::Result<(libc::c_int, libc::c_int, String)> {
+    let mut controlling: libc::c_int = -1;
+    let mut terminal: libc::c_int = -1;
+    // SAFETY: both pointers name ints this call writes, and the name, the
+    // settings and the window size are left for the system to choose.
+    let made = unsafe {
+        libc::openpty(
+            &mut controlling,
+            &mut terminal,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        )
+    };
+    if made != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // SAFETY: `terminal` is a descriptor `openpty` just opened, and the name
+    // `ttyname` answers is copied before anything else asks for one.
+    let name = unsafe {
+        let spelled = libc::ttyname(terminal);
+        if spelled.is_null() {
+            String::new()
+        } else {
+            std::ffi::CStr::from_ptr(spelled)
+                .to_string_lossy()
+                .into_owned()
+        }
+    };
+    for end in [controlling, terminal] {
+        // SAFETY: both descriptors came from `openpty` just above.
+        unsafe { libc::fcntl(end, libc::F_SETFD, libc::FD_CLOEXEC) };
+    }
+    Ok((controlling, terminal, name))
+}
+
+/// Run `words` in a session of its own with a fresh pseudo-terminal as its
+/// controlling terminal and its standard streams, answering the child's
+/// process id, the controlling end, a second descriptor for that end, and
+/// the terminal's name.
+pub(crate) fn start_in_terminal(
+    words: &[String],
+    environment: &[(String, Option<String>)],
+) -> std::io::Result<(libc::pid_t, libc::c_int, libc::c_int, String)> {
+    let (controlling, terminal, name) = open_terminal_pair()?;
+    let spelled: Vec<std::ffi::CString> = words
+        .iter()
+        .map(|held| std::ffi::CString::new(held.as_str()).unwrap_or_default())
+        .collect();
+    let settings: Vec<(std::ffi::CString, Option<std::ffi::CString>)> = environment
+        .iter()
+        .map(|(named, value)| {
+            (
+                std::ffi::CString::new(named.as_str()).unwrap_or_default(),
+                value
+                    .as_ref()
+                    .map(|held| std::ffi::CString::new(held.as_str()).unwrap_or_default()),
+            )
+        })
+        .collect();
+    let mut pointers: Vec<*const libc::c_char> = spelled.iter().map(|held| held.as_ptr()).collect();
+    pointers.push(std::ptr::null());
+    // SAFETY: the child only calls functions that touch its own descriptors
+    // and environment before handing itself over to the program.
+    let child = unsafe { libc::fork() };
+    if child < 0 {
+        let problem = std::io::Error::last_os_error();
+        // SAFETY: both descriptors came from `openpty` and are not used again.
+        unsafe {
+            libc::close(controlling);
+            libc::close(terminal);
+        }
+        return Err(problem);
+    }
+    if child == 0 {
+        // SAFETY: the argument list is null-terminated and outlives the call,
+        // and every descriptor named is one this process holds.
+        unsafe {
+            libc::setsid();
+            libc::ioctl(terminal, libc::TIOCSCTTY as _, 0);
+            for slot in 0..3 {
+                libc::dup2(terminal, slot);
+            }
+            if terminal > 2 {
+                libc::close(terminal);
+            }
+            libc::close(controlling);
+            for (named, value) in &settings {
+                match value {
+                    Some(value) => libc::setenv(named.as_ptr(), value.as_ptr(), 1),
+                    None => libc::unsetenv(named.as_ptr()),
+                };
+            }
+            libc::execvp(pointers[0], pointers.as_ptr());
+            libc::_exit(127);
+        }
+    }
+    // SAFETY: the terminal end belongs to the child now, and `controlling`
+    // is a descriptor this process holds.
+    let copy = unsafe {
+        libc::close(terminal);
+        libc::dup(controlling)
+    };
+    // SAFETY: `copy` came from `dup` just above.
+    unsafe { libc::fcntl(copy, libc::F_SETFD, libc::FD_CLOEXEC) };
+    Ok((child, controlling, copy, name))
+}

@@ -214,8 +214,15 @@ impl VirtualMachine {
                     Some((_, method)) if method.is_undefined => false,
                     None => false,
                     Some((owner, _)) => {
-                        let is_private = owner.is_method_private(&name);
-                        let is_protected = owner.is_method_protected(&name);
+                        // A visibility the class records for itself settles
+                        // it over the one the method's owner gave it.
+                        let marked_by = if class_rc.has_visibility_marking(&name) {
+                            Rc::clone(class_rc)
+                        } else {
+                            owner
+                        };
+                        let is_private = marked_by.is_method_private(&name);
+                        let is_protected = marked_by.is_method_protected(&name);
                         match method_name {
                             "method_defined?" => !is_private,
                             "public_method_defined?" => !is_private && !is_protected,

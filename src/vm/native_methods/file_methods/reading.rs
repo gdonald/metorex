@@ -169,7 +169,21 @@ impl VirtualMachine {
                     ));
                 };
                 let follow = arguments[1].is_truthy();
-                let held = if follow {
+                // An open stream is stated through its descriptor. macOS
+                // answers a `stat` of `/dev/fd/N` with the descriptor's
+                // access, so a file opened for reading would read as 0444.
+                let descriptor = path
+                    .as_str()
+                    .strip_prefix("/dev/fd/")
+                    .and_then(|number| number.parse::<std::os::unix::io::RawFd>().ok());
+                let held = if let Some(number) = descriptor.filter(|_| follow) {
+                    use std::os::unix::io::FromRawFd as _;
+                    // SAFETY: the descriptor belongs to an open stream, and
+                    // ManuallyDrop keeps this File from closing it.
+                    let open =
+                        std::mem::ManuallyDrop::new(unsafe { std::fs::File::from_raw_fd(number) });
+                    open.metadata()
+                } else if follow {
                     std::fs::metadata(&*path.as_str())
                 } else {
                     std::fs::symlink_metadata(&*path.as_str())
