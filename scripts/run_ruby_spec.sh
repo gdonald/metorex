@@ -3,7 +3,11 @@
 set -e
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-METOREX="$REPO_ROOT/target/debug/metorex"
+# cargo builds into CARGO_TARGET_DIR when it is set, so the binary is found
+# there rather than under the checkout. A node-local build cache points it at
+# a volume, so this must follow it.
+TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/target}"
+METOREX="$TARGET_DIR/debug/metorex"
 MSPEC="$REPO_ROOT/ruby/mspec/bin/mspec"
 SPEC_DIR="$REPO_ROOT/ruby/spec"
 
