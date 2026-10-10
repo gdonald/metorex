@@ -1,4 +1,10 @@
 require "stringio"
+require "syntax_suggest/api"
+
+# A search slower than the default second, as on a loaded machine, would
+# leave `detailed_message` without its annotation.
+SyntaxSuggest.send :remove_const, :TIMEOUT_DEFAULT
+SyntaxSuggest.const_set :TIMEOUT_DEFAULT, 60
 
 p defined?(SyntaxSuggest)
 
