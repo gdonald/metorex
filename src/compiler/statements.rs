@@ -368,7 +368,6 @@ impl Compiler {
                 parameters,
                 body,
                 position,
-                singleton_class: _,
                 ..
             } => {
                 let line = Self::pos_line(position);
