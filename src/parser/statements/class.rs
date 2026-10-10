@@ -174,10 +174,11 @@ impl Parser {
         // Restore the previous state
         self.in_class_body = was_in_class;
         self.jump_target_depth = enclosing_jump_targets;
-        self.refuse_unlooped_redos_after(redo_scope_start)?;
+        let refused = self.refuse_unlooped_jumps_after(redo_scope_start);
         let body = body?;
 
         self.expect(TokenKind::End, "Expected 'end' after class body")?;
+        refused?;
 
         if top_level && namespace_expr.is_none() {
             name = format!("::{}", name);
@@ -331,9 +332,10 @@ impl Parser {
 
         self.in_class_body = was_in_class;
         self.jump_target_depth = enclosing_jump_targets;
-        self.refuse_unlooped_redos_after(redo_scope_start)?;
+        let refused = self.refuse_unlooped_jumps_after(redo_scope_start);
         let body = body?;
         self.expect(TokenKind::End, "Expected 'end' after module body")?;
+        refused?;
 
         if top_level && namespace_expr.is_none() {
             name = format!("::{}", name);
@@ -606,8 +608,17 @@ impl Parser {
         if self.check(&[TokenKind::Colon]) {
             self.advance();
         }
-        match self.advance().kind {
-            TokenKind::Ident(name) => Ok(name),
+        let named = self.advance();
+        match named.kind {
+            // A setter's `=` is written against its name: `alias range= set_range`.
+            TokenKind::Ident(name) => {
+                let name_ends = named.position.offset + name.len();
+                if self.check(&[TokenKind::Equal]) && self.peek().position.offset == name_ends {
+                    self.advance();
+                    return Ok(format!("{name}="));
+                }
+                Ok(name)
+            }
             // `alias $ERROR_INFO $!` renames a global rather than a method,
             // which the leading `$` is what marks it out as.
             TokenKind::GlobalVar(name) => Ok(format!("${}", name)),

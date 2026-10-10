@@ -254,7 +254,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Break => write!(f, "break"),
             TokenKind::Redo => write!(f, "redo"),
             TokenKind::Retry => write!(f, "retry"),
-            TokenKind::Continue => write!(f, "continue"),
+            TokenKind::Continue => write!(f, "next"),
             TokenKind::Return => write!(f, "return"),
             TokenKind::Lambda => write!(f, "lambda"),
             TokenKind::Super => write!(f, "super"),

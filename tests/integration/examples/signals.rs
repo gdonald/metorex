@@ -124,3 +124,26 @@ fn test_signals_trapped_from_outside_no_parens_execution() {
     let output = run_example("signals/trapped_from_outside_no_parens.rb");
     assert_eq!(output, TRAPPED_FROM_OUTSIDE_OUTPUT);
 }
+
+/// The expected output of both `signals/child_status` variants.
+const CHILD_STATUS: &str = concat!(
+    "[\"pid N exit 0\", \"#<Process::Status: pid N exit 0>\", true, 0, true, false, nil, false, nil, false]\n",
+    "[\"pid N exit 3\", \"#<Process::Status: pid N exit 3>\", true, 3, false, false, nil, false, nil, false]\n",
+    "3\n",
+    "[\"pid N SIGKILL (signal KILL)\", \"#<Process::Status: pid N SIGKILL (signal KILL)>\", false, nil, nil, true, \"KILL\", false, nil, false]\n",
+    "[\"pid N stopped SIGSTOP (signal STOP)\", \"#<Process::Status: pid N stopped SIGSTOP (signal STOP)>\", false, nil, nil, false, nil, true, \"STOP\", false]\n",
+    "[\"pid N SIGTERM (signal TERM)\", \"#<Process::Status: pid N SIGTERM (signal TERM)>\", false, nil, nil, true, \"TERM\", false, nil, false]\n",
+    "[:==, :coredump?, :exited?, :exitstatus, :inspect, :pid, :signaled?, :stopped?, :stopsig, :success?, :termsig, :to_i, :to_s]\n",
+);
+
+#[test]
+fn test_signals_child_status_execution() {
+    let output = run_example("signals/child_status.rb");
+    assert_eq!(output, CHILD_STATUS);
+}
+
+#[test]
+fn test_signals_child_status_no_parens_execution() {
+    let output = run_example("signals/child_status_no_parens.rb");
+    assert_eq!(output, CHILD_STATUS);
+}

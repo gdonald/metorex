@@ -185,7 +185,7 @@ fn test_remaining_keyword_tokens_display() {
         (TokenKind::Ensure, "ensure"),
         (TokenKind::Raise, "raise"),
         (TokenKind::Break, "break"),
-        (TokenKind::Continue, "continue"),
+        (TokenKind::Continue, "next"),
         (TokenKind::Return, "return"),
         (TokenKind::Lambda, "lambda"),
         (TokenKind::Super, "super"),

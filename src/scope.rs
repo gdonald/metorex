@@ -45,6 +45,10 @@ pub struct Scope {
     /// scope's own names and before its parent's, and are not locals of this
     /// scope.
     captured: Option<CapturedNames>,
+    /// The locals listed where a block was written, in the order listed
+    /// there, which `local_variables` lists in the block though the ones
+    /// assigned after it cannot be read in it.
+    reserved: Rc<Vec<String>>,
 }
 
 /// The names a block closes over, each with the cell it shares with the
@@ -63,6 +67,7 @@ impl Scope {
             hidden_names: HashSet::new(),
             hoisted_names: HashSet::new(),
             captured: None,
+            reserved: Rc::new(Vec::new()),
         }
     }
 
@@ -77,6 +82,7 @@ impl Scope {
             hidden_names: HashSet::new(),
             hoisted_names: HashSet::new(),
             captured: None,
+            reserved: Rc::new(Vec::new()),
         }
     }
 
@@ -112,6 +118,10 @@ impl Scope {
 
     /// Read and write through the names a block closed over, without
     /// copying them into this scope.
+    pub fn attach_reserved(&mut self, reserved: Rc<Vec<String>>) {
+        self.reserved = reserved;
+    }
+
     pub fn attach_captured(&mut self, captured: CapturedNames) {
         self.captured = Some(captured);
     }
@@ -400,6 +410,13 @@ impl Scope {
                 .filter(|name| holds_a_local(name))
                 .cloned(),
         );
+        // A block lists the locals of the scope it was written in, in the
+        // order they were listed there, including the ones assigned after it.
+        for name in self.reserved.iter() {
+            if !names.contains(name) {
+                names.push(name.clone());
+            }
+        }
         if !self.is_method_boundary
             && let Some(parent) = &self.parent
         {

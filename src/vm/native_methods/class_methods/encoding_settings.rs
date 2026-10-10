@@ -168,28 +168,32 @@ impl VirtualMachine {
         // The names that stand for an encoding already listed under another
         // name, each paired with the name it stands for.
         if class_rc.name() == "Encoding" && method_name == "aliases" {
-            let mut seen: Vec<&str> = Vec::new();
             let mut pairs: indexmap::IndexMap<String, Object> = indexmap::IndexMap::new();
-            for (constant, display, _) in crate::vm::init::ENCODING_NAMES {
-                if seen.contains(&display) {
-                    pairs.insert(constant.to_string(), Object::string(display.to_string()));
-                } else {
-                    seen.push(display);
-                }
+            let keep = crate::vm::native_methods::hash_methods::keep_pair;
+            for (alias, display) in crate::vm::init::ENCODING_ALIASES {
+                keep(
+                    &mut pairs,
+                    Object::string(alias.to_string()),
+                    Object::string(display.to_string()),
+                );
             }
             ADDED_ALIASES.with(|held| {
                 for (alias, display) in held.borrow().iter() {
-                    pairs.insert(alias.clone(), Object::string(display.clone()));
+                    keep(
+                        &mut pairs,
+                        Object::string(alias.clone()),
+                        Object::string(display.clone()),
+                    );
                 }
             });
-            // Ruby lists the settings among the aliases, so "external" and
-            // "locale" name the encodings they stand for.
-            for named in ["external", "locale"] {
+            // Ruby lists the settings among the aliases, so "locale",
+            // "external" and "filesystem" name the encodings they stand for.
+            for named in ["locale", "external", "filesystem"] {
                 let found =
                     self.call_class_methods(class_rc, "find", &[Object::string(named)], position)?;
                 if let Some(encoding) = found {
                     let name = self.send_to_object(encoding, "name", Vec::new(), position)?;
-                    pairs.insert(named.to_string(), name);
+                    keep(&mut pairs, Object::string(named.to_string()), name);
                 }
             }
             return Ok(Answered(Object::Dict(Rc::new(std::cell::RefCell::new(
@@ -276,10 +280,16 @@ impl VirtualMachine {
                     // were built from, so a constant and the name it reports find
                     // the same encoding.
                     _ => {
+                        // An alias names the encoding it stands for.
+                        let aliased = crate::vm::init::ENCODING_ALIASES
+                            .iter()
+                            .find(|(alias, _)| alias.eq_ignore_ascii_case(&wanted))
+                            .map(|(_, display)| *display);
+                        let looked_up = aliased.unwrap_or(wanted.as_str());
                         let Some((settled, _, _)) = crate::vm::init::ENCODING_NAMES.iter().find(
                             |(constant, display, _)| {
-                                constant.eq_ignore_ascii_case(&wanted)
-                                    || display.eq_ignore_ascii_case(&wanted)
+                                constant.eq_ignore_ascii_case(looked_up)
+                                    || display.eq_ignore_ascii_case(looked_up)
                             },
                         ) else {
                             if let Some(found) = self.added_encoding(&wanted) {

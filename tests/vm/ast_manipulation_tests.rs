@@ -93,11 +93,7 @@ fn eval_wrong_arg_type() {
 fn eval_parse_error() {
     // `(` followed by `)` with nothing inside: still a parse error.
     let err = run_err(r#"eval("def )")"#);
-    assert!(
-        err.contains("parse") || err.contains("function name") || err.contains("Unexpected"),
-        "got: {}",
-        err
-    );
+    assert!(err.contains("syntax errors found"), "got: {}", err);
 }
 
 #[test]

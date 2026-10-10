@@ -1,5 +1,4 @@
-# Error Reporting and Stack Traces Examples
-# Demonstrates how Metorex reports errors with source locations and stack traces
+# Errors raised at run time and rescued, with the messages they carry.
 
 # Example 1: Basic runtime error
 # Uncommenting this will show an error with line number
@@ -74,12 +73,12 @@ end
 
 # Example 7: Pattern matching error
 begin
-  match 5
-    when 1
-      puts "one"
-    when 2
-      puts "two"
-    # No pattern matches 5, so this will error
+  case 5
+  in 1
+    puts "one"
+  in 2
+    puts "two"
+  # No pattern matches 5, so this will error
   end
 rescue => e
   puts "Pattern match error: #{e}"
@@ -87,7 +86,7 @@ end
 
 # Example 8: Break/continue outside loop
 begin
-  break  # Error: break outside of loop
+  proc { break }.call  # Error: break from a proc whose method has returned
 rescue => e
   puts "Control flow error: #{e}"
 end
@@ -153,9 +152,9 @@ end
 
 # Example 12: Invalid assignment target
 begin
-  42 = 10  # Cannot assign to a literal
-rescue => e
-  puts "Assignment error: #{e}"
+  eval("42 = 10")  # Cannot assign to a literal
+rescue SyntaxError => e
+  puts "Assignment error: #{e.class}"
 end
 
 # Example 13: Calling non-callable object
@@ -168,16 +167,16 @@ end
 
 # Example 14: Exception in guard clause
 begin
-  match 10
-    when x if x > undefined_var  # Error in guard
-      puts "matched"
+  case 10
+  in x if x > undefined_var  # Error in guard
+    puts "matched"
   end
 rescue => e
   puts "Guard error: #{e}"
 end
 
 # Example 15: Custom exception with raise
-class ValidationError
+class ValidationError < StandardError
 end
 
 begin

@@ -5,6 +5,12 @@ use super::*;
 /// The name Ruby knows an encoding by, whatever spelling or case it was named
 /// with. A name nothing in the table matches is left as it was given.
 pub(crate) fn canonical_encoding_name(named: &str) -> String {
+    if let Some((_, display)) = crate::vm::init::ENCODING_ALIASES
+        .iter()
+        .find(|(alias, _)| alias.eq_ignore_ascii_case(named))
+    {
+        return display.to_string();
+    }
     let wanted = named.replace('-', "_").to_ascii_uppercase();
     let same = |held: &str| held.replace('-', "_").to_ascii_uppercase() == wanted;
     crate::vm::init::ENCODING_NAMES

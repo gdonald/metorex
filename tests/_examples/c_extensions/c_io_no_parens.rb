@@ -91,4 +91,10 @@ p waiter.join.status
 read_write = File.open path, "r+"
 p io.open_descriptor(File, read_write.fileno, 3, "both", nil, nil, nil).class
 read_write.close
+wrong_way = io.open_descriptor(File, writer.fileno, 1, "wrong.txt", nil, nil, nil)
+begin
+  wrong_way.read_nonblock 1
+rescue Errno::EBADF => error
+  p error.class
+end
 FileUtils.rm_rf directory

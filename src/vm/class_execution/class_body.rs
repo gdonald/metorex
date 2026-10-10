@@ -9,15 +9,47 @@ impl VirtualMachine {
         body: &[Statement],
         position: Position,
     ) -> Result<Object, MetorexError> {
-        // Reset visibility to public at the start of every class body so
-        // reopening doesn't carry over a stale state from a prior body.
-        class.set_current_visibility("public");
         // A class body is not a method activation, so `__callee__` and
         // `__method__` inside one answer nil rather than reporting whichever
         // method happens to be running further down the stack.
         // Ruby names the body by the class alone, without the namespace it
         // was written in, and a singleton class body by what it is.
-        self.call_stack_push(crate::vm::CallFrame::boundary(class_body_label(class)));
+        // The body stands where the class was opened, which a backtrace
+        // names as the place in the code around it.
+        let frame = crate::vm::CallFrame::boundary(class_body_label(class))
+            .with_location(Some(format!("{}:{}", position.line, position.column)))
+            .with_source_file(self.file_for_frames());
+        self.apply_class_body_in_frame(class, body, position, frame, None)
+    }
+
+    /// Run a class body in `frame`, which a block run as one, as
+    /// `class_eval` runs it, names as the block. Such a block's `return`
+    /// goes back to `block_home`.
+    pub(crate) fn apply_class_body_in_frame(
+        &mut self,
+        class: &Rc<Class>,
+        body: &[Statement],
+        position: Position,
+        frame: crate::vm::CallFrame,
+        block_home: Option<Option<u64>>,
+    ) -> Result<Object, MetorexError> {
+        self.body_block_homes.push(block_home);
+        let answer = self.apply_class_body_in_pushed_frame(class, body, position, frame);
+        self.body_block_homes.pop();
+        answer
+    }
+
+    fn apply_class_body_in_pushed_frame(
+        &mut self,
+        class: &Rc<Class>,
+        body: &[Statement],
+        position: Position,
+        frame: crate::vm::CallFrame,
+    ) -> Result<Object, MetorexError> {
+        // Reset visibility to public at the start of every class body so
+        // reopening doesn't carry over a stale state from a prior body.
+        class.set_current_visibility("public");
+        self.call_stack_push(frame);
         let body_result = self.apply_class_body_statements(class, body, position);
         self.call_stack_pop();
         body_result
@@ -38,6 +70,11 @@ impl VirtualMachine {
         if let Some(receiver) = held_self {
             self.environment_mut().define("self".to_string(), receiver);
         }
+        // Ruby reserves every local the body assigns before any of it runs,
+        // so one assigned in a branch not taken answers nil.
+        for name in crate::ast::collect_assigned_locals(body) {
+            self.environment_mut().hoist(name);
+        }
         let answered = self.apply_class_body(class, body, position);
         self.environment_mut().pop_scope();
         answered
@@ -54,8 +91,11 @@ impl VirtualMachine {
         let held_home = std::mem::take(&mut self.class_var_home);
         let answer = self.class_body_statements(class, body, position);
         self.class_var_home = held_home;
-        // A `class << obj` body opened inside a method returns from it.
-        if class.is_singleton_class() && self.running_a_method() {
+        // A `class << obj` body opened inside a method returns from it, and
+        // so does a block run as the body.
+        if class.is_singleton_class() && self.running_a_method()
+            || matches!(self.body_block_homes.last(), Some(Some(_)))
+        {
             return answer;
         }
         refuse_return_from_a_body(answer, position)
@@ -112,6 +152,7 @@ impl VirtualMachine {
                     body: method_body,
                     singleton_class: None,
                     position: def_position,
+                    end_position: def_end,
                 } => {
                     let mut m = build_method_from_params(
                         method_name.clone(),
@@ -124,6 +165,7 @@ impl VirtualMachine {
                     m.owner_class = Some(Rc::clone(class));
                     m.definee = Some(Rc::clone(class));
                     m.source_location = Some(self.source_location_for(*def_position));
+                    m.end_line = Some(def_end.line);
                     self.warn_redefined_optimized_method(class.name(), method_name, *def_position)?;
                     self.refuse_frozen_definee(class, *def_position)?;
                     class.define_method(method_name, Rc::new(m));
@@ -146,6 +188,7 @@ impl VirtualMachine {
                     body: method_body,
                     singleton_class: Some(receiver),
                     position: def_position,
+                    end_position: def_end,
                 } if receiver == "self" => {
                     let mut m = build_method_from_params(
                         method_name.clone(),
@@ -155,6 +198,7 @@ impl VirtualMachine {
                         self.snapshot_lexical_nesting(),
                     );
                     m.source_location = Some(self.source_location_for(*def_position));
+                    m.end_line = Some(def_end.line);
                     class.define_method(format!("__class__{}", method_name), Rc::new(m));
                     last_value = Object::symbol(method_name.clone());
                 }
@@ -207,6 +251,7 @@ impl VirtualMachine {
                         .map(|(i, p)| (i, p.name.clone()));
                     let mut m = Method::new(method_name.clone(), param_names, method_body.clone());
                     m.source_location = Some(self.source_location_for(*def_position));
+                    m.end_line = Some(def_end.line);
                     m.default_parameters = default_params;
                     m.keyword_parameters = keyword_parameters;
                     m.keyword_rest_parameter = parameters
@@ -716,10 +761,42 @@ impl VirtualMachine {
                                         home_frame: self.current_method_frame,
                                     });
                                 }
+                                // A block run as the body returns from the
+                                // method it was written in.
+                                ControlFlow::Return { value, position }
+                                    if let Some(Some(home)) =
+                                        self.body_block_homes.last().copied() =>
+                                {
+                                    if let Some(frame) = home
+                                        && !self.live_frames.contains(&frame)
+                                    {
+                                        return Err(
+                                            crate::vm::block_execution::orphaned_return_error(
+                                                value, position,
+                                            ),
+                                        );
+                                    }
+                                    return Err(MetorexError::NonLocalReturn {
+                                        value,
+                                        location: position_to_location(position),
+                                        home_frame: home,
+                                    });
+                                }
                                 // Ruby's parser refuses a `return` written in
                                 // a class or module body outright.
                                 ControlFlow::Return { position, .. } => {
                                     return Err(return_in_a_body_error(position));
+                                }
+                                // An exception the body raised leaves it.
+                                ControlFlow::Exception {
+                                    exception,
+                                    position,
+                                } => {
+                                    return Err(MetorexError::UncaughtException {
+                                        message: crate::vm::utils::format_exception(&exception),
+                                        exception,
+                                        location: position_to_location(position),
+                                    });
                                 }
                                 _ => {}
                             },

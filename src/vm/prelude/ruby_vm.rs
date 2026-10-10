@@ -100,6 +100,14 @@ class RubyVM
 
       attr_reader :node_id
 
+      # Where the node is written, then where each keyword and operator MRI
+      # records for its type is, nil for one not written.
+      def locations
+        recorded = @tree&.builder&.recorded_locations(self) || []
+        [Location.new(@first_lineno, @first_column, @last_lineno, @last_column),
+         *recorded.map { |span| span && Location.new(*span) }]
+      end
+
       # The lines of the program, when it was parsed with
       # `keep_script_lines: true`.
       def script_lines = @tree&.script_lines
@@ -125,6 +133,22 @@ class RubyVM
           ([first_line, first_column] <=> [@first_lineno, @first_column]) >= 0 &&
             ([last_line, last_column] <=> [@last_lineno, @last_column]) <= 0
         end
+      end
+    end
+
+    # A span of a program's text.
+    class Location
+      attr_reader :first_lineno, :first_column, :last_lineno, :last_column
+
+      def initialize(first_lineno, first_column, last_lineno, last_column)
+        @first_lineno = first_lineno
+        @first_column = first_column
+        @last_lineno = last_lineno
+        @last_column = last_column
+      end
+
+      def inspect
+        "#<RubyVM::AbstractSyntaxTree::Location:@#{@first_lineno}:#{@first_column}-#{@last_lineno}:#{@last_column}>"
       end
     end
 

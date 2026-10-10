@@ -539,15 +539,23 @@ class Dir
   # Another Dir over a descriptor already open, which reads the same
   # directory and closes the same descriptor.
   def self.for_fd(number)
+    unless number.is_a?(Integer)
+      raise TypeError, "no implicit conversion from nil to integer" if number.nil?
+      unless number.respond_to?(:to_int)
+        named = number == true || number == false ? number.inspect : number.class
+        raise TypeError, "no implicit conversion of #{named} into Integer"
+      end
+      number = number.to_int
+    end
     made = allocate
     made.__send__ :__adopt__, number
     made
   end
 
   def __adopt__(number)
+    @names = IO.__stream__ "fdopendir", 0, "", number
     @handle = IO.__stream__ "adopt", 0, "", number
     @path = nil
-    @names = []
     @position = 0
     @closed = false
     self

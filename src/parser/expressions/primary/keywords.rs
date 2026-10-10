@@ -88,6 +88,13 @@ impl Parser {
             TokenKind::DotDot,
             TokenKind::DotDotDot,
             TokenKind::FatArrow,
+            TokenKind::KeywordAnd,
+            TokenKind::KeywordOr,
+            TokenKind::While,
+            TokenKind::Until,
+            TokenKind::RightShift,
+            TokenKind::StarStar,
+            TokenKind::Comment(String::new()),
         ]) || self.is_at_end()
         {
             // Bare `super` with no arguments and no parens. Also covers

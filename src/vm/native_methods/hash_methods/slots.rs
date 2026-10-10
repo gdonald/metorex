@@ -106,7 +106,10 @@ impl VirtualMachine {
         ) {
             return false;
         }
-        matches!(self.lookup_method(key, "hash"), Some((_, method)) if !method.is_undefined)
+        // Every other value answers `#hash` the way its `#eql?` compares, an
+        // Array by its elements and a Range by its ends, so it is placed by
+        // its hash too.
+        self.responds_to(key, "hash")
     }
 
     /// The object id a hash comparing by identity places a key by.
@@ -250,6 +253,11 @@ impl VirtualMachine {
         if crate::vm::utils::is_primitive_key(wanted) {
             return Ok((slot, None));
         }
+        // Every key that is not a primitive was placed by its `#hash`, so
+        // the slots under that hash were the only places it could be.
+        if !dict_rc.borrow().contains_key(RENDERED_OBJECTS_KEY) {
+            return Ok((slot, None));
+        }
         let stored: Vec<(String, Object)> = {
             let dict = dict_rc.borrow();
             dict.keys()
@@ -303,11 +311,43 @@ pub(crate) fn remember_key_object(
     rendered: &str,
     key: &Object,
 ) {
+    if !rendered.starts_with(HASHED_SLOT_PREFIX) && !crate::vm::utils::is_primitive_key(key) {
+        pairs.insert(RENDERED_OBJECTS_KEY.to_string(), Object::Bool(true));
+    }
+    // A copy of a hash shares the record with the hash it came from, so a
+    // shared record is copied before it changes, and one held by this hash
+    // alone is written in place.
+    if let Some(Object::Dict(existing)) = pairs.get(KEY_OBJECTS_KEY)
+        && Rc::strong_count(existing) == 1
+    {
+        existing
+            .borrow_mut()
+            .insert(rendered.to_string(), key.clone());
+        return;
+    }
     let mut objects = match pairs.get(KEY_OBJECTS_KEY) {
         Some(Object::Dict(existing)) => existing.borrow().clone(),
         _ => indexmap::IndexMap::new(),
     };
     objects.insert(rendered.to_string(), key.clone());
+    pairs.insert(
+        KEY_OBJECTS_KEY.to_string(),
+        Object::Dict(Rc::new(RefCell::new(objects))),
+    );
+}
+
+/// Drop the key object recorded for `slot`. A record shared with a copy of
+/// the hash is copied first, so the copy keeps its keys.
+pub(crate) fn forget_key_object(pairs: &mut indexmap::IndexMap<String, Object>, slot: &str) {
+    let Some(Object::Dict(existing)) = pairs.get(KEY_OBJECTS_KEY) else {
+        return;
+    };
+    if Rc::strong_count(existing) == 1 {
+        existing.borrow_mut().shift_remove(slot);
+        return;
+    }
+    let mut objects = existing.borrow().clone();
+    objects.shift_remove(slot);
     pairs.insert(
         KEY_OBJECTS_KEY.to_string(),
         Object::Dict(Rc::new(RefCell::new(objects))),

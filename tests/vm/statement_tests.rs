@@ -397,7 +397,7 @@ hello
     assert_eq!(result.map(|o| o.to_string()), Some(":hi".to_string()));
 }
 
-// ── break / continue outside loop (via execute_program) ──────────────────────
+// ── break / next outside loop (via execute_program) ──────────────────────
 
 #[test]
 fn break_at_top_level_error() {
@@ -406,9 +406,9 @@ fn break_at_top_level_error() {
 }
 
 #[test]
-fn continue_at_top_level_error() {
-    let err = run_err("continue");
-    assert!(err.contains("continue"));
+fn next_at_top_level_error() {
+    let err = run_err("next");
+    assert!(err.contains("next cannot be used outside of a loop"));
 }
 
 // ── Array index assignment errors ─────────────────────────────────────────────
@@ -597,33 +597,33 @@ greet
     assert_eq!(result, Some(Object::Int(42)));
 }
 
-// ── continue inside case/when at top level (vm/core.rs lines 183-184) ─────────
+// ── next inside case/when at top level ─────────
 // The Match/CaseIn handler in execute_program must see ControlFlow::Continue.
 
 #[test]
-fn continue_inside_case_when_at_top_level_error() {
+fn next_inside_case_when_at_top_level_error() {
     let err = run_err(
         r#"
 case 42
 when Integer
-  continue
+  next
 end
 "#,
     );
-    assert!(err.contains("continue") || err.contains("loop") || err.contains("outside"));
+    assert!(err.contains("next cannot be used outside of a loop"));
 }
 
 #[test]
-fn continue_inside_case_in_at_top_level_error() {
+fn next_inside_case_in_at_top_level_error() {
     let err = run_err(
         r#"
 case 42
 in Integer => n
-  continue
+  next
 end
 "#,
     );
-    assert!(err.contains("continue") || err.contains("loop") || err.contains("outside"));
+    assert!(err.contains("next cannot be used outside of a loop"));
 }
 
 // ── method call with arguments as assignment target (vm/statement.rs 363-365) ─
@@ -650,7 +650,7 @@ fn symbol_with_non_ident_token_error() {
     assert!(result.is_err() || result.unwrap().is_empty());
 }
 
-// ── break/continue in function body (method_invocation.rs lines 508-512) ──────
+// ── break/next in function body ──────
 
 #[test]
 fn break_inside_function_body_is_refused_when_parsed() {
@@ -674,11 +674,11 @@ foo
 }
 
 #[test]
-fn continue_inside_function_body_is_refused_when_parsed() {
+fn next_inside_function_body_is_refused_when_parsed() {
     let tokens = Lexer::new(
         r#"
 def foo
-  continue
+  next
 end
 foo
 "#,
@@ -694,7 +694,7 @@ foo
     );
 }
 
-// ── break/continue inside block called via .call (method_invocation.rs 184-188) ─
+// ── break/next inside block called via .call ─
 
 #[test]
 fn break_inside_block_passed_to_method_returns_break_value() {

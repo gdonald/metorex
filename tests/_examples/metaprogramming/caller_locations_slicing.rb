@@ -1,7 +1,7 @@
 def innermost
   all = caller_locations 0
   ranged = caller_locations 2..3
-  endless = caller_locations 2..
+  endless = caller_locations (2..)
   limited = caller_locations 1, 2
 
   puts all.length >= 3

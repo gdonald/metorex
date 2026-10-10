@@ -475,3 +475,25 @@ fn test_filesystem_system_call_errors_no_parens_execution() {
     let output = run_example("filesystem/system_call_errors_no_parens.rb");
     assert_eq!(output, SYSTEM_CALL_ERRORS);
 }
+
+/// The expected output of both `filesystem/directory_for_descriptor` variants.
+const DIRECTORY_FOR_DESCRIPTOR: &str = concat!(
+    "[\"archive\", \"notes.txt\"]\n",
+    "nil\n",
+    "true\n",
+    "no implicit conversion from nil to integer\n",
+    "Bad file descriptor - fdopendir\n",
+    "Not a directory - fdopendir\n",
+);
+
+#[test]
+fn test_filesystem_directory_for_descriptor_execution() {
+    let output = run_example("filesystem/directory_for_descriptor.rb");
+    assert_eq!(output, DIRECTORY_FOR_DESCRIPTOR);
+}
+
+#[test]
+fn test_filesystem_directory_for_descriptor_no_parens_execution() {
+    let output = run_example("filesystem/directory_for_descriptor_no_parens.rb");
+    assert_eq!(output, DIRECTORY_FOR_DESCRIPTOR);
+}

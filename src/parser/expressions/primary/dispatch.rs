@@ -167,7 +167,12 @@ impl Parser {
             TokenKind::Nil => Ok(literals::nil_literal(position)),
 
             // ── Identifiers and variables ───────────────────────────────────
-            TokenKind::Ident(name) => Ok(literals::identifier(name, position)),
+            TokenKind::Ident(name) => {
+                if self.assignment_ahead() {
+                    self.declare_local(&name);
+                }
+                Ok(literals::identifier(name, position))
+            }
             // `include`/`extend` as a method call in expression context
             // (e.g. `should include(Foo)`). Statement-level `include Foo`
             // is dispatched before reaching primary parsing.
@@ -225,7 +230,7 @@ impl Parser {
             // ── Block / lambda literals ─────────────────────────────────────
             TokenKind::Lambda => self.parse_lambda_literal(position),
             TokenKind::Do => self.parse_do_block(position),
-            TokenKind::Arrow => self.parse_stabby_lambda(position),
+            TokenKind::Arrow => self.parse_stabby_lambda(),
 
             // ── Keyword-led expressions ─────────────────────────────────────
             // `a ||= raise "..."` puts a raise where a value goes, which

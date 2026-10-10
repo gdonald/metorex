@@ -190,7 +190,7 @@ fn continue_inside_method_body_is_refused_when_parsed() {
         r#"
 class C
   def foo
-    continue
+    next
   end
 end
 C.new.foo

@@ -110,9 +110,10 @@ impl Parser {
             })
         } else if self.check(&[TokenKind::While]) {
             let position = self.advance().position; // consume 'while'
-            // The statement is a loop body now, which a `redo` in it restarts.
+            // The statement is a loop body now, which a `redo`, `break` or
+            // `next` in it belongs to.
             let body_start = stmt.position().offset;
-            self.unlooped_redos.retain(|at| at.offset < body_start);
+            self.unlooped_jumps.retain(|(at, _)| at.offset < body_start);
             self.skip_whitespace();
             let condition = self.parse_modifier_condition()?;
             // `begin ... end while cond` reads its condition after the body
@@ -131,9 +132,10 @@ impl Parser {
             })
         } else if self.check(&[TokenKind::Until]) {
             let position = self.advance().position; // consume 'until'
-            // The statement is a loop body now, which a `redo` in it restarts.
+            // The statement is a loop body now, which a `redo`, `break` or
+            // `next` in it belongs to.
             let body_start = stmt.position().offset;
-            self.unlooped_redos.retain(|at| at.offset < body_start);
+            self.unlooped_jumps.retain(|(at, _)| at.offset < body_start);
             self.skip_whitespace();
             let condition = self.parse_modifier_condition()?;
             let condition = crate::ast::Expression::UnaryOp {
@@ -188,6 +190,9 @@ impl Parser {
         self.modifier_condition_depth += 1;
         let condition = self.parse_condition_expression();
         self.modifier_condition_depth -= 1;
+        if let Ok(read) = &condition {
+            self.warn_literal_condition(read);
+        }
         condition
     }
 

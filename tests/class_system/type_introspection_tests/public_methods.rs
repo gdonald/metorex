@@ -43,13 +43,13 @@ fn public_method_reaches_a_class_method() {
 #[test]
 fn public_method_refuses_a_private_name() {
     let error = run_err(&format!("{VAULT}\nVault.new.public_method(:hidden)"));
-    assert!(error.contains("undefined method 'hidden' for class 'Vault'"));
+    assert!(error.contains("method 'hidden' for class 'Vault' is private"));
 }
 
 #[test]
 fn public_method_refuses_a_protected_name() {
     let error = run_err(&format!("{VAULT}\nVault.new.public_method(:guarded)"));
-    assert!(error.contains("undefined method 'guarded' for class 'Vault'"));
+    assert!(error.contains("method 'guarded' for class 'Vault' is protected"));
 }
 
 #[test]

@@ -1369,3 +1369,302 @@ fn test_stdlib_allocation_tracing_no_parens_execution() {
     let output = run_example("stdlib/allocation_tracing_no_parens.rb");
     assert_eq!(output, ALLOCATION_TRACING_OUTPUT);
 }
+
+const CONSOLE_PP_AND_PATHNAME_OUTPUT: &str = concat!(
+    "[30, 100]\n",
+    "true\n",
+    "false\n",
+    "false\n",
+    "false\n",
+    "false\n",
+    "true\n",
+    "\"q\"\n",
+    "\"q\\e[3;5H\\e[0K\\e[1A\"\n",
+    "#<ArgumentError: wrong screen erase mode: 9>\n",
+    "true\n",
+    "true\n",
+    "nil\n",
+    "nil\n",
+    "\"Password: \\n\"\n",
+    "{id: 1042,\n",
+    " lines:\n",
+    "  [{sku: \"SKU-1\", quantity: 1},\n",
+    "   {sku: \"SKU-2\", quantity: 2},\n",
+    "   {sku: \"SKU-3\", quantity: 3},\n",
+    "   {sku: \"SKU-4\", quantity: 4},\n",
+    "   {sku: \"SKU-5\", quantity: 5},\n",
+    "   {sku: \"SKU-6\", quantity: 6},\n",
+    "   {sku: \"SKU-7\", quantity: 7},\n",
+    "   {sku: \"SKU-8\", quantity: 8},\n",
+    "   {sku: \"SKU-9\", quantity: 9},\n",
+    "   {sku: \"SKU-10\", quantity: 10},\n",
+    "   {sku: \"SKU-11\", quantity: 11},\n",
+    "   {sku: \"SKU-12\", quantity: 12}]}\n",
+    "14\n",
+    "\"constant\"\n",
+    "#<Pathname:app.log>\n",
+    "\"/var/log/app.log\"\n",
+    "#<Pathname:app.log>\n",
+    "-1\n",
+    "\"<internal:pathname_builtin>\"\n",
+    "true\n",
+    "true\n",
+);
+
+#[test]
+fn test_stdlib_console_pp_and_pathname_execution() {
+    let output = run_example("stdlib/console_pp_and_pathname.rb");
+    assert_eq!(output, CONSOLE_PP_AND_PATHNAME_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_console_pp_and_pathname_no_parens_execution() {
+    let output = run_example("stdlib/console_pp_and_pathname_no_parens.rb");
+    assert_eq!(output, CONSOLE_PP_AND_PATHNAME_OUTPUT);
+}
+
+/// The expected output of both `runtime/pattern_matching` variants.
+const PATTERN_MATCHING_OUTPUT: &str = concat!(
+    "The answer!\n",
+    "Matched: 100\n",
+    "a=1, b=2, c=3\n",
+    "First: 1\n",
+    "Rest: [2, 3, 4, 5]\n",
+    "First: 1, Last: 5\n",
+    "Middle: [2, 3, 4]\n",
+    "Point at (10, 20)\n",
+    "Warm\n",
+    "Sum: 10\n",
+    "Number: 1\n",
+    "String: hello\n",
+    "Boolean: true\n",
+    "Not Found\n",
+    "Starting...\n",
+    "Flag is true\n",
+    "No value\n",
+    "Working age\n",
+    "First is 1, last is 4\n",
+);
+
+#[test]
+fn test_runtime_pattern_matching_execution() {
+    let output = run_example("runtime/pattern_matching.rb");
+    assert_eq!(output, PATTERN_MATCHING_OUTPUT);
+}
+
+#[test]
+fn test_runtime_pattern_matching_parens_execution() {
+    let output = run_example("runtime/pattern_matching_parens.rb");
+    assert_eq!(output, PATTERN_MATCHING_OUTPUT);
+}
+
+/// The expected output of both `runtime/error_reporting` variants.
+const ERROR_REPORTING_OUTPUT: &str = concat!(
+    "Caught error: divided by 0\n",
+    "Type error caught: no implicit conversion of Integer into String\n",
+    "Method error: undefined method 'undefined_method' for an instance of Integer\n",
+    "Error with stack trace: Cannot divide by zero!\n",
+    "Pattern match error: 5\n",
+    "Control flow error: break from proc-closure\n",
+    "Entering level 1\n",
+    "Entering level 2\n",
+    "Entering level 3\n",
+    "Entering level 4\n",
+    "Entering level 5\n",
+    "Deep error caught: undefined local variable or method 'undefined_variable' for an instance of Deep\n",
+    "Argument error: wrong number of arguments (given 1, expected 2)\n",
+    "Assignment error: SyntaxError\n",
+    "Callable error: undefined method 'x' for main\n",
+    "Guard error: undefined local variable or method 'undefined_var' for main\n",
+    "Custom exception caught\n",
+    "Error reporting examples completed!\n",
+);
+
+#[test]
+fn test_runtime_error_reporting_execution() {
+    let output = run_example("runtime/error_reporting.rb");
+    assert_eq!(output, ERROR_REPORTING_OUTPUT);
+}
+
+#[test]
+fn test_runtime_error_reporting_parens_execution() {
+    let output = run_example("runtime/error_reporting_parens.rb");
+    assert_eq!(output, ERROR_REPORTING_OUTPUT);
+}
+
+/// The expected output of both `stdlib/ipaddr_before_socket` variants.
+const IPADDR_BEFORE_SOCKET_OUTPUT: &str = "Class\ntrue\ntrue\ntrue\n\"127.0.0.1\"\n";
+
+#[test]
+fn test_stdlib_ipaddr_before_socket_execution() {
+    let output = run_example("stdlib/ipaddr_before_socket.rb");
+    assert_eq!(output, IPADDR_BEFORE_SOCKET_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_ipaddr_before_socket_no_parens_execution() {
+    let output = run_example("stdlib/ipaddr_before_socket_no_parens.rb");
+    assert_eq!(output, IPADDR_BEFORE_SOCKET_OUTPUT);
+}
+
+/// The expected output of both `stdlib/timeout_busy_code` variants.
+const TIMEOUT_BUSY_CODE_OUTPUT: &str = concat!(
+    "[Timeout::Error, \"execution expired\"]\n",
+    "[Timeout::Error, \"execution expired\"]\n",
+    "[ArgumentError, \"slow\"]\n",
+    ":ensured\n",
+    ":raised_once\n",
+    ":inner_limit\n",
+    "42\n",
+);
+
+#[test]
+fn test_stdlib_timeout_busy_code_execution() {
+    let output = run_example("stdlib/timeout_busy_code.rb");
+    assert_eq!(output, TIMEOUT_BUSY_CODE_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_timeout_busy_code_no_parens_execution() {
+    let output = run_example("stdlib/timeout_busy_code_no_parens.rb");
+    assert_eq!(output, TIMEOUT_BUSY_CODE_OUTPUT);
+}
+
+/// The expected output of `runtime/builtin_classes`.
+const BUILTIN_CLASSES: &str = concat!(
+    "=== Object Class ===\n",
+    "x.class: Integer\n",
+    "x.to_s: 42\n",
+    "x.respond_to?('to_s'): true\n",
+    "y.class: String\n",
+    "y.to_s: hello\n",
+    "\n",
+    "=== String Class ===\n",
+    "Original: Hello, World!\n",
+    "Length: 13\n",
+    "Uppercase: HELLO, WORLD!\n",
+    "Lowercase: hello, world!\n",
+    "Concatenated: Hello, Alice!\n",
+    "\n",
+    "=== Integer Class ===\n",
+    "num1: 42\n",
+    "num2: 10\n",
+    "num1.class: Integer\n",
+    "\n",
+    "=== Float Class ===\n",
+    "pi: 3.14159\n",
+    "e: 2.71828\n",
+    "pi.class: Float\n",
+    "\n",
+    "=== Array Class ===\n",
+    "Array: [1, 2, 3, 4, 5]\n",
+    "Length: 5\n",
+    "After push(6): [1, 2, 3, 4, 5, 6]\n",
+    "Popped: 6\n",
+    "After pop: [1, 2, 3, 4, 5]\n",
+    "First element: 1\n",
+    "Third element: 3\n",
+    "Mixed array: [1, \"two\", 3.0, true, nil]\n",
+    "\n",
+    "=== Hash Class ===\n",
+    "Hash: {name: \"Bob\", age: 30, city: \"New York\"}\n",
+    "Name: Bob\n",
+    "Age: 30\n",
+    "After adding job: {name: \"Bob\", age: 30, city: \"New York\", job: \"Engineer\"}\n",
+    "\n",
+    "=== Set Class ===\n",
+    "Set: Set[1, 2, 3]\n",
+    "Contains 2: true\n",
+    "Contains 5: false\n",
+    "\n",
+    "=== Exception Hierarchy ===\n",
+    "Caught Exception: Generic exception\n",
+    "Caught StandardError: Standard error occurred\n",
+    "Caught RuntimeError: Runtime error occurred\n",
+    "Caught TypeError: Expected Integer, got String\n",
+    "Caught ArgumentError: Invalid value provided\n",
+    "\n",
+    "=== Exception Catching ===\n",
+    "Value error: Division by zero\n",
+    "Caught via StandardError: Runtime problem\n",
+    "\n",
+    "=== Class Hierarchy ===\n",
+    "Integer is a subclass of Object: true\n",
+    "String is a subclass of Object: true\n",
+    "RuntimeError is a subclass of StandardError: true\n",
+    "StandardError is a subclass of Exception: true\n",
+    "Exception is a subclass of Object: true\n",
+    "\n",
+    "=== Inherited Methods ===\n",
+    "Array has to_s: true\n",
+    "String has to_s: true\n",
+    "Integer has to_s: true\n",
+    "\n",
+    "=== Custom Classes ===\n",
+    "Person instance: Person(name: Charlie, age: 25)\n",
+    "Person class: Person\n",
+    "Person has to_s: true\n",
+    "Person is a subclass of Object: true\n",
+    "\n",
+    "=== Polymorphism ===\n",
+    "Unknown type: Integer\n",
+    "Unknown type: Float\n",
+    "Unknown type: String\n",
+    "Unknown type: Array\n",
+    "\n",
+    "=== Type Checking ===\n",
+    "Is Integer: true\n",
+    "Is Float: false\n",
+    "Is Object: true\n",
+    "Is String: false\n",
+    "Array is Array: true\n",
+    "Array is Object: true\n",
+);
+
+#[test]
+fn test_runtime_builtin_classes_execution() {
+    let output = run_example("runtime/builtin_classes.rb");
+    assert_eq!(output, BUILTIN_CLASSES);
+}
+
+#[test]
+fn test_a_missing_program_file_is_reported_under_the_name_the_interpreter_was_started_by() {
+    let started_by = env!("CARGO_BIN_EXE_metorex");
+    let output = Command::new(started_by)
+        .arg("does_not_exist")
+        .output()
+        .expect("failed to run metorex");
+    assert_eq!(
+        String::from_utf8(output.stderr).expect("stderr was not utf8"),
+        format!("{started_by}: No such file or directory -- does_not_exist (LoadError)\n")
+    );
+}
+
+#[test]
+fn test_an_invalid_rubyopt_switch_is_reported_under_the_name_the_interpreter_was_started_by() {
+    let started_by = env!("CARGO_BIN_EXE_metorex");
+    let output = Command::new(started_by)
+        .env("RUBYOPT", "-e")
+        .args(["-e", "1"])
+        .output()
+        .expect("failed to run metorex");
+    assert_eq!(
+        String::from_utf8(output.stderr).expect("stderr was not utf8"),
+        format!("{started_by}: invalid switch in RUBYOPT: -e (RuntimeError)\n")
+    );
+}
+
+/// The expected output of both `runtime/release_named` variants.
+const RELEASE_NAMED: &str = concat!("\"4.0.6\"\n", "0\n", "\"2026-07-14\"\n", "true\n");
+
+#[test]
+fn test_runtime_release_named_execution() {
+    let output = run_example("runtime/release_named.rb");
+    assert_eq!(output, RELEASE_NAMED);
+}
+
+#[test]
+fn test_runtime_release_named_no_parens_execution() {
+    let output = run_example("runtime/release_named_no_parens.rb");
+    assert_eq!(output, RELEASE_NAMED);
+}

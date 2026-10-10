@@ -234,6 +234,10 @@ impl Environment {
 
     /// Read and write through the names a block closed over in the current
     /// scope, without copying them into it.
+    pub fn attach_reserved(&mut self, reserved: std::rc::Rc<Vec<String>>) {
+        self.current_scope().borrow_mut().attach_reserved(reserved);
+    }
+
     pub fn attach_captured(&mut self, captured: crate::scope::CapturedNames) {
         self.current_scope().borrow_mut().attach_captured(captured);
     }

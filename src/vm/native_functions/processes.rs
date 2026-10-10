@@ -23,14 +23,11 @@ impl crate::vm::core::VirtualMachine {
     }
 }
 
-/// Whether a command written as one string holds a character the shell reads,
-/// which is what decides between running it through `sh` and running it as
-/// the program it names.
+/// Whether a command written as one string has to run through `sh`: it
+/// holds a character the shell reads or starts with a word the shell answers
+/// itself, such as `exit`.
 pub(crate) fn needs_a_shell(command: &str) -> bool {
-    const READ_BY_THE_SHELL: &[u8] = b"*?{}[]<>()~&|\\$;'`\"\n#";
-    command
-        .bytes()
-        .any(|byte| READ_BY_THE_SHELL.contains(&byte))
+    !command.trim().is_empty() && super::shell::shell_free_words(command).is_none()
 }
 
 /// Start a program, answering the process id it runs under, or a negative

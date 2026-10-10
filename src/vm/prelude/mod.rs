@@ -149,5 +149,67 @@ impl VirtualMachine {
             .unwrap_or_else(|error| panic!("prelude failed to run: {}", error));
         self.current_file = held_file;
         self.current_source_file = held_source;
+        self.give_main_its_private_methods();
+        self.take_ordering_from_complex();
+    }
+
+    /// A Complex names no point on the number line, so it is neither ordered
+    /// against another number nor rounded. The methods that would do either
+    /// come to it natively, so they are undefined here rather than by an
+    /// `undef_method`, which looks for them in a method table.
+    fn take_ordering_from_complex(&mut self) {
+        let Some(crate::object::Object::Class(complex)) = self.globals().get("Complex") else {
+            return;
+        };
+        for name in [
+            "%",
+            "<",
+            "<=",
+            ">",
+            ">=",
+            "between?",
+            "clamp",
+            "div",
+            "divmod",
+            "floor",
+            "ceil",
+            "modulo",
+            "remainder",
+            "round",
+            "step",
+            "truncate",
+            "i",
+        ] {
+            complex.define_method(
+                name,
+                std::rc::Rc::new(crate::object::Method::undefined(name.to_string())),
+            );
+        }
+    }
+
+    /// The private methods the singleton class of `main` defines natively,
+    /// each running the way its bare form written at the top level runs.
+    fn give_main_its_private_methods(&mut self) {
+        let Some(crate::object::Object::Instance(main)) = self.globals().get("__main__") else {
+            return;
+        };
+        let Some(singleton) = main.borrow().singleton_class.borrow().clone() else {
+            return;
+        };
+        for name in [
+            "define_method",
+            "include",
+            "private",
+            "public",
+            "ruby2_keywords",
+            "using",
+        ] {
+            let held = crate::parser::ANONYMOUS_SPLAT.to_string();
+            let mut stub = crate::object::Method::new(name.to_string(), vec![held.clone()], vec![]);
+            stub.variadic_param = Some((0, held));
+            stub.native_alias = Some(name.to_string());
+            singleton.define_method(name, std::rc::Rc::new(stub));
+            singleton.set_method_private(name);
+        }
     }
 }

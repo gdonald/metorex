@@ -87,12 +87,22 @@ impl VirtualMachine {
                 if self.object_is_frozen(receiver) {
                     return Err(self.frozen_modification_error(receiver, position));
                 }
-                let first = self.hash_pairs(dict_rc).into_iter().next();
-                let Some((key, value)) = first else {
+                // The first entry is removed from the slot it sits in, which
+                // for a key placed by its `#hash` is not how the key renders.
+                let first = {
+                    let dict = dict_rc.borrow();
+                    dict.iter()
+                        .find(|(slot, _)| !is_internal_key(slot))
+                        .map(|(slot, value)| {
+                            (slot.clone(), reconstruct_key(&dict, slot), value.clone())
+                        })
+                };
+                let Some((slot, key, value)) = first else {
                     return Ok(Some(Object::Nil));
                 };
-                let rendered = crate::vm::utils::object_to_dict_key(&key).unwrap_or_default();
-                dict_rc.borrow_mut().shift_remove(&rendered);
+                let mut dict = dict_rc.borrow_mut();
+                dict.shift_remove(&slot);
+                forget_key_object(&mut dict, &slot);
                 Ok(Some(Object::array(vec![key, value])))
             }
             // `deconstruct_keys` answers the hash itself, whatever keys the
@@ -182,7 +192,7 @@ impl VirtualMachine {
                     other => {
                         let message = format!(
                             "no implicit conversion of {} into Hash",
-                            self.builtins().class_of(other).ruby_name()
+                            crate::vm::errors::conversion_subject(other)
                         );
                         return Err(crate::vm::errors::simple_exception(
                             "TypeError",
@@ -194,7 +204,7 @@ impl VirtualMachine {
                 let Object::Dict(other_rc) = &other else {
                     let message = format!(
                         "no implicit conversion of {} into Hash",
-                        self.builtins().class_of(&arguments[0]).ruby_name()
+                        crate::vm::errors::conversion_subject(&arguments[0])
                     );
                     return Err(crate::vm::errors::simple_exception(
                         "TypeError",

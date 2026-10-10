@@ -39,8 +39,8 @@ p (base + "?y").to_s
 p base.route_to("http://a/b/c/g").to_s
 p URI.join("http://localhost/a/b/c/d", "../../e/f", "g/h/../i").to_s
 
-p URI.escape "a b&c"
-p URI.unescape "a%20b%26c"
+p URI::RFC2396_PARSER.escape "a b&c"
+p URI::RFC2396_PARSER.unescape "a%20b%26c"
 p URI.encode_www_form_component "a b&c"
 p URI.encode_www_form([["name", "ruby"], ["age", "30"]])
 p URI.decode_www_form "name=ruby&age=30"

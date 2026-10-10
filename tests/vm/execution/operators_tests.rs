@@ -78,7 +78,7 @@ x
 #[test]
 fn unary_plus_on_non_numeric_errors() {
     let err = run_err("+true");
-    assert!(err.contains("TypeError") || err.contains("unary") || err.contains("Boolean"));
+    assert!(err.contains("undefined method '+@' for true"));
 }
 
 // ── operators.rs: %d format ───────────────────────────────────────────────────

@@ -200,6 +200,7 @@ RUBY_EXTERN VALUE rb_eLoadError;
 RUBY_EXTERN VALUE rb_eMathDomainError;
 
 VALUE rb_class_of(VALUE object);
+VALUE rb_singleton_class(VALUE object);
 #define CLASS_OF(v) rb_class_of((VALUE)(v))
 #define RBASIC_CLASS(v) rb_class_of((VALUE)(v))
 

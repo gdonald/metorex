@@ -13,12 +13,14 @@ pub(crate) fn statement_for_its_own_receiver(statement: &Statement) -> Option<St
             body,
             singleton_class: Some(named),
             position,
+            end_position,
         } if named == "self" => Some(Statement::FunctionDef {
             name: name.clone(),
             parameters: parameters.clone(),
             body: body.clone(),
             singleton_class: None,
             position: *position,
+            end_position: *end_position,
         }),
         Statement::MethodDef {
             name,

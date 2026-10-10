@@ -249,6 +249,14 @@ impl VirtualMachine {
             }
             return Ok(Object::string(format!("{}", result)));
         }
+        // An object below BasicObject alone has no `inspect`, so the call
+        // goes to its `method_missing`, as any other call it lacks does.
+        if let Object::Instance(instance) = obj {
+            let class = instance.borrow().class.clone();
+            if !crate::vm::method_invocation::descends_from(&class, "Object") {
+                return self.send_to_object(obj.clone(), "inspect", Vec::new(), position);
+            }
+        }
         let class = self.builtins().class_of(obj);
         if let Some(rendered @ Object::String(_)) =
             self.call_native_method(&class, obj, "inspect", &[], position)?

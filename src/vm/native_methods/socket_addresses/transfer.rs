@@ -105,7 +105,11 @@ impl VirtualMachine {
             {
                 Err(timed_out(position))
             }
-            Err(problem) => Err(refused(position, format!("read: {problem}"))),
+            Err(problem) => Err(crate::vm::errors::simple_exception(
+                errno_class(&problem),
+                &format!("read: {problem}"),
+                position,
+            )),
         }
     }
 
@@ -245,7 +249,13 @@ impl VirtualMachine {
                         deadline = (std::time::Instant::now() + WAIT_LIMIT).min(waited_enough);
                     }
                 }
-                Err(problem) => return Err(refused(position, format!("read: {problem}"))),
+                Err(problem) => {
+                    return Err(crate::vm::errors::simple_exception(
+                        errno_class(&problem),
+                        &format!("read: {problem}"),
+                        position,
+                    ));
+                }
             }
         }
     }

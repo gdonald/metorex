@@ -601,6 +601,8 @@ impl VirtualMachine {
             FiberContext {
                 environment: fresh,
                 call_stack: Vec::new(),
+                native_frames: Vec::new(),
+                statement_marks: Vec::new(),
                 def_scope_stack: Vec::new(),
                 class_var_home: Vec::new(),
                 class_var_cref_stack: Vec::new(),
@@ -614,6 +616,8 @@ impl VirtualMachine {
         FiberContext {
             environment: std::mem::replace(&mut self.environment, taken.environment),
             call_stack: std::mem::replace(&mut self.call_stack, taken.call_stack),
+            native_frames: std::mem::replace(&mut self.native_frames, taken.native_frames),
+            statement_marks: std::mem::replace(&mut self.statement_marks, taken.statement_marks),
             def_scope_stack: std::mem::replace(&mut self.def_scope_stack, taken.def_scope_stack),
             class_var_home: std::mem::replace(&mut self.class_var_home, taken.class_var_home),
             class_var_cref_stack: std::mem::replace(

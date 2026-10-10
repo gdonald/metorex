@@ -147,8 +147,9 @@ impl VirtualMachine {
                             }
                         }
                         // A pattern writes itself as the group it stands
-                        // for, which is what `Regexp#to_s` answers.
-                        Object::Regex(_, _) => {
+                        // for, which is what `Regexp#to_s` answers, and an
+                        // Array or a Hash as its `inspect` form.
+                        Object::Regex(_, _) | Object::Array(_) | Object::Dict(_) => {
                             let written = self.send_to_object(
                                 value.clone(),
                                 "to_s",
@@ -710,22 +711,10 @@ impl VirtualMachine {
                                     Ok(Object::Nil)
                                 }
                             }
-                            _ => Err(MetorexError::type_error(
-                                format!(
-                                    "String index must be Integer or Range, found {}",
-                                    key.type_name()
-                                ),
-                                position_to_location(position),
-                            )),
+                            _ => Err(crate::vm::errors::integer_conversion_error(&key, position)),
                         }
                     }
-                    _ => Err(MetorexError::type_error(
-                        format!(
-                            "String index must be Integer or Range, found {}",
-                            key.type_name()
-                        ),
-                        position_to_location(position),
-                    )),
+                    _ => Err(crate::vm::errors::integer_conversion_error(&key, position)),
                 }?;
                 // A piece of a string is written in the same encoding, and
                 // its characters stand for what the whole one's stood for.
@@ -778,16 +767,21 @@ impl VirtualMachine {
                             position,
                         )
                     }
-                    None => Err(MetorexError::type_error(
-                        format!("Cannot index into type '{}'", collection.type_name()),
-                        position_to_location(position),
-                    )),
+                    None => {
+                        let wording = self.receiver_wording_for(&collection, position);
+                        Err(crate::vm::errors::undefined_method_error_worded(
+                            "[]",
+                            &collection,
+                            std::slice::from_ref(&key),
+                            wording,
+                            position,
+                        ))
+                    }
                 }
             }
-            other => Err(MetorexError::type_error(
-                format!("Cannot index into type '{}'", other.type_name()),
-                position_to_location(position),
-            )),
+            // Any other receiver, such as an exception whose class defines
+            // `[]`, is sent the call.
+            other => self.send_to_object(other, "[]", vec![key], position),
         }
     }
 
@@ -820,22 +814,8 @@ impl VirtualMachine {
             return Ok(Object::Bool(other));
         }
         // A pattern written on its own as a condition matches against the
-        // last line read, which Ruby says so about.
+        // last line read. The parser warned about it where it was written.
         if let Expression::RegexLiteral { position, .. } = condition {
-            let site = (
-                self.current_source_file.clone().unwrap_or_default(),
-                position.line,
-                position.column,
-                position.offset,
-            );
-            // Ruby says so where the pattern is written rather than where it
-            // is read, so a quiet run reports it too. `-W0` turns it off with
-            // every other warning.
-            if self.regexp_conditions.insert(site)
-                && !matches!(self.globals().get("VERBOSE"), Some(Object::Nil))
-            {
-                self.emit_warning_to_stderr("warning: regex literal in condition", *position);
-            }
             let pattern = self.evaluate_expression(condition)?;
             let line = self.globals().get("_").unwrap_or(Object::Nil);
             let matched = self.send_to_object(pattern, "=~", vec![line], *position)?;

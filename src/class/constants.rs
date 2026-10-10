@@ -36,6 +36,8 @@ impl Class {
             deprecated_constants: RefCell::new(HashSet::new()),
             autoload_locations: RefCell::new(HashMap::new()),
             const_locations: RefCell::new(HashMap::new()),
+            method_cache: RefCell::new(HashMap::new()),
+            method_walks: RefCell::new(HashMap::new()),
         }
     }
 

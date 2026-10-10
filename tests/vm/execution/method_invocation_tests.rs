@@ -263,9 +263,9 @@ f.call(4)
 }
 
 #[test]
-fn stabby_lambda_with_expression_body() {
+fn stabby_lambda_with_one_expression_in_its_body() {
     let result = run(r#"
-f = ->(x) x + 1
+f = ->(x) { x + 1 }
 f.call(4)
 "#);
     assert_eq!(result, Some(Object::Int(5)));

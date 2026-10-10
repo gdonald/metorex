@@ -233,3 +233,28 @@ fn test_array_methods_sort_comparisons_no_parens_execution() {
     let output = run_example("array_methods/sort_comparisons_no_parens.rb");
     assert_eq!(output, SORT_COMPARISONS_OUTPUT);
 }
+
+/// The expected output of both `array_methods/rfind` variants.
+const RFIND: &str = concat!(
+    "2\n",
+    ":none\n",
+    "[2, 1]\n",
+    "nil\n",
+    "nil\n",
+    "nil\n",
+    "[Time, Comparable, Object, Kernel, BasicObject]\n",
+    "[Thread, Object, Kernel, BasicObject]\n",
+    "[Thread::Mutex, Object, Kernel, BasicObject]\n",
+);
+
+#[test]
+fn test_array_methods_rfind_execution() {
+    let output = run_example("array_methods/rfind.rb");
+    assert_eq!(output, RFIND);
+}
+
+#[test]
+fn test_array_methods_rfind_no_parens_execution() {
+    let output = run_example("array_methods/rfind_no_parens.rb");
+    assert_eq!(output, RFIND);
+}

@@ -24,7 +24,7 @@ fn symbol_to_proc_block(sym: &str) -> BlockStatement {
             // receiver keeps to itself is refused rather than reached. It is
             // also not `send`, which a class of the program's own may name
             // for something else, as a socket does.
-            method: "public_send".to_string(),
+            method: crate::vm::native_methods::object_methods::SYMBOL_PROC_SEND.to_string(),
             arguments: vec![Expression::Symbol {
                 value: sym.to_string(),
                 position: pos,
@@ -238,50 +238,98 @@ impl VirtualMachine {
                 }
             }
         }
-        let mut last_value = None;
+        self.run_restartable(|vm, start| {
+            let mut last_value = None;
 
-        for statement in statements {
-            // If it's an expression statement, track its value
-            if let Statement::Expression {
-                expression,
-                position,
-            } = statement
-            {
-                if self.coverage.is_some() {
-                    self.coverage_count(position.line);
-                }
-                let result = self.evaluate_expression(expression)?;
-
-                // Ruby-style auto-call: if expression statement evaluates to a Method
-                // and the expression is a bare identifier, auto-call it with zero args
-                if matches!(expression, Expression::Identifier { .. })
-                    && matches!(result, Object::Method(_))
+            for (index, statement) in statements.iter().enumerate().skip(start) {
+                vm.mark_statement(index);
+                // If it's an expression statement, track its value
+                if let Statement::Expression {
+                    expression,
+                    position,
+                } = statement
                 {
-                    last_value = Some(self.invoke_callable(result, vec![], *position)?);
+                    if vm.coverage.is_some() {
+                        vm.coverage_count(position.line);
+                    }
+                    if !vm.tracepoints.is_empty() {
+                        vm.fire_line_event(*position)?;
+                    }
+                    let result = vm.evaluate_expression(expression)?;
+
+                    // Ruby-style auto-call: if expression statement evaluates to a Method
+                    // and the expression is a bare identifier, auto-call it with zero args
+                    if matches!(expression, Expression::Identifier { .. })
+                        && matches!(result, Object::Method(_))
+                    {
+                        last_value = Some(vm.invoke_callable(result, vec![], *position)?);
+                        continue;
+                    }
+
+                    last_value = Some(result);
                     continue;
                 }
 
-                last_value = Some(result);
-                continue;
-            }
-
-            // Match/CaseIn statements also produce values
-            if matches!(
-                statement,
-                Statement::Match { .. } | Statement::CaseIn { .. }
-            ) {
-                match self.execute_statement(statement)? {
-                    ControlFlow::Return { value, .. } | ControlFlow::Value(value) => {
-                        last_value = Some(value);
-                        continue;
+                // Match/CaseIn statements also produce values
+                if matches!(
+                    statement,
+                    Statement::Match { .. } | Statement::CaseIn { .. }
+                ) {
+                    match vm.execute_statement(statement)? {
+                        ControlFlow::Return { value, .. } | ControlFlow::Value(value) => {
+                            last_value = Some(value);
+                            continue;
+                        }
+                        ControlFlow::Next => {}
+                        ControlFlow::Exception {
+                            exception,
+                            position,
+                        } => {
+                            // Carrying the exception keeps it reachable as `$!`
+                            // for the `at_exit` handlers that run next.
+                            return Err(MetorexError::UncaughtException {
+                                message: format_exception(&exception),
+                                exception,
+                                location: position_to_location(position),
+                            });
+                        }
+                        ControlFlow::Break { position, .. } => {
+                            return Err(loop_control_error("break", position));
+                        }
+                        ControlFlow::Retry { position } => {
+                            return Err(MetorexError::BlockRetry {
+                                location: position_to_location(position),
+                            });
+                        }
+                        ControlFlow::Redo { position } => {
+                            return Err(loop_control_error("redo", position));
+                        }
+                        ControlFlow::Continue { position, .. } => {
+                            return Err(loop_control_error("next", position));
+                        }
                     }
+                    continue;
+                }
+
+                // Execute other statements
+                match vm.execute_statement(statement)? {
                     ControlFlow::Next => {}
+                    ControlFlow::Value(value) => {
+                        last_value = Some(value);
+                    }
+                    ControlFlow::Return {
+                        value,
+                        position: at,
+                    } => {
+                        if a_return_unwinds {
+                            return Err(vm.unwinding_return(value, at));
+                        }
+                        return Ok(Some(value));
+                    }
                     ControlFlow::Exception {
                         exception,
                         position,
                     } => {
-                        // Carrying the exception keeps it reachable as `$!`
-                        // for the `at_exit` handlers that run next.
                         return Err(MetorexError::UncaughtException {
                             message: format_exception(&exception),
                             exception,
@@ -300,55 +348,13 @@ impl VirtualMachine {
                         return Err(loop_control_error("redo", position));
                     }
                     ControlFlow::Continue { position, .. } => {
-                        return Err(loop_control_error("continue", position));
+                        return Err(loop_control_error("next", position));
                     }
                 }
-                continue;
             }
 
-            // Execute other statements
-            match self.execute_statement(statement)? {
-                ControlFlow::Next => {}
-                ControlFlow::Value(value) => {
-                    last_value = Some(value);
-                }
-                ControlFlow::Return {
-                    value,
-                    position: at,
-                } => {
-                    if a_return_unwinds {
-                        return Err(self.unwinding_return(value, at));
-                    }
-                    return Ok(Some(value));
-                }
-                ControlFlow::Exception {
-                    exception,
-                    position,
-                } => {
-                    return Err(MetorexError::UncaughtException {
-                        message: format_exception(&exception),
-                        exception,
-                        location: position_to_location(position),
-                    });
-                }
-                ControlFlow::Break { position, .. } => {
-                    return Err(loop_control_error("break", position));
-                }
-                ControlFlow::Retry { position } => {
-                    return Err(MetorexError::BlockRetry {
-                        location: position_to_location(position),
-                    });
-                }
-                ControlFlow::Redo { position } => {
-                    return Err(loop_control_error("redo", position));
-                }
-                ControlFlow::Continue { position, .. } => {
-                    return Err(loop_control_error("continue", position));
-                }
-            }
-        }
-
-        Ok(last_value)
+            Ok(last_value)
+        })
     }
 
     /// A `return` leaving an eval, which unwinds to the invocation the code
@@ -595,6 +601,9 @@ impl VirtualMachine {
         enter_nesting(expression.position())?;
         let result = self.evaluate_expression_inner(expression);
         leave_nesting();
+        if result.is_err() {
+            self.note_error_spot(&result, expression);
+        }
         result
     }
 }

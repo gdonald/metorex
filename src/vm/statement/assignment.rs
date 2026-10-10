@@ -617,6 +617,21 @@ impl VirtualMachine {
                         module.set_class_var(format!("@{}", name), value);
                         Ok(())
                     }
+                    // A collection or a String keeps its instance variables
+                    // aside, where `instance_variable_get` reads them.
+                    Some(other) if Self::collection_address(&other).is_some() => {
+                        if self.object_is_frozen(&other) {
+                            return Err(self.frozen_modification_error(&other, *position));
+                        }
+                        if let Some(address) = Self::collection_address(&other) {
+                            self.collection_variables
+                                .entry(address)
+                                .or_default()
+                                .insert(name.clone(), value);
+                            self.collection_variable_owners.insert(address, other);
+                        }
+                        Ok(())
+                    }
                     // Immediates (Bool/Int/Float/Symbol/Nil/etc.) and other
                     // non-instance selves are always frozen; assigning an ivar
                     // raises FrozenError to match Ruby.
@@ -1061,14 +1076,16 @@ impl VirtualMachine {
                     )?;
                     match handled {
                         Some(_) => Ok(()),
-                        None => Err(MetorexError::runtime_error(
-                            format!(
-                                "Cannot call setter method '{}' on {}",
-                                setter_method,
-                                other.type_name()
-                            ),
-                            position_to_location(*position),
-                        )),
+                        None => {
+                            let wording = self.receiver_wording_for(&other, *position);
+                            Err(crate::vm::errors::undefined_method_error_worded(
+                                &setter_method,
+                                &other,
+                                std::slice::from_ref(&value),
+                                wording,
+                                *position,
+                            ))
+                        }
                     }
                 }
             }

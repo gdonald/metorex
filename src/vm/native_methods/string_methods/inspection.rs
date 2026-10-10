@@ -292,6 +292,34 @@ impl VirtualMachine {
                     );
                     return Ok(Some(Object::String(Rc::new(made))));
                 }
+                // An encoding of one byte to a character names each byte
+                // past ASCII by its value, since the answer cannot show the
+                // character the byte spells there.
+                if held != self.inspect_result_encoding()
+                    && crate::vm::native_methods::string_methods::latin_text(b"A", &held).is_some()
+                {
+                    let bytes = binary_bytes(string_value);
+                    for (at, byte) in bytes.iter().enumerate() {
+                        if let Some(named) = named_escape(*byte as char) {
+                            out.push('\\');
+                            out.push(named);
+                            continue;
+                        }
+                        match byte {
+                            b'"' => out.push_str("\\\""),
+                            b'\\' => out.push_str("\\\\"),
+                            b'#' if opens_interpolation(bytes.get(at + 1)) => out.push_str("\\#"),
+                            0x20..=0x7e => out.push(*byte as char),
+                            _ => out.push_str(&format!("\\x{byte:02X}")),
+                        }
+                    }
+                    out.push('"');
+                    let made = crate::object::StringValue::with_encoding(
+                        out,
+                        self.inspect_result_encoding(),
+                    );
+                    return Ok(Some(Object::String(Rc::new(made))));
+                }
                 // A character prints as itself when the string is in the
                 // encoding the answer is written in, and when it is ASCII in
                 // an encoding that spells ASCII the same way. Anything else

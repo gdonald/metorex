@@ -13,6 +13,7 @@ pub(crate) use std::collections::HashMap;
 pub(crate) use std::rc::Rc;
 
 mod classes;
+mod encoding_table;
 mod encodings;
 mod errno;
 mod exceptions;
@@ -20,6 +21,7 @@ mod globals;
 mod modules;
 
 pub(crate) use classes::*;
+pub(crate) use encoding_table::*;
 pub(crate) use encodings::*;
 pub(crate) use errno::*;
 pub(crate) use exceptions::*;

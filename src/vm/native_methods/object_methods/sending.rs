@@ -21,7 +21,12 @@ impl VirtualMachine {
                 }
                 self.call_object_method(receiver, "send", arguments, position)
             }
-            "__send__" | "send" | "public_send" => {
+            "__send__" | "send" | "public_send" | SYMBOL_PROC_SEND => {
+                let method_name = if method_name == SYMBOL_PROC_SEND {
+                    "public_send"
+                } else {
+                    method_name
+                };
                 // A complaint about what the call was handed names the call
                 // itself in the backtrace, the way Ruby's does.
                 let named = crate::vm::CallFrame::method(
@@ -197,6 +202,20 @@ impl VirtualMachine {
             "lambda" | "proc" | "raise" => self
                 .call_native_function(method_name, arguments.to_vec(), position)
                 .map(Some),
+            // The rest of the methods `main` carries run as their bare forms
+            // do at the top level.
+            "define_method" | "private" | "public" if self.is_the_main_object(receiver) => self
+                .call_native_function(method_name, arguments.to_vec(), position)
+                .map(Some),
+            // A module included at the top level is included into Object, and
+            // a method marked there is one of Object's.
+            "include" | "ruby2_keywords" if self.is_the_main_object(receiver) => {
+                let Some(Object::Class(object_class)) = self.globals().get("Object") else {
+                    return Ok(None);
+                };
+                self.call_class_methods(&object_class, method_name, arguments, position)
+                    .map(|answered| Some(answered.unwrap_or(Object::Nil)))
+            }
             // `using` is written on `main` alone, and Ruby permits it only at
             // the top level, which a class or module body is not.
             "using" if self.is_the_main_object(receiver) => {

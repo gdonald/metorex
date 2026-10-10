@@ -12,9 +12,10 @@ mod control_flow;
 mod control_structures;
 pub(crate) mod core;
 pub(crate) mod coverage;
+pub(crate) mod error_spots;
 pub(crate) mod errors;
 mod eval;
-mod exceptions;
+pub(crate) mod exceptions;
 mod expression;
 pub(crate) mod fibers;
 mod format;
@@ -51,6 +52,7 @@ mod tracepoint;
 pub(crate) mod utils;
 
 pub use call_frame::{CallFrame, FrameKind};
+pub(crate) use core::NativeFrame;
 pub use core::VirtualMachine;
 pub use global_registry::GlobalRegistry;
 pub use heap::Heap;
@@ -106,6 +108,7 @@ pub fn locale_encoding_name() -> Option<String> {
 }
 
 pub(crate) const KEY_ERROR_KEY: &str = "__key__";
+
 /// The hash a `NoMatchingPatternKeyError` found no key in, which the error
 /// answers with `#matchee`.
 pub(crate) const MATCHEE_KEY: &str = "__matchee__";

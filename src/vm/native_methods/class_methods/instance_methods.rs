@@ -142,16 +142,34 @@ impl VirtualMachine {
                     stub.owner_class = Some(Rc::clone(class_rc));
                     return Ok(Answered(Object::Method(Rc::new(stub))));
                 }
-                // A builtin class answers many of its methods natively. A
-                // body-less stub carrying the name reaches the same one.
-                if let Some(probe) = sample_of_class(class_rc.name())
-                    && self.responds_to(&probe, &name_str)
-                {
+                // A builtin class answers many of its methods natively, and
+                // a core module such as Comparable holds the ones it mixes
+                // in. A body-less stub carrying the name reaches the same
+                // one, owned by the class or module Ruby's core defines it in.
+                let answered_natively = match sample_of_class(class_rc.name()) {
+                    Some(probe) => self.responds_to(&probe, &name_str),
+                    None => {
+                        crate::vm::native_methods::class_answers_natively(
+                            class_rc, &name_str, false,
+                        ) || crate::vm::native_methods::object_methods::nearest_core_owner(
+                            &[class_rc.ruby_name()],
+                            &name_str,
+                        )
+                        .is_some()
+                    }
+                };
+                if answered_natively {
+                    let owners =
+                        self.ancestor_names(Object::Class(Rc::clone(class_rc)), position)?;
+                    let owner = crate::vm::native_methods::object_methods::nearest_core_owner(
+                        &owners, &name_str,
+                    )
+                    .map_or_else(|| class_rc.name().to_string(), str::to_string);
                     let mut stub = Method::with_owner(
                         name_str.clone(),
                         vec!["args".to_string()],
                         vec![],
-                        class_rc.name().to_string(),
+                        owner,
                     );
                     stub.variadic_param = Some((0, "args".to_string()));
                     // Two names for one native method stand for that one
@@ -281,8 +299,9 @@ impl VirtualMachine {
                 // For the `Module` / `Class` receiver, advertise the native
                 // mutation methods we actually implement so mspec matchers
                 // (e.g. `have_public_instance_method(:alias_method, false)`)
-                // recognize them as public instance methods.
-                if matches!(class_rc.name(), "Module" | "Class") {
+                // recognize them as public instance methods. Class has them
+                // from Module, not as its own.
+                if class_rc.name() == "Module" || (class_rc.name() == "Class" && include_super) {
                     for (n, _, _) in NATIVE_MODULE_METHODS {
                         if !method_list.iter().any(|m| m == n) {
                             method_list.push((*n).to_string());
@@ -318,6 +337,15 @@ impl VirtualMachine {
                             method_list.push((*n).to_string());
                         }
                         priv_set.insert((*n).to_string());
+                    }
+                }
+                // Class's private hooks are native as well.
+                if class_rc.name() == "Class" {
+                    for n in ["inherited", "initialize"] {
+                        if !method_list.iter().any(|m| m == n) {
+                            method_list.push(n.to_string());
+                        }
+                        priv_set.insert(n.to_string());
                     }
                 }
                 // BasicObject's own methods are native too, and its table is
@@ -387,6 +415,45 @@ impl VirtualMachine {
                         }
                     }
                 }
+                use crate::vm::native_methods::object_methods::CoreVisibility;
+                let core_visibilities: &[CoreVisibility] = match method_name {
+                    "private_instance_methods" => &[CoreVisibility::Private],
+                    "protected_instance_methods" => &[CoreVisibility::Protected],
+                    "public_instance_methods" => &[CoreVisibility::Public],
+                    _ => &[CoreVisibility::Public, CoreVisibility::Protected],
+                };
+                for visibility in core_visibilities {
+                    for name in self.core_instance_method_names(
+                        class_rc,
+                        *visibility,
+                        include_super,
+                        position,
+                    )? {
+                        if !method_list.contains(&name) {
+                            match visibility {
+                                CoreVisibility::Private => priv_set.insert(name.clone()),
+                                CoreVisibility::Protected => protected_set.insert(name.clone()),
+                                CoreVisibility::Public => false,
+                            };
+                            method_list.push(name);
+                        }
+                    }
+                }
+                let owners = self.ancestor_names(Object::Class(Rc::clone(class_rc)), position)?;
+                Self::keep_listed(&owners, core_visibilities, &mut method_list, |name| {
+                    match class_rc.find_method(name) {
+                        Some(method) => {
+                            crate::vm::native_methods::object_methods::written_by_program(&method)
+                        }
+                        // A `private`, `protected` or `public` naming a method
+                        // defined elsewhere marks it here.
+                        None => {
+                            class_rc.is_method_private(name)
+                                || class_rc.is_method_protected(name)
+                                || class_rc.has_public_override(name)
+                        }
+                    }
+                });
                 let filtered: Vec<Object> = method_list
                     .into_iter()
                     .filter(|n| !is_internal_method_key(n))

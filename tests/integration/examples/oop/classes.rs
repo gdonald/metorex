@@ -265,3 +265,47 @@ fn test_oop_nested_class_names_no_parens_execution() {
     let output = run_example("oop/nested_class_names_no_parens.rb");
     assert_eq!(output, NESTED_CLASS_NAMES_OUTPUT);
 }
+
+const BODY_LOCALS_AND_COLLECTION_VARIABLES_OUTPUT: &str = concat!(
+    "\"/usr/local/etc/app.conf\"\n",
+    "\"open orders\"\n",
+    "[:@label]\n",
+    "\"2024-06-01\"\n",
+    "FrozenError\n",
+    "[[:a, 10], [:b, 20]]\n",
+);
+
+#[test]
+fn test_oop_body_locals_and_collection_variables_execution() {
+    let output = run_example("oop/body_locals_and_collection_variables.rb");
+    assert_eq!(output, BODY_LOCALS_AND_COLLECTION_VARIABLES_OUTPUT);
+}
+
+#[test]
+fn test_oop_body_locals_and_collection_variables_no_parens_execution() {
+    let output = run_example("oop/body_locals_and_collection_variables_no_parens.rb");
+    assert_eq!(output, BODY_LOCALS_AND_COLLECTION_VARIABLES_OUTPUT);
+}
+
+/// The expected output of both `oop/reopened_object` variants.
+const REOPENED_OBJECT: &str = concat!(
+    "\"written\"\n",
+    "\"shown\"\n",
+    ":fresh\n",
+    "written\n",
+    "written\n",
+    "shown\n",
+    "\"written\"\n",
+);
+
+#[test]
+fn test_oop_reopened_object_execution() {
+    let output = run_example("oop/reopened_object.rb");
+    assert_eq!(output, REOPENED_OBJECT);
+}
+
+#[test]
+fn test_oop_reopened_object_no_parens_execution() {
+    let output = run_example("oop/reopened_object_no_parens.rb");
+    assert_eq!(output, REOPENED_OBJECT);
+}

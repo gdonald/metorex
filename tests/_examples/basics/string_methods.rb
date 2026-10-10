@@ -10,7 +10,7 @@ puts name.downcase()
 
 # trim - removes leading and trailing whitespace
 greeting = "  Hello, World!  "
-puts greeting.trim()
+puts greeting.strip()
 
 # reverse - reverses the string
 message = "Metorex"

@@ -1,3 +1,3 @@
-# Stabby lambda with expression body (no braces)
-f = ->(x) x + 1
+# A stabby lambda whose body is one expression in braces
+f = ->(x) { x + 1 }
 puts f.call(4)

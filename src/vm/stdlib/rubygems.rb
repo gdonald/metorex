@@ -43,6 +43,12 @@ module Gem
     {}
   end
 
+  # Whether a gem holding `path` was activated to put it on the load path.
+  # No gem is installed under `dir`, so none is.
+  def self.try_activate _path
+    false
+  end
+
   def self.ruby
     RbConfig.ruby
   end
@@ -91,6 +97,11 @@ module Gem
 
     def self.find_by_name name, *_requirements
       raise MissingSpecError, "can't find gem #{name}"
+    end
+
+    # The newest version of each installed gem, of which there are none.
+    def self.latest_specs _prerelease = false
+      []
     end
   end
 end

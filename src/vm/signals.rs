@@ -402,7 +402,7 @@ impl crate::vm::VirtualMachine {
                     "Process.kill".to_string(),
                     "Process.kill".to_string(),
                 )
-                .with_source_file(self.current_source_file.clone());
+                .with_source_file(self.file_for_frames());
                 self.with_call_frame(frame, |vm| vm.run_signal_handler(&name, number, position))?;
                 continue;
             }

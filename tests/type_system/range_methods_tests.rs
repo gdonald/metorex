@@ -76,7 +76,7 @@ fn range_each_with_continue() {
 sum = 0
 (1..5).each do |i|
   if i == 3
-    continue
+    next
   end
   sum = sum + i
 end

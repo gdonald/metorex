@@ -318,6 +318,8 @@ pub(super) const SOURCE: &str = r##"
     0
   end
 
+  alias_method :fdatasync, :fsync
+
   def sync
     raise IOError, "closed stream" if closed?
     @sync == true
@@ -669,6 +671,7 @@ pub(super) const SOURCE: &str = r##"
 
   def inspect
     return "#<IO: (closed)>" if closed?
+    return "#<IO:#{path}>" if path
     "#<IO:fd #{fileno}>"
   end
 end

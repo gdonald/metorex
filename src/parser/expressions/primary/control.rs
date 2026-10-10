@@ -170,7 +170,7 @@ impl Parser {
         start_pos: Position,
     ) -> Result<Expression, MetorexError> {
         self.skip_whitespace();
-        let condition = Box::new(self.parse_expression()?);
+        let condition = Box::new(self.parse_tested_condition()?);
         self.skip_whitespace();
         self.match_token(&[TokenKind::Then]); // optional `then`
         self.skip_whitespace();
@@ -190,7 +190,7 @@ impl Parser {
         while self.match_token(&[TokenKind::Elsif]) {
             let elsif_pos = self.previous().position;
             self.skip_whitespace();
-            let elsif_cond = self.parse_expression()?;
+            let elsif_cond = self.parse_tested_condition()?;
             self.skip_whitespace();
             self.match_token(&[TokenKind::Then]);
             self.skip_whitespace();
@@ -246,7 +246,7 @@ impl Parser {
         start_pos: Position,
     ) -> Result<Expression, MetorexError> {
         self.skip_whitespace();
-        let condition = Box::new(self.parse_expression()?);
+        let condition = Box::new(self.parse_tested_condition()?);
         self.skip_whitespace();
         self.match_token(&[TokenKind::Then]);
         self.skip_whitespace();

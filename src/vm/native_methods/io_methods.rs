@@ -6,91 +6,107 @@ use crate::vm::VirtualMachine;
 use crate::vm::utils::position_to_location;
 use std::rc::Rc;
 
-/// Instance variable on a Process::Status: the exit code, or nil when signaled.
-const STATUS_EXITSTATUS: &str = "__exitstatus";
-/// Instance variable on a Process::Status: the signal number, or nil.
-const STATUS_TERMSIG: &str = "__termsig";
+/// Instance variable on a Process::Status: the status `waitpid` reported,
+/// which every reader decodes.
+const STATUS_RAW: &str = "__raw_status";
 /// Instance variable on a Process::Status: the child's process id.
 const STATUS_PID: &str = "__pid";
 /// Global holding the status of the most recently waited-for child.
 const LAST_STATUS_GLOBAL: &str = "__process_last_status";
 
+/// How a signal reads in a status's description: `SIGKILL (signal 9)`, or
+/// `signal 70` for a number no signal goes by.
+fn described_signal(number: i32) -> String {
+    match crate::vm::signals::name_for_number(number) {
+        Some(name) => format!("SIG{name} (signal {number})"),
+        None => format!("signal {number}"),
+    }
+}
+
+/// What `Process::Status#to_s` answers for `raw`, after the pid.
+fn described_status(raw: libc::c_int) -> String {
+    if libc::WIFSTOPPED(raw) {
+        return format!("stopped {}", described_signal(libc::WSTOPSIG(raw)));
+    }
+    if libc::WIFSIGNALED(raw) {
+        let mut described = described_signal(libc::WTERMSIG(raw));
+        if libc::WCOREDUMP(raw) {
+            described.push_str(" (core dumped)");
+        }
+        return described;
+    }
+    format!("exit {}", libc::WEXITSTATUS(raw))
+}
+
 impl VirtualMachine {
-    /// `Process::Status` readers. A status carries either an exit code or the
-    /// signal that ended the child, never both.
+    /// `Process::Status` readers, each decoding the status `waitpid`
+    /// reported the way MRI's does.
     pub(crate) fn call_process_status_method(
         &mut self,
         receiver: &Object,
         method_name: &str,
-        _arguments: &[Object],
+        arguments: &[Object],
         _position: Position,
     ) -> Result<Option<Object>, MetorexError> {
         let Object::Instance(instance) = receiver else {
             return Ok(None);
         };
-        let exitstatus = instance
+        let raw = match instance.borrow().get_var(STATUS_RAW) {
+            Some(Object::Int(raw)) => *raw as libc::c_int,
+            _ => 0,
+        };
+        let pid = instance
             .borrow()
-            .get_var(STATUS_EXITSTATUS)
+            .get_var(STATUS_PID)
             .cloned()
             .unwrap_or(Object::Nil);
-        let termsig = instance
-            .borrow()
-            .get_var(STATUS_TERMSIG)
-            .cloned()
-            .unwrap_or(Object::Nil);
-        match method_name {
-            "exited?" => Ok(Some(Object::Bool(!matches!(exitstatus, Object::Nil)))),
-            "exitstatus" => Ok(Some(exitstatus)),
-            "signaled?" => Ok(Some(Object::Bool(!matches!(termsig, Object::Nil)))),
-            // Nothing metorex waits for is left stopped, so a status never
-            // reports one.
-            "stopped?" => Ok(Some(Object::Bool(false))),
-            "stopsig" => Ok(Some(Object::Nil)),
-            "pid" => Ok(Some(
-                instance
-                    .borrow()
-                    .get_var(STATUS_PID)
-                    .cloned()
-                    .unwrap_or(Object::Nil),
-            )),
-            "termsig" => Ok(Some(termsig)),
+        let when = |held: bool, value: i64| {
+            if held {
+                Object::Int(value)
+            } else {
+                Object::Nil
+            }
+        };
+        Ok(Some(match method_name {
+            "exited?" => Object::Bool(libc::WIFEXITED(raw)),
+            "exitstatus" => when(libc::WIFEXITED(raw), libc::WEXITSTATUS(raw) as i64),
+            "signaled?" => Object::Bool(libc::WIFSIGNALED(raw)),
+            "termsig" => when(libc::WIFSIGNALED(raw), libc::WTERMSIG(raw) as i64),
+            "stopped?" => Object::Bool(libc::WIFSTOPPED(raw)),
+            "stopsig" => when(libc::WIFSTOPPED(raw), libc::WSTOPSIG(raw) as i64),
+            "coredump?" => Object::Bool(libc::WIFSIGNALED(raw) && libc::WCOREDUMP(raw)),
+            "pid" => pid,
             // A child that a signal ended did not succeed or fail, so there
             // is nothing to report either way.
-            "success?" => Ok(Some(match exitstatus {
-                Object::Int(code) => Object::Bool(code == 0),
-                _ => Object::Nil,
-            })),
+            "success?" => {
+                if libc::WIFEXITED(raw) {
+                    Object::Bool(libc::WEXITSTATUS(raw) == 0)
+                } else {
+                    Object::Nil
+                }
+            }
+            "to_i" => Object::Int(raw as i64),
+            "to_s" => Object::string(format!("pid {} {}", pid, described_status(raw))),
+            "inspect" => Object::string(format!(
+                "#<Process::Status: pid {} {}>",
+                pid,
+                described_status(raw)
+            )),
             "==" => {
-                let Some(other) = _arguments.first() else {
+                let Some(other) = arguments.first() else {
                     return Ok(Some(Object::Bool(false)));
                 };
-                let held = match &exitstatus {
-                    Object::Int(code) => code << 8,
-                    _ => match &termsig {
-                        Object::Int(signal) => *signal,
-                        _ => 0,
-                    },
-                };
-                Ok(Some(Object::Bool(match other {
-                    Object::Int(number) => *number == held,
-                    Object::Instance(_) => {
-                        matches!(
-                            self.call_process_status_method(other, "to_i", &[], _position)?,
-                            Some(Object::Int(number)) if number == held
-                        )
-                    }
+                Object::Bool(match other {
+                    Object::Int(number) => *number == raw as i64,
+                    Object::Instance(held) => matches!(
+                        held.borrow().get_var(STATUS_RAW),
+                        Some(Object::Int(number)) if *number == raw as i64
+                    ),
                     _ => false,
-                })))
+                })
             }
-            "to_i" => Ok(Some(match exitstatus {
-                Object::Int(code) => Object::Int(code << 8),
-                _ => match termsig {
-                    Object::Int(signal) => Object::Int(signal),
-                    _ => Object::Int(0),
-                },
-            })),
-            _ => Ok(None),
-        }
+            _ => return Ok(None),
+        }))
     }
 
     /// `Process.last_status` — the status of the last child this process
@@ -121,42 +137,16 @@ impl VirtualMachine {
         status: &std::process::ExitStatus,
         pid: Option<i64>,
     ) {
-        let (exitstatus, termsig) = match status.code() {
-            Some(code) => (Object::Int(code as i64), Object::Nil),
-            None => (Object::Nil, Object::Int(terminating_signal(status))),
-        };
-        let status_class = self.memoized_class(
-            "__Process_Status_class",
-            "Process::Status",
-            &["exited?", "=="],
-        );
-        let instance = Instance::new(status_class);
-        instance
-            .borrow_mut()
-            .set_var(STATUS_EXITSTATUS.to_string(), exitstatus);
-        instance
-            .borrow_mut()
-            .set_var(STATUS_TERMSIG.to_string(), termsig);
-        if let Some(pid) = pid {
-            instance
-                .borrow_mut()
-                .set_var(STATUS_PID.to_string(), Object::Int(pid));
-        }
-        self.globals_mut()
-            .set(LAST_STATUS_GLOBAL, Object::Instance(instance));
+        let status = self.build_process_status(raw_wait_status(status), pid.unwrap_or(-1));
+        self.globals_mut().set(LAST_STATUS_GLOBAL, status);
     }
 }
 
-/// The signal that ended a child, on platforms that report one.
-#[cfg(unix)]
-fn terminating_signal(status: &std::process::ExitStatus) -> i64 {
+/// The status `waitpid` reported for a child the standard library waited
+/// for.
+fn raw_wait_status(status: &std::process::ExitStatus) -> libc::c_int {
     use std::os::unix::process::ExitStatusExt as _;
-    status.signal().unwrap_or(0) as i64
-}
-
-#[cfg(not(unix))]
-fn terminating_signal(_status: &std::process::ExitStatus) -> i64 {
-    0
+    status.into_raw()
 }
 
 impl VirtualMachine {
@@ -240,18 +230,7 @@ impl VirtualMachine {
         if pid <= 0 {
             return Ok(None);
         }
-        let exited = libc::WIFEXITED(raw_status);
-        let (exitstatus, termsig) = if exited {
-            (
-                Object::Int(libc::WEXITSTATUS(raw_status) as i64),
-                Object::Nil,
-            )
-        } else if libc::WIFSIGNALED(raw_status) {
-            (Object::Nil, Object::Int(libc::WTERMSIG(raw_status) as i64))
-        } else {
-            (Object::Int(0), Object::Nil)
-        };
-        let status = self.build_process_status(exitstatus, termsig, pid as i64);
+        let status = self.build_process_status(raw_status, pid as i64);
         Ok(Some((pid, status)))
     }
 
@@ -284,13 +263,8 @@ impl VirtualMachine {
         class
     }
 
-    /// A Process::Status carrying the parts a wait reported.
-    pub(crate) fn build_process_status(
-        &mut self,
-        exitstatus: Object,
-        termsig: Object,
-        pid: i64,
-    ) -> Object {
+    /// A Process::Status for the status `waitpid` reported for `pid`.
+    pub(crate) fn build_process_status(&mut self, raw: libc::c_int, pid: i64) -> Object {
         let status_class = self.memoized_class(
             "__Process_Status_class",
             "Process::Status",
@@ -299,8 +273,7 @@ impl VirtualMachine {
         let instance = Instance::new(status_class);
         {
             let mut borrowed = instance.borrow_mut();
-            borrowed.set_var(STATUS_EXITSTATUS.to_string(), exitstatus);
-            borrowed.set_var(STATUS_TERMSIG.to_string(), termsig);
+            borrowed.set_var(STATUS_RAW.to_string(), Object::Int(raw as i64));
             borrowed.set_var(STATUS_PID.to_string(), Object::Int(pid));
         }
         Object::Instance(instance)

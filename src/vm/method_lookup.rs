@@ -317,6 +317,7 @@ impl VirtualMachine {
                     let named = match &receiver {
                         Object::Nil => "nil".to_string(),
                         Object::Bool(held) => held.to_string(),
+                        _ if self.is_the_main_object(&receiver) => "main".to_string(),
                         _ => format!("an instance of {}", class.inspect_name()),
                     };
                     let msg = format!(
@@ -376,6 +377,14 @@ impl VirtualMachine {
             });
         }
 
+        // A private method of every object refuses a call written with a
+        // receiver other than `self`.
+        if !names_self(receiver_expr)
+            && let Some(answer) =
+                self.refuse_private_object_method(&receiver, method_name, &arguments, position)
+        {
+            return answer;
+        }
         // Try native method as fallback
         let class = self.builtins().class_of(&receiver);
         let native_result =
@@ -546,6 +555,11 @@ impl VirtualMachine {
         {
             return true;
         }
+        // The object a program runs against at the top level answers the
+        // methods its singleton class defines, which are native.
+        if self.is_the_main_object(receiver) && main_object_method(name) {
+            return true;
+        }
         let (Object::Class(class_rc) | Object::Module(class_rc)) = receiver else {
             // A tombstone left by `undef_method` is not something the object
             // responds to.
@@ -561,6 +575,8 @@ impl VirtualMachine {
                             && crate::vm::native_methods::EVERY_EXCEPTION_METHOD
                                 .contains(&name))
                         || self.exception_answers_natively(receiver, name)
+                        || crate::vm::native_methods::class_methods::BASIC_OBJECT_PRIVATE_METHODS
+                            .contains(&name)
                         || crate::vm::native_methods::is_native_kernel_method(name)
                         || self.answers_natively(receiver, name)
                         || self.object_table_method(name).is_some()
@@ -608,6 +624,10 @@ impl VirtualMachine {
         // changes which names mspec's mocks alias and breaks Module#autoload.
         if name == "respond_to_missing?" || (name == "new" && matches!(receiver, Object::Class(_)))
         {
+            return true;
+        }
+        // Class's own public methods, such as `allocate` and `superclass`.
+        if matches!(receiver, Object::Class(_)) && class_public_method(name) {
             return true;
         }
         // An exception class builds one with `exception` as well as `new`.
@@ -693,7 +713,9 @@ impl VirtualMachine {
         // outside the object cannot write it with a receiver. A module that
         // carries it as a module function is the exception, since that copy
         // is public.
-        if crate::vm::native_methods::is_kernel_private_function(name)
+        if (crate::vm::native_methods::is_kernel_private_function(name)
+            || crate::vm::native_methods::class_methods::BASIC_OBJECT_PRIVATE_METHODS
+                .contains(&name))
             && !matches!(receiver, Object::Class(_) | Object::Module(_))
             && self.visibility_owner(receiver, name).is_none()
             && !self.answers_natively(receiver, name)
@@ -777,7 +799,7 @@ impl VirtualMachine {
     /// is where its visibility is recorded. `lookup_method` reports the class
     /// it dispatched through, and for a mixed-in method that is the including
     /// class rather than the module carrying the private marking.
-    fn visibility_owner(&self, receiver: &Object, name: &str) -> Option<Rc<Class>> {
+    pub(crate) fn visibility_owner(&self, receiver: &Object, name: &str) -> Option<Rc<Class>> {
         // A class method's visibility is recorded on the singleton class,
         // even though the method itself may live in the class's own table
         // under the `__class__` convention.
@@ -826,6 +848,86 @@ impl VirtualMachine {
             .and_then(|sc| sc.find_method_with_owner(name))
             .or_else(|| class.find_method_with_owner(name))
             .map(|(owner, _)| owner)
+    }
+
+    /// The answer to a call with a receiver to a private method every object
+    /// answers natively, such as `puts` or `initialize`: the receiver's own
+    /// `method_missing`, or the NoMethodError, unless the receiver answers it
+    /// publicly, which leaves the call to go ahead.
+    #[inline(never)]
+    fn refuse_private_object_method(
+        &mut self,
+        receiver: &Object,
+        method_name: &str,
+        arguments: &[Object],
+        position: Position,
+    ) -> Option<Result<Object, MetorexError>> {
+        let private_everywhere = crate::vm::native_methods::is_kernel_private_function(method_name)
+            || crate::vm::native_methods::class_methods::BASIC_OBJECT_PRIVATE_METHODS
+                .contains(&method_name);
+        if !private_everywhere {
+            return None;
+        }
+        let made_public = self.public_in_chain(receiver, method_name, true);
+        // A Kernel function a class or singleton made public, which nothing
+        // native answers on this receiver, is called as the function it is.
+        if made_public
+            && crate::vm::native_methods::is_kernel_private_function(method_name)
+            && !self.answers_natively(receiver, method_name)
+        {
+            return Some(self.call_native_function(method_name, arguments.to_vec(), position));
+        }
+        let refused = self.method_is_restricted(receiver, method_name)
+            && !made_public
+            && !self.public_in_chain(receiver, method_name, false);
+        if !refused {
+            return None;
+        }
+        // A receiver with a `method_missing` of its own is handed the call,
+        // as a Delegator is to pass it on.
+        if let Some(handled) =
+            self.restricted_call_via_method_missing(receiver, method_name, arguments, position)
+        {
+            return Some(handled);
+        }
+        Some(Err(self.private_object_method_error(
+            receiver,
+            method_name,
+            arguments,
+            position,
+        )))
+    }
+
+    /// Whether a class or module the receiver answers through, or its own
+    /// singleton class, makes `name` public: by the program's own `public`,
+    /// with `by_program`, or otherwise as a core class that defines it as a
+    /// public method of its own, as Binding does `eval`.
+    fn public_in_chain(&self, receiver: &Object, name: &str, by_program: bool) -> bool {
+        let singleton = match receiver {
+            Object::Instance(instance) => instance.borrow().singleton_class.borrow().clone(),
+            _ => None,
+        };
+        let class = match receiver {
+            Object::Instance(instance) => Rc::clone(&instance.borrow().class),
+            other => self.builtins().class_of(other),
+        };
+        let publicly = |held: &Rc<crate::class::Class>| {
+            if by_program {
+                held.has_public_override(name)
+            } else {
+                crate::vm::native_methods::core_method_names::CORE_METHODS
+                    .iter()
+                    .any(|row| row.owner == held.ruby_name() && row.public.contains(&name))
+            }
+        };
+        let mut cursor = singleton.or(Some(class));
+        while let Some(current) = cursor {
+            if publicly(&current) || current.transitive_mixins().iter().any(publicly) {
+                return true;
+            }
+            cursor = current.superclass();
+        }
+        false
     }
 
     /// The NoMethodError for a private method of Object called with a
@@ -1010,13 +1112,18 @@ impl VirtualMachine {
                 if crate::vm::native_methods::is_native_module_method(method_name)
                     && let Some(Object::Class(module_class)) = self.globals().get("Module")
                 {
-                    let stub = Rc::new(crate::object::Method::with_owner(
-                        method_name.to_string(),
-                        Vec::new(),
-                        Vec::new(),
-                        "Module".to_string(),
-                    ));
-                    return Some((module_class, stub));
+                    // The stub carries the parameters Module's method takes,
+                    // which a block made from it with `&method(name)` counts.
+                    let stub = crate::vm::native_methods::native_module_method_stub(method_name)
+                        .unwrap_or_else(|| {
+                            crate::object::Method::with_owner(
+                                method_name.to_string(),
+                                Vec::new(),
+                                Vec::new(),
+                                "Module".to_string(),
+                            )
+                        });
+                    return Some((module_class, Rc::new(stub)));
                 }
                 // A class answers what Class and its ancestors define for
                 // their instances, never its own instance methods. An
@@ -1140,7 +1247,7 @@ impl VirtualMachine {
 
 /// The class name a program writes to reopen one of the immediate values,
 /// whose methods live in a class of their own rather than on the builtin.
-fn reopened_class_name(receiver: &Object) -> Option<&'static str> {
+pub(crate) fn reopened_class_name(receiver: &Object) -> Option<&'static str> {
     match receiver {
         Object::Nil => Some("NilClass"),
         Object::Bool(true) => Some("TrueClass"),
@@ -1188,4 +1295,21 @@ pub(crate) fn names_self(receiver_expr: &Expression) -> bool {
         Expression::Identifier { name, .. } => name == "self",
         _ => false,
     }
+}
+
+/// Whether `name` is one of the public instance methods Class defines.
+pub(crate) fn class_public_method(name: &str) -> bool {
+    crate::vm::native_methods::core_method_names::CORE_METHODS
+        .iter()
+        .find(|row| row.owner == "Class")
+        .is_some_and(|row| row.public.contains(&name))
+}
+
+/// Whether `name` is one of the methods the singleton class of the object a
+/// program runs against at the top level defines.
+pub(crate) fn main_object_method(name: &str) -> bool {
+    crate::vm::native_methods::core_method_names::CORE_METHODS
+        .iter()
+        .find(|row| row.owner == "main")
+        .is_some_and(|row| row.public.contains(&name) || row.private.contains(&name))
 }

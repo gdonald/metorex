@@ -482,9 +482,8 @@ t.size
 // ── object_methods.rs: =~ on non-string/regex pair returns Nil (line 418) ──
 
 #[test]
-fn object_match_operator_non_string_returns_nil() {
-    let result = run(r#"42 =~ 99"#);
-    assert_eq!(result, Some(Object::Nil));
+fn object_match_operator_is_undefined_on_an_integer() {
+    assert!(run_err(r#"42 =~ 99"#).contains("undefined method '=~' for an instance of Integer"));
 }
 
 // ── a pattern that says nothing readable is refused where it is written ───

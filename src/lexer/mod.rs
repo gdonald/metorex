@@ -68,6 +68,9 @@ pub struct Lexer<'a> {
     /// these divides, where after any other name it may open a pattern
     /// handed to a method called without parentheses.
     pub(super) local_names: std::collections::HashSet<String>,
+    /// How many method names an `alias` has yet to be given, where a `/`
+    /// names the division method rather than opening a pattern.
+    pub(super) alias_names_left: u8,
 }
 
 impl<'a> Lexer<'a> {
@@ -139,6 +142,7 @@ impl<'a> Lexer<'a> {
             prev_significant: None,
             prev_significant_end: 0,
             local_names: std::collections::HashSet::new(),
+            alias_names_left: 0,
             restore_line: None,
             prelude: false,
             binary_source,
@@ -208,6 +212,10 @@ impl<'a> Lexer<'a> {
                 {
                     self.local_names.insert(name.clone());
                 }
+                self.alias_names_left = match other {
+                    TokenKind::Alias => 2,
+                    _ => self.alias_names_left.saturating_sub(1),
+                };
                 self.prev_significant = Some(other.clone());
                 self.prev_significant_end = self.offset;
             }

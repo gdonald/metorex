@@ -63,16 +63,16 @@ impl VirtualMachine {
         use crate::ast::MatchPattern;
 
         match pattern {
-            // Literal patterns - exact equality match
+            // A number written as a pattern asks the value with `===`, which
+            // counts an Integer and a Float of the same value as equal.
             MatchPattern::IntLiteral(pattern_int) => match value {
                 Object::Int(value_int) => Ok(pattern_int == value_int),
+                Object::Float(value_float) => Ok(*pattern_int as f64 == *value_float),
                 _ => Ok(false),
             },
             MatchPattern::FloatLiteral(pattern_float) => match value {
-                Object::Float(value_float) => {
-                    // Use approximate equality for floats
-                    Ok((pattern_float - value_float).abs() < f64::EPSILON)
-                }
+                Object::Float(value_float) => Ok(pattern_float == value_float),
+                Object::Int(value_int) => Ok(*pattern_float == *value_int as f64),
                 _ => Ok(false),
             },
             MatchPattern::StringLiteral(pattern_string) => match value {
@@ -165,18 +165,12 @@ impl VirtualMachine {
 
             // Type pattern - match based on object type
             MatchPattern::Type(type_name) => {
-                // A constant that names something other than a class stands
-                // for that value, so `when ROUND_FLOOR` compares against the
-                // number rather than asking what class the value is.
-                // One that names a class or a module asks it with `===`,
-                // which counts instances of its subclasses and of classes
-                // that include it.
-                match self.constant_for_pattern(type_name) {
-                    Some(named @ (Object::Class(_) | Object::Module(_))) => {
-                        return self.pattern_case_equal(&named, value, position);
-                    }
-                    Some(named) => return Ok(named == *value),
-                    None => {}
+                // A constant stands for the value it holds, which is asked
+                // with `===`: a class or module counts instances of itself
+                // and what includes it, a Regexp matches a String and a
+                // number compares equal.
+                if let Some(named) = self.constant_for_pattern(type_name) {
+                    return self.pattern_case_equal(&named, value, position);
                 }
                 let actual_type = value.type_name();
 
@@ -252,34 +246,20 @@ impl VirtualMachine {
                 end,
                 exclusive,
             } => {
-                // Extract numeric value for comparison
-                let val_num = match value {
-                    Object::Int(n) => *n as f64,
-                    Object::Float(f) => *f,
-                    _ => return Ok(false),
+                // The bounds make a Range, which is asked with `===` the
+                // way any Range is, so `3..Float::INFINITY` and `"a".."m"`
+                // match what they hold.
+                let (Some(low), Some(high)) = (self.range_bound(start), self.range_bound(end))
+                else {
+                    return Ok(false);
                 };
-
-                // Extract start bound
-                let start_num = match start.as_ref() {
-                    MatchPattern::IntLiteral(n) => *n as f64,
-                    MatchPattern::FloatLiteral(f) => *f,
-                    _ => return Ok(false),
+                let range = Object::Range {
+                    start: Box::new(low),
+                    end: Box::new(high),
+                    exclusive: *exclusive,
+                    mark: std::rc::Rc::new(()),
                 };
-
-                // Extract end bound
-                let end_num = match end.as_ref() {
-                    MatchPattern::IntLiteral(n) => *n as f64,
-                    MatchPattern::FloatLiteral(f) => *f,
-                    _ => return Ok(false),
-                };
-
-                let in_range = if *exclusive {
-                    val_num >= start_num && val_num < end_num
-                } else {
-                    val_num >= start_num && val_num <= end_num
-                };
-
-                Ok(in_range)
+                self.pattern_case_equal(&range, value, position)
             }
 
             // `^name` compares against what the name holds rather than
@@ -398,5 +378,21 @@ impl VirtualMachine {
             return;
         }
         self.environment_mut().define(name.to_string(), value);
+    }
+}
+
+impl VirtualMachine {
+    /// The value a bound of a range pattern stands for: a literal, nil for
+    /// an open end, or what a constant holds.
+    fn range_bound(&mut self, bound: &crate::ast::MatchPattern) -> Option<Object> {
+        use crate::ast::MatchPattern;
+        Some(match bound {
+            MatchPattern::IntLiteral(number) => Object::Int(*number),
+            MatchPattern::FloatLiteral(number) => Object::Float(*number),
+            MatchPattern::StringLiteral(text) => Object::string(text.clone()),
+            MatchPattern::NilLiteral => Object::Nil,
+            MatchPattern::Type(name) => self.constant_for_pattern(name)?,
+            _ => return None,
+        })
     }
 }

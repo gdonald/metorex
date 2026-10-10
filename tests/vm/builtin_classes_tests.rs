@@ -118,6 +118,7 @@ fn class_of_block() {
         parameter_defaults: Vec::new(),
         body: vec![],
         captured_vars: Rc::default(),
+        reserved_names: Rc::default(),
         captured_def_scope: vec![],
         captured_nesting: vec![],
         defining_method: None,
@@ -250,7 +251,7 @@ fn all_classes_has_expected_entries() {
     assert!(classes.contains_key("StandardError"));
     assert!(classes.contains_key("RuntimeError"));
     assert!(classes.contains_key("TypeError"));
-    assert!(classes.contains_key("ValueError"));
+    assert!(!classes.contains_key("ValueError"));
     assert!(classes.contains_key("File"));
 }
 

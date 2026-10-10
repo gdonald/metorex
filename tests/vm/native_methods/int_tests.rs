@@ -36,7 +36,7 @@ fn int_times_with_continue_in_block() {
 sum = 0
 5.times do |i|
   if i == 2
-    continue
+    next
   end
   sum = sum + i
 end
@@ -82,7 +82,7 @@ fn int_times_continue_skips_iteration() {
 result = []
 5.times do |i|
   if i == 2
-    continue
+    next
   end
   result.push(i)
 end

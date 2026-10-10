@@ -37,7 +37,7 @@ impl VirtualMachine {
             // every object, which is how `obj.send(:Integer, "10")` reaches
             // them.
             name if crate::vm::native_methods::kernel_conversion::is_kernel_conversion(name) => {
-                self.call_kernel_conversion(name, arguments, position)
+                self.call_bare_kernel_conversion(name, arguments, position)
             }
             // `abort`, `exit`, and `exit!` are private instance methods on
             // Kernel, so every object reaches them. A class can make one
@@ -51,6 +51,39 @@ impl VirtualMachine {
                 self.environment().get("block_given?"),
                 Some(Object::Bool(true))
             )))),
+            "iterator?" if arguments.is_empty() => Ok(Some(self.iterator_query(position))),
+            "instance_variables_to_inspect" if arguments.is_empty() => Ok(Some(Object::Nil)),
+            // BasicObject's own `initialize` takes nothing and does nothing,
+            // and its singleton-method hooks take the name and do nothing.
+            "initialize" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                Ok(Some(Object::Nil))
+            }
+            "singleton_method_added"
+            | "singleton_method_removed"
+            | "singleton_method_undefined" => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                Ok(Some(Object::Nil))
+            }
+            // BasicObject#method_missing called on its own raises the
+            // NoMethodError a call to the name it is handed would.
+            "method_missing" => {
+                Err(self.direct_method_missing_error(receiver, arguments, position))
+            }
             // A TracePoint tells the interpreter when it is switched on or
             // off, and asks whether a handler is running.
             "__register__" => {
@@ -96,6 +129,47 @@ impl VirtualMachine {
                 self.read_line_from_stdin(position).map(Some)
             }
             _ => Ok(None),
+        }
+    }
+}
+
+impl VirtualMachine {
+    /// The error `BasicObject#method_missing` raises when it is called on its
+    /// own: the NoMethodError for the name it is handed, or the
+    /// ArgumentError for a call without a Symbol to name.
+    fn direct_method_missing_error(
+        &mut self,
+        receiver: &Object,
+        arguments: &[Object],
+        position: Position,
+    ) -> MetorexError {
+        let Some(first) = arguments.first() else {
+            return crate::vm::errors::simple_exception(
+                "ArgumentError",
+                "no method name given",
+                position,
+            );
+        };
+        let Object::Symbol(name) = first else {
+            let given = crate::vm::native_methods::define_method::ruby_class_name(first);
+            return crate::vm::errors::simple_exception(
+                "ArgumentError",
+                &format!("method name must be a Symbol but {given} is given"),
+                position,
+            );
+        };
+        let name = name.as_str().to_string();
+        let wording = self.receiver_wording_for(receiver, position);
+        let message = format!("private method '{name}' called for {wording}");
+        MetorexError::UncaughtException {
+            exception: crate::vm::errors::no_method_error(
+                &message,
+                &name,
+                receiver,
+                &arguments[1..],
+            ),
+            location: crate::vm::utils::position_to_location(position),
+            message,
         }
     }
 }

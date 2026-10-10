@@ -18,7 +18,7 @@ impl VirtualMachine {
                 let Some((class, method)) = self.lookup_method(other, "to_int") else {
                     let message = format!(
                         "no implicit conversion of {} into Integer",
-                        self.builtins().class_of(other).name()
+                        crate::vm::errors::conversion_subject(other)
                     );
                     return Err(MetorexError::UncaughtException {
                         exception: Object::exception("TypeError", message.clone()),
@@ -295,7 +295,7 @@ impl VirtualMachine {
                 let Some((class, method)) = self.lookup_method(&other, "to_int") else {
                     let message = format!(
                         "no implicit conversion of {} into Integer",
-                        self.builtins().class_of(&other).name()
+                        crate::vm::errors::conversion_subject(&other)
                     );
                     return Err(MetorexError::UncaughtException {
                         exception: Object::exception("TypeError", message.clone()),

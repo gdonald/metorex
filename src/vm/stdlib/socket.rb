@@ -6,6 +6,23 @@ class SocketError < StandardError; end
 
 # What every socket answers, whichever kind it is.
 class BasicSocket < IO
+  # What a read of `length` answers: that many bytes, or fewer when the
+  # other end finishes first, and with no length everything up to the end.
+  # Each piece comes from the block, asked for what is still wanted.
+  def __read_fully__(length)
+    wanted = length.nil? ? nil : length.to_i
+    raise ArgumentError, "negative length #{wanted} given" if !wanted.nil? && wanted < 0
+    return +"" if wanted == 0
+    collected = nil
+    loop do
+      piece = yield(wanted.nil? ? nil : wanted - (collected.nil? ? 0 : collected.bytesize))
+      break if piece.nil? || piece.empty?
+      collected = collected.nil? ? piece : collected + piece
+      break if !wanted.nil? && collected.bytesize >= wanted
+    end
+    return collected unless collected.nil?
+    wanted.nil? ? +"" : nil
+  end
   # Write all of `text`, waiting for room whenever the connection's buffer
   # is full. The wait sleeps, so another thread runs meanwhile.
   def __write_all__(command, text)
@@ -737,46 +754,19 @@ class Socket < BasicSocket
   # Every address a host answers to, as the tuples Ruby reports.
   def self.getaddrinfo(host, port, family = nil, socktype = nil, protocol = nil, flags = nil,
                        reverse_lookup = nil)
-    numbered = family.nil? || family == 0 ? nil : Socket.family_numbered(Socket.named_part(family))
-    if numbered == Socket::AF_UNIX
-      raise Socket::ResolutionError.new("getaddrinfo: ai_family not supported",
-                                        Socket::EAI_FAMILY)
-    end
-    named =
-      if host.nil? || host.to_s.empty?
-        # No host at all names every address a server would answer on, or
-        # the loopback when the address is for reaching one.
-        passive = !flags.nil? && flags.to_i & Socket::AI_PASSIVE != 0
-        if numbered == Socket::AF_INET6
-          [passive ? "::" : "::1"]
-        elsif numbered.nil?
-          passive ? ["0.0.0.0", "::"] : ["127.0.0.1", "::1"]
-        else
-          [passive ? "0.0.0.0" : "127.0.0.1"]
-        end
-      else
-        Socket.resolved Socket.named_part(host)
+    # Asking for a reverse lookup names the host the address belongs to,
+    # where leaving it out names the address itself.
+    wants_name =
+      case reverse_lookup
+      when nil then !BasicSocket.do_not_reverse_lookup
+      when :numeric, false then false
+      else true
       end
-    named = named.select do |address|
-      wanted = Socket.__address__("family", address, 0) == 4 ? Socket::AF_INET : Socket::AF_INET6
-      numbered.nil? || wanted == numbered
-    end
-    wanted = port.nil? ? 0 : Socket.port_number(port)
-    named.map do |address|
-      kind = Socket.__address__("family", address, 0) == 4 ? "AF_INET" : "AF_INET6"
-      # Asking for a reverse lookup names the host the address belongs to,
-      # where leaving it out names the address itself.
-      wants_name =
-        case reverse_lookup
-        when nil then !BasicSocket.do_not_reverse_lookup
-        when :numeric, false then false
-        else true
-        end
+    Addrinfo.__lookup__(host, port, family, socktype, protocol, flags).map do |entry|
+      found_family, found_type, found_protocol, address, found_port, = entry
+      kind = found_family == Socket::AF_INET ? "AF_INET" : "AF_INET6"
       spelled = wants_name ? (Socket.__address__("name_of", address, 0) || address) : address
-      [kind, wanted, spelled, address,
-       kind == "AF_INET" ? Constants::AF_INET : Constants::AF_INET6,
-       socktype.nil? || socktype == 0 ? Constants::SOCK_STREAM : Socket.socktype_numbered(Socket.named_part(socktype)),
-       protocol.nil? || protocol == 0 ? Constants::IPPROTO_TCP : protocol]
+      [kind, found_port, spelled, address, found_family, found_type, found_protocol]
     end
   end
 
@@ -831,11 +821,21 @@ class Addrinfo
   private :name_canonically
 
   def self.tcp(host, port)
-    Addrinfo.built host, port, Socket::SOCK_STREAM, Socket::IPPROTO_TCP
+    Addrinfo.first_found host, port, Socket::SOCK_STREAM, Socket::IPPROTO_TCP
   end
 
   def self.udp(host, port)
-    Addrinfo.built host, port, Socket::SOCK_DGRAM, Socket::IPPROTO_UDP
+    Addrinfo.first_found host, port, Socket::SOCK_DGRAM, Socket::IPPROTO_UDP
+  end
+
+  # The first address the resolver answers for a host, as the socket type
+  # and protocol given.
+  def self.first_found(host, port, socktype, protocol)
+    entry = Addrinfo.__lookup__(host, port, nil, socktype, protocol, nil).first
+    raise Socket::ResolutionError.new("getaddrinfo: nodename nor servname provided, or not known", Socket::EAI_NONAME) if entry.nil?
+    held = Addrinfo.built entry[3], port.nil? ? nil : entry[4], socktype, protocol
+    held.instance_variable_set :@inspected_name, Addrinfo.inspected_name_of(host, port)
+    held
   end
 
   # A connected endpoint, which names no protocol of its own since the
@@ -847,7 +847,7 @@ class Addrinfo
   # An address with no port behind it, which names a machine rather than a
   # place on one.
   def self.ip(host)
-    Addrinfo.built host, nil, 0, 0
+    Addrinfo.first_found host, nil, 0, 0
   end
 
   def self.unix(path, socktype = nil)
@@ -893,32 +893,59 @@ class Addrinfo
 
   def self.getaddrinfo(host, port, family = nil, socktype = nil, protocol = nil, flags = nil,
                        _reverse_lookup = nil)
-    kind = socktype.nil? ? Socket::SOCK_STREAM : socktype
-    named = protocol.nil? ? (kind == Socket::SOCK_DGRAM ? Socket::IPPROTO_UDP : Socket::IPPROTO_TCP) : protocol
-    # `AI_CANONNAME` asks for the name the host is known under, which is the
-    # name the caller wrote once it has been looked up.
-    canonical = flags.is_a?(Integer) && (flags & Socket::AI_CANONNAME) != 0
-    numbered = family.nil? || family == 0 ? nil : Socket.family_numbered(Socket.named_part(family))
-    # No host at all names every address a server would answer on, or the
-    # loopback when the address is for reaching one.
-    addresses =
-      if host.nil?
-        passive = flags.is_a?(Integer) && (flags & Socket::AI_PASSIVE) != 0
-        passive ? ["0.0.0.0", "::"] : ["127.0.0.1", "::1"]
-      else
-        Socket.resolved host
-      end
-    found = addresses.select do |address|
-      held_family = Socket.__address__("family", address, 0) == 4 ? Socket::AF_INET : Socket::AF_INET6
-      numbered.nil? || held_family == numbered
-    end
-    looked_up = host.nil? ? nil : Addrinfo.looked_up_name(Socket.named_part(host))
-    found.map do |address|
-      held = Addrinfo.built address, port, kind, named
-      held.instance_variable_set :@inspected_name, looked_up
-      held.send :name_canonically, host.to_s if canonical
+    named = Addrinfo.inspected_name_of(host, port)
+    Addrinfo.__lookup__(host, port, family, socktype, protocol, flags).map do |entry|
+      _, found_type, found_protocol, address, found_port, canonical = entry
+      held = Addrinfo.built address, port.nil? ? nil : found_port, found_type, found_protocol
+      held.instance_variable_set :@inspected_name, named
+      held.send :name_canonically, canonical unless canonical.nil?
       held
     end
+  end
+
+  # The entries `getaddrinfo` answers for a host and a port, each
+  # `[family, socktype, protocol, address, port, canonname]` in the order the
+  # resolver gives them. A failed lookup raises Socket::ResolutionError.
+  def self.__lookup__(host, port, family, socktype, protocol, flags)
+    numbered = family.nil? || family == 0 ? 0 : Socket.family_numbered(Socket.named_part(family))
+    if numbered == Socket::AF_UNIX
+      raise Socket::ResolutionError.new("getaddrinfo: ai_family not supported",
+                                        Socket::EAI_FAMILY)
+    end
+    # An empty host and `<any>` stand for the address that means every
+    # one, and `<broadcast>` for the broadcast address, each read as an
+    # address rather than looked up.
+    flags = flags.to_i
+    node =
+      case host
+      when nil then nil
+      when "", "<any>" then "0.0.0.0"
+      when "<broadcast>" then "255.255.255.255"
+      else Socket.named_part(host).to_s
+      end
+    flags |= Socket::AI_NUMERICHOST if ["", "<any>", "<broadcast>"].include?(host)
+    service =
+      case port
+      when nil, Integer then port
+      when String then port
+      else port.respond_to?(:to_int) ? port.to_int : port.to_str
+      end
+    kind = socktype.nil? || socktype == 0 ? 0 : Socket.socktype_numbered(Socket.named_part(socktype))
+    request = [node.to_s, numbered, kind, protocol.to_i, flags.to_i, node.nil? ? 0 : 1].join("\0")
+    found = Socket.__net__ "addrinfo_list", 0, request, service
+    raise Socket::ResolutionError.new("getaddrinfo: #{found[2]}", found[1]) unless found[0]
+    found[1]
+  end
+
+  # The name an Addrinfo found by a lookup shows when inspected: the host
+  # when it is a name rather than an address, and the service after a colon
+  # when it is named rather than numbered.
+  def self.inspected_name_of(host, port)
+    named = host.nil? ? nil : host.to_s
+    named = nil if named && !Socket.__address__("family", named, 0).nil?
+    service = port.is_a?(String) && port !~ /\A\d+\z/ ? port : nil
+    return named if service.nil?
+    "#{named}:#{service}"
   end
 
   # An Addrinfo built from the struct the operating system uses.
@@ -1092,7 +1119,8 @@ class Addrinfo
       return "#<Addrinfo: #{shown} #{socktype_name}>"
     end
     named = @inspected_name.nil? ? "" : " (#{@inspected_name})"
-    "#<Addrinfo: #{shown_address}#{shown_protocol}#{named}>"
+    canonical = @canonname.nil? ? "" : " #{@canonname}"
+    "#<Addrinfo: #{shown_address}#{shown_protocol}#{canonical}#{named}>"
   end
 
   def inspect_sockaddr
@@ -1349,10 +1377,36 @@ class Addrinfo
     ipv6? ? "[#{@address}]:#{@port}" : "#{@address}:#{@port}"
   end
 
+  # TCP or UDP for an internet address of the kind each pairs with, and
+  # otherwise the socket type and the protocol by their names.
   def shown_protocol
-    return " TCP" if @protocol == Socket::IPPROTO_TCP
-    return " UDP" if @protocol == Socket::IPPROTO_UDP
-    ""
+    internet = @afamily == Socket::AF_INET || @afamily == Socket::AF_INET6
+    if internet && @socktype == Socket::SOCK_STREAM && [0, Socket::IPPROTO_TCP].include?(@protocol)
+      return " TCP"
+    end
+    if internet && @socktype == Socket::SOCK_DGRAM && [0, Socket::IPPROTO_UDP].include?(@protocol)
+      return " UDP"
+    end
+    shown = +""
+    shown << " #{Addrinfo.socktype_label(@socktype)}" unless @socktype.zero?
+    unless @protocol.zero?
+      shown << (internet ? " #{Addrinfo.protocol_label(@protocol)}" : " UNKNOWN_PROTOCOL(#{@protocol})")
+    end
+    shown
+  end
+
+  def self.socktype_label(numbered)
+    named = %w[SOCK_STREAM SOCK_DGRAM SOCK_RAW SOCK_SEQPACKET SOCK_RDM].find do |name|
+      Socket.const_defined?(name) && Socket.const_get(name) == numbered
+    end
+    named || "SOCK_TYPE(#{numbered})"
+  end
+
+  def self.protocol_label(numbered)
+    named = Socket.constants.map(&:to_s).find do |name|
+      name.start_with?("IPPROTO_") && Socket.const_get(name) == numbered
+    end
+    named || "UNKNOWN_PROTOCOL(#{numbered})"
   end
 
   private :shown_address, :shown_protocol
@@ -1461,7 +1515,11 @@ class TCPSocket < IPSocket
   # characters, keeping the encoding it was tagged with.
   def read(length = nil, buffer = nil)
     raise IOError, "closed stream" if closed? || read_closed?
-    held = read_into_string length
+    held = __read_fully__(length) { |wanted| read_into_string wanted }
+    if held.nil?
+      buffer&.clear
+      return nil
+    end
     return held if buffer.nil?
     # The buffer keeps the encoding it was tagged with, since what arrived
     # is bytes rather than characters of any particular encoding.
@@ -1505,7 +1563,8 @@ class TCPSocket < IPSocket
   # rather than an empty string.
   def recv(length = nil, flags = nil, buffer = nil)
     held = if flags.to_i.zero?
-             read length
+             raise IOError, "closed stream" if closed? || read_closed?
+             read_into_string length
            else
              raise IOError, "closed stream" if closed? || read_closed?
              Socket.__net__("recv_flags", @handle, flags.to_i.to_s, length.nil? ? 0 : length.to_i)
@@ -1550,12 +1609,18 @@ class TCPSocket < IPSocket
     write text
   end
 
+  # Whether the other end has finished, waiting until something arrives or
+  # it does. What arrived is left to be read.
   def eof?
-    false
+    raise IOError, "closed stream" if closed? || read_closed?
+    return false unless @pending.nil? || @pending.empty?
+    Socket.__net__("recv_flags", @handle, Socket::MSG_PEEK.to_s, 1).empty?
   end
+  alias_method :eof, :eof?
 
   def readpartial(length, _buffer = nil)
-    held = read length
+    raise IOError, "closed stream" if closed? || read_closed?
+    held = read_into_string length
     raise EOFError, "end of file reached" if held.empty?
     held
   end
@@ -1575,7 +1640,7 @@ class TCPSocket < IPSocket
         return collected[0, ends]
       end
       piece = begin
-        read
+        read_into_string nil
       rescue SystemCallError
         nil
       end
@@ -1787,15 +1852,20 @@ class UNIXSocket < BasicSocket
   end
 
   def read(length = nil)
-    Socket.__net__ "unix_read", @handle, "0", length.nil? ? 0 : length.to_i
+    __read_fully__(length) { |wanted| __read_once__ wanted }
   end
 
+  def __read_once__(length)
+    Socket.__net__ "unix_read", @handle, "0", length.nil? ? 0 : length.to_i
+  end
+  private :__read_once__
+
   def recv(length = nil, _flags = nil)
-    read length
+    __read_once__ length
   end
 
   def readpartial(length, _buffer = nil)
-    held = read length
+    held = __read_once__ length
     raise EOFError, "end of file reached" if held.empty?
     held
   end
@@ -1832,7 +1902,7 @@ class UNIXSocket < BasicSocket
   def gets(separator = "\n")
     collected = ""
     while true
-      held = read 1
+      held = __read_once__ 1
       break if held.nil? || held.empty?
       collected = collected + held
       break if collected.end_with? separator.to_s
@@ -1883,14 +1953,6 @@ class UNIXSocket < BasicSocket
   # The user and group the other end runs as.
   def getpeereid
     [Process.uid, Process.gid]
-  end
-
-  def close_write
-    0
-  end
-
-  def close_read
-    0
   end
 
   # Read what has arrived, saying where it came from. A buffer handed in
@@ -2695,7 +2757,16 @@ class Socket
   end
 
   def read(length = nil, buffer = nil)
-    recv length, 0, buffer
+    held = __read_fully__(length) { |wanted| recv wanted, 0 }
+    if held.nil?
+      buffer&.clear
+      return nil
+    end
+    return held if buffer.nil?
+    tagged = buffer.encoding
+    buffer.replace held
+    buffer.force_encoding tagged
+    buffer
   end
 
   # A socket reads and writes lines the way a stream does.

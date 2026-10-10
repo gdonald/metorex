@@ -226,7 +226,7 @@ impl VirtualMachine {
         }
         let message = format!(
             "no implicit conversion of {} into String",
-            self.builtins().class_of(value).name()
+            crate::vm::errors::conversion_subject(value)
         );
         Err(simple_exception("TypeError", &message, position))
     }

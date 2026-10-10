@@ -77,12 +77,23 @@ impl VirtualMachine {
                     .as_ref()
                     .and_then(|p| p.get_class_var(super_name))
                     .or_else(|| self.resolve_constant_in_scope(super_name));
-                if direct.is_some() {
+                let autoloaded = if direct.is_some() {
                     direct
                 } else if let Some(parent) = parent_scope.as_ref() {
                     self.try_autoload_constant(parent, super_name)?
                 } else {
                     None
+                };
+                // A name an enclosing module autoloads is read the way the
+                // same constant written in an expression here is.
+                match autoloaded {
+                    Some(found) => Some(found),
+                    None => self
+                        .evaluate_expression(&crate::ast::Expression::Identifier {
+                            name: super_name.to_string(),
+                            position,
+                        })
+                        .ok(),
                 }
             };
             match resolved {
@@ -155,6 +166,14 @@ impl VirtualMachine {
             }
         } else if let Some(Object::Class(c)) = self.environment().get(name) {
             Some(c)
+        } else if let Some(Object::Class(object_class)) = self.globals().get("Object") {
+            // A top-level name registered as an autoload is loaded first,
+            // so the body reopens the class the file defines.
+            match self.try_autoload_constant(&object_class, name)? {
+                Some(Object::Class(c)) => Some(c),
+                Some(_) => return Err(not_a_class_error(name, position)),
+                None => None,
+            }
         } else {
             None
         };
@@ -210,16 +229,22 @@ impl VirtualMachine {
         // Record the class definition's source location for
         // `Module#const_source_location`. Done here (alongside the
         // eager bind) so the location is available even mid-load.
+        // Reopening a class leaves the place it was first defined.
         let class_def_file = self
             .reported_current_file()
             .map(|p| p.display().to_string())
             .unwrap_or_default();
-        if let Some(parent) = parent_scope.as_ref() {
-            parent.set_const_location(name, class_def_file.clone(), position.line as i64);
-        } else if let Some(Object::Class(object_class)) = self.globals().get("Object") {
+        let recorded_on = match parent_scope.as_ref() {
+            Some(parent) => Some(Rc::clone(parent)),
             // Top-level classes record on Object, the home of top-level
             // constants.
-            object_class.set_const_location(name, class_def_file.clone(), position.line as i64);
+            None => match self.globals().get("Object") {
+                Some(Object::Class(object_class)) => Some(object_class),
+                _ => None,
+            },
+        };
+        if let Some(home) = recorded_on.filter(|_| is_new) {
+            home.set_const_location(name, class_def_file.clone(), position.line as i64);
         }
         // Eagerly bind the class to its parent / globals BEFORE the body
         // runs. Without this, code in the body (e.g. autoload-triggered
@@ -254,6 +279,11 @@ impl VirtualMachine {
         self.environment_mut().push_isolated_scope();
         self.environment_mut()
             .define("self".to_string(), Object::Class(Rc::clone(&class)));
+        // Ruby reserves every local the body assigns before any of it runs,
+        // so one assigned in a branch not taken answers nil.
+        for name in crate::ast::collect_assigned_locals(body) {
+            self.environment_mut().hoist(name);
+        }
         // A trace sees a class body opening and closing, with the class
         // itself as the `self` those two events report.
         self.fire_event("class", position, Vec::new())?;

@@ -148,11 +148,18 @@ impl VirtualMachine {
                 .get_class_var(crate::vm::REFINEMENT_LABEL_KEY)
                 .is_some()
         });
+        // A method the program writes in `class Object` runs for an object
+        // made by `Object.new` the way it does for an instance of a class of
+        // the program's own.
+        let stands_on_a_plain_object = matches!(&receiver, Object::Instance(held)
+                if held.borrow().class.ruby_name() == "Object")
+            && written_by_the_program(&method);
         let overrides_builtin = !method.body.is_empty()
             && (backs_a_collection(&receiver)
                 || stands_for_a_class_method
                 || stands_on_its_own_singleton
-                || stands_in_a_refinement);
+                || stands_in_a_refinement
+                || stands_on_a_plain_object);
         if !overrides_builtin
             && let Some(result) = self.call_native_method(
                 class.as_ref(),
@@ -252,7 +259,12 @@ impl VirtualMachine {
 
         // For stub methods (empty body, registered on Object for introspection),
         // fall through to base Object native methods (class, to_s, respond_to?, etc.)
-        if method.body.is_empty() && method.captured_vars.is_none() {
+        // A method the program wrote with an empty body names its place in the
+        // source, and runs as the empty method it is.
+        if method.body.is_empty()
+            && method.captured_vars.is_none()
+            && method.source_location.is_none()
+        {
             self.bound_stub_depth += 1;
             let answered = self.call_object_method(&receiver, &method_name, &arguments, position);
             self.bound_stub_depth -= 1;
@@ -301,18 +313,17 @@ impl VirtualMachine {
             } else {
                 crate::vm::errors::Arity::Range(required, expected)
             };
-            return Err(crate::vm::errors::argument_count_error(
-                accepted,
-                positional_count,
-                position,
-            ));
+            let error =
+                crate::vm::errors::argument_count_error(accepted, positional_count, position);
+            return Err(self.arity_error_in_callee(error, &method, &class, position));
         }
         if has_variadic && positional_count < required {
-            return Err(crate::vm::errors::argument_count_error(
+            let error = crate::vm::errors::argument_count_error(
                 crate::vm::errors::Arity::AtLeast(required),
                 positional_count,
                 position,
-            ));
+            );
+            return Err(self.arity_error_in_callee(error, &method, &class, position));
         }
 
         // Prefer the method's original owner class (if recorded) over the
@@ -435,7 +446,7 @@ impl VirtualMachine {
                         defined_name.clone(),
                     )
                     .owned_by(allocation_owner)
-                    .with_source_file(self.current_source_file.clone()),
+                    .with_source_file(self.file_for_frames()),
                     move |vm| {
                         vm.execute_method_body(
                             method_for_body.as_ref(),
@@ -591,16 +602,18 @@ impl VirtualMachine {
                 &method.default_parameters,
                 &method.variadic_param,
             )?;
-            self.bind_keyword_params(
+            let bound = self.bind_keyword_params(
                 &method.keyword_parameters,
                 method.keyword_rest_parameter.as_deref(),
                 kwargs,
-            )?;
-            self.refuse_unknown_keywords(
+            );
+            bound.map_err(|error| self.keyword_error_in_callee(error, method))?;
+            let refused = self.refuse_unknown_keywords(
                 keyword_hash.as_ref(),
                 &method.keyword_parameters,
                 method.keyword_rest_parameter.as_deref(),
-            )?;
+            );
+            refused.map_err(|error| self.keyword_error_in_callee(error, method))?;
 
             // Bind the block: define block_given? as a Bool, __block__ for internal use,
             // and the named &block parameter if the method declared one.
@@ -673,13 +686,20 @@ impl VirtualMachine {
         }
     }
 
-    /// Execute the body of a standalone function within a fresh scope (no self).
+    /// Execute the body of a method written at the top level within a fresh
+    /// scope.
     pub(crate) fn execute_function_body(
         &mut self,
         function: &Method,
         arguments: Vec<Object>,
     ) -> Result<Object, MetorexError> {
+        // A method written at the top level is a method of Object, so its
+        // body runs with the caller's `self`, `main` at the top level.
+        let caller_self = self.eval_self(Position::default()).ok();
         self.environment_mut().push_isolated_scope();
+        if let Some(receiver) = caller_self {
+            self.environment_mut().define("self".to_string(), receiver);
+        }
 
         // Take the pending block now so nested calls don't see it.
         let block = self.pending_block.take();
@@ -847,76 +867,88 @@ impl VirtualMachine {
             }
         }
 
-        let mut last_value = Object::Nil;
+        self.run_restartable(|vm, start| {
+            let mut last_value = Object::Nil;
 
-        for (i, statement) in body.iter().enumerate() {
-            let is_last = i == body.len() - 1;
+            for (i, statement) in body.iter().enumerate().skip(start) {
+                vm.mark_statement(i);
+                let is_last = i == body.len() - 1;
 
-            // The last statement is answered below rather than through
-            // `execute_statement`, and it is a `:line` event all the same.
-            if is_last && !self.tracepoints.is_empty() && answers_its_own_value(statement) {
-                self.fire_line_event(statement.position())?;
-            }
-            // If this is the last statement, capture its value
-            if is_last && let Some(value) = self.terminal_statement_value(statement)? {
-                // The last statement answered here rather than through
-                // `execute_statement`, so it is counted here too.
-                if self.coverage.is_some() {
-                    self.coverage_count(statement.position().line);
+                // The last statement is answered below rather than through
+                // `execute_statement`, and it is a `:line` event all the same.
+                if is_last
+                    && !vm.tracepoints.is_empty()
+                    && answers_its_own_value(statement)
+                    && !matches!(statement, Statement::Begin { .. })
+                {
+                    vm.fire_line_event(statement.position())?;
                 }
-                last_value = value;
-                continue;
-            }
-
-            let is_last = i == body.len() - 1;
-            match self.execute_statement(statement)? {
-                ControlFlow::Next => continue,
-                ControlFlow::Value(v) => {
-                    if is_last {
-                        last_value = v;
+                // If this is the last statement, capture its value
+                if is_last && let Some(value) = vm.terminal_statement_value(statement)? {
+                    // The last statement answered here rather than through
+                    // `execute_statement`, so it is counted here too.
+                    if vm.coverage.is_some() {
+                        vm.coverage_count(statement.position().line);
                     }
+                    last_value = value;
                     continue;
                 }
-                ControlFlow::Return { value, .. } => return Ok(value),
-                ControlFlow::Exception {
-                    exception,
-                    position,
-                } => {
-                    return Err(MetorexError::UncaughtException {
-                        exception: exception.clone(),
-                        location: position_to_location(position),
-                        message: format_exception(&exception),
-                    });
-                }
-                ControlFlow::Break { value, position } => {
-                    if lambda_semantics {
+
+                let is_last = i == body.len() - 1;
+                match vm.execute_statement(statement)? {
+                    ControlFlow::Next => continue,
+                    ControlFlow::Value(v) => {
+                        if is_last {
+                            last_value = v;
+                        }
+                        continue;
+                    }
+                    ControlFlow::Return { value, .. } => {
+                        if let Some(running) = vm.running_code.last_mut() {
+                            running.returned_explicitly = true;
+                        }
                         return Ok(value);
                     }
-                    return Err(loop_control_error("break", position));
-                }
-                ControlFlow::Retry { position } => {
-                    return Err(MetorexError::BlockRetry {
-                        location: position_to_location(position),
-                    });
-                }
-                ControlFlow::Redo { position } => {
-                    if lambda_semantics {
-                        return Err(MetorexError::BlockRedo {
+                    ControlFlow::Exception {
+                        exception,
+                        position,
+                    } => {
+                        return Err(MetorexError::UncaughtException {
+                            exception: exception.clone(),
+                            location: position_to_location(position),
+                            message: format_exception(&exception),
+                        });
+                    }
+                    ControlFlow::Break { value, position } => {
+                        if lambda_semantics {
+                            return Ok(value);
+                        }
+                        return Err(loop_control_error("break", position));
+                    }
+                    ControlFlow::Retry { position } => {
+                        return Err(MetorexError::BlockRetry {
                             location: position_to_location(position),
                         });
                     }
-                    return Err(loop_control_error("redo", position));
-                }
-                ControlFlow::Continue { value, position } => {
-                    if lambda_semantics {
-                        return Ok(value);
+                    ControlFlow::Redo { position } => {
+                        if lambda_semantics {
+                            return Err(MetorexError::BlockRedo {
+                                location: position_to_location(position),
+                            });
+                        }
+                        return Err(loop_control_error("redo", position));
                     }
-                    return Err(loop_control_error("continue", position));
+                    ControlFlow::Continue { value, position } => {
+                        if lambda_semantics {
+                            return Ok(value);
+                        }
+                        return Err(loop_control_error("next", position));
+                    }
                 }
             }
-        }
 
-        Ok(last_value)
+            Ok(last_value)
+        })
     }
 
     /// Refuse the keywords a call passed that the method declared no

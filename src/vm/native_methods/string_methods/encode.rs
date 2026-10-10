@@ -78,30 +78,43 @@ impl VirtualMachine {
                         &wanted,
                         options.undef_replace.then_some(replacement.as_str()),
                         position,
-                    )?,
-                    None if held == "UTF-8" => self.utf8_text(
-                        &binary_bytes(string_value),
-                        &options,
-                        &replacement,
-                        position,
-                    )?,
+                    )
+                    .map_err(|error| self.with_conversion_ends(error, "ASCII-8BIT", "UTF-8"))?,
+                    None if held == "UTF-8" => self
+                        .utf8_text(
+                            &binary_bytes(string_value),
+                            &options,
+                            &replacement,
+                            position,
+                        )
+                        .map_err(|error| self.with_conversion_ends(error, "UTF-8", &wanted))?,
                     None if held == "ISO-2022-JP" => {
                         crate::vm::native_methods::euc_jp_table::iso_2022_jp_text(&binary_bytes(
                             string_value,
                         ))
                     }
                     None if spells_shift_jis(&held) && reads_bytes => {
-                        crate::vm::native_methods::shift_jis_table::shift_jis_text(&binary_bytes(
-                            string_value,
-                        ))
+                        let bytes = binary_bytes(string_value);
+                        if let Some((broken, after, incomplete)) = shift_jis_problem(&bytes)
+                            && !options.invalid_replace
+                        {
+                            let error =
+                                invalid_bytes_error(&broken, after, incomplete, &held, position);
+                            return Err(self.with_conversion_ends(error, &held, &wanted));
+                        }
+                        crate::vm::native_methods::shift_jis_table::shift_jis_text(&bytes)
                     }
                     None if held == "EUC-JP" && reads_bytes && options.invalid_replace => {
                         euc_jp_text_replacing(&binary_bytes(string_value), &replacement)
                     }
                     None if held == "EUC-JP" && reads_bytes => {
-                        crate::vm::native_methods::euc_jp_table::euc_jp_text(&binary_bytes(
-                            string_value,
-                        ))
+                        let bytes = binary_bytes(string_value);
+                        if let Some((broken, after, incomplete)) = euc_jp_problem(&bytes) {
+                            let error =
+                                invalid_bytes_error(&broken, after, incomplete, &held, position);
+                            return Err(self.with_conversion_ends(error, &held, &wanted));
+                        }
+                        crate::vm::native_methods::euc_jp_table::euc_jp_text(&bytes)
                     }
                     None => match latin_text(&binary_bytes(string_value), &held) {
                         Some(spelled) if reads_bytes => spelled,
@@ -141,12 +154,9 @@ impl VirtualMachine {
                 if wanted == "US-ASCII"
                     && let Some(character) = reading.chars().find(|character| !character.is_ascii())
                 {
-                    let message = format!("U+{:04X} from UTF-8 to US-ASCII", character as u32);
-                    return Err(crate::vm::errors::simple_exception(
-                        "Encoding::UndefinedConversionError",
-                        &message,
-                        position,
-                    ));
+                    return Err(
+                        self.undefined_conversion_error(character, &held, &wanted, position)
+                    );
                 }
                 // ISO-2022-JP writes its Japanese runs between escapes, so
                 // the bytes are built rather than mapped one for one.
@@ -154,13 +164,7 @@ impl VirtualMachine {
                     let bytes =
                         crate::vm::native_methods::euc_jp_table::iso_2022_jp_bytes(&reading)
                             .map_err(|character| {
-                                let message =
-                                    format!("U+{:04X} from UTF-8 to {}", character as u32, wanted);
-                                crate::vm::errors::simple_exception(
-                                    "Encoding::UndefinedConversionError",
-                                    &message,
-                                    position,
-                                )
+                                self.undefined_conversion_error(character, &held, &wanted, position)
                             })?;
                     let made = crate::object::StringValue::from_bytes(bytes_as_text(&bytes));
                     made.set_encoding(wanted);
@@ -170,13 +174,7 @@ impl VirtualMachine {
                     let bytes =
                         crate::vm::native_methods::shift_jis_table::shift_jis_bytes(&reading)
                             .map_err(|character| {
-                                let message =
-                                    format!("U+{:04X} from UTF-8 to {}", character as u32, wanted);
-                                crate::vm::errors::simple_exception(
-                                    "Encoding::UndefinedConversionError",
-                                    &message,
-                                    position,
-                                )
+                                self.undefined_conversion_error(character, &held, &wanted, position)
                             })?;
                     let made = crate::object::StringValue::from_bytes(bytes_as_text(&bytes));
                     made.set_encoding(wanted);
@@ -185,13 +183,7 @@ impl VirtualMachine {
                 if wanted == "EUC-JP" {
                     let bytes = crate::vm::native_methods::euc_jp_table::euc_jp_bytes(&reading)
                         .map_err(|character| {
-                            let message =
-                                format!("U+{:04X} from UTF-8 to {}", character as u32, wanted);
-                            crate::vm::errors::simple_exception(
-                                "Encoding::UndefinedConversionError",
-                                &message,
-                                position,
-                            )
+                            self.undefined_conversion_error(character, &held, &wanted, position)
                         })?;
                     let made = crate::object::StringValue::from_bytes(bytes_as_text(&bytes));
                     made.set_encoding(wanted);
@@ -199,13 +191,7 @@ impl VirtualMachine {
                 }
                 if let Some(spelled) = latin_bytes(&reading, &wanted) {
                     let bytes = spelled.map_err(|character| {
-                        let message =
-                            format!("U+{:04X} from UTF-8 to {}", character as u32, wanted);
-                        crate::vm::errors::simple_exception(
-                            "Encoding::UndefinedConversionError",
-                            &message,
-                            position,
-                        )
+                        self.undefined_conversion_error(character, &held, &wanted, position)
                     })?;
                     let made = crate::object::StringValue::from_bytes(bytes_as_text(&bytes));
                     made.set_encoding(wanted);

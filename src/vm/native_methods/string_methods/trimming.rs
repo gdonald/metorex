@@ -34,7 +34,7 @@ impl VirtualMachine {
                             "TypeError",
                             &format!(
                                 "no implicit conversion of {} into String",
-                                self.builtins().class_of(other).name()
+                                crate::vm::errors::conversion_subject(other)
                             ),
                             position,
                         ));
@@ -69,22 +69,6 @@ impl VirtualMachine {
                     built.set_encoding(joined_encoding);
                 }
                 Ok(Some(made))
-            }
-            "trim" => {
-                if !arguments.is_empty() {
-                    return Err(method_argument_error(
-                        method_name,
-                        0,
-                        arguments.len(),
-                        position,
-                    ));
-                }
-                Ok(Some(Object::string(
-                    string_value
-                        .as_str()
-                        .trim_matches(|letter: char| letter.is_whitespace() || letter == '\0')
-                        .to_string(),
-                )))
             }
             // `lstrip` and `rstrip` trim one end. Ruby counts a NUL as
             // whitespace at the right end, which `trim_end` does not.

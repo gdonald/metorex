@@ -3,12 +3,75 @@
 use super::*;
 
 impl VirtualMachine {
-    /// The VM call stack as Location objects, outermost call last, the way
+    /// The places the frames running stand, innermost first, the way an
+    /// exception raised at `position` would list them, each with the column
+    /// of its call when it is known. The `caller` call asking is not among
+    /// them.
+    pub(crate) fn running_backtrace_sites(
+        &mut self,
+        position: Position,
+    ) -> Vec<((String, usize, String), Option<usize>)> {
+        let asking = self.native_frames.last().is_some_and(|native| {
+            native.receiver.is_none()
+                && matches!(native.name.as_str(), "caller" | "caller_locations")
+                && native.depth == self.call_stack.len()
+        });
+        let held = if asking {
+            self.native_frames.pop()
+        } else {
+            None
+        };
+        let flagged = self.frames_with_native_flags();
+        self.native_frames.extend(held);
+        let native_flags: Vec<bool> = flagged.iter().rev().map(|(_, native)| *native).collect();
+        let merged = flagged.into_iter().map(|(frame, _)| frame).collect();
+        let here = if position.prelude {
+            "<internal:prelude>".to_string()
+        } else {
+            self.reported_current_file()
+                .map(|path| path.display().to_string())
+                .unwrap_or_default()
+        };
+        let (sites, columns) =
+            crate::vm::exceptions::backtrace_sites(merged, &native_flags, here, position);
+        sites
+            .into_iter()
+            .zip(columns)
+            .enumerate()
+            // A frame entered from nowhere in particular records no line,
+            // and there is no call for a backtrace to name there.
+            .filter(|(at, ((_, line, _), _))| *at == 0 || *line != 0)
+            .map(|(_, site)| site)
+            .collect()
+    }
+
+    /// The frames running as Location objects, outermost call last, the way
     /// `caller_locations(0)` reports them.
     pub(crate) fn caller_location_objects(&mut self, position: Position) -> Vec<Object> {
-        self.caller_locations_with_frames(position)
+        use crate::object::Instance;
+        use std::rc::Rc;
+        let sites = self.running_backtrace_sites(position);
+        let loc_class = self.backtrace_location_class();
+        sites
             .into_iter()
-            .map(|(location, _)| location)
+            .map(|((path, line, label), column)| {
+                let location = Instance::new(Rc::clone(&loc_class));
+                let absolute = match self.absolute_path_for(&path) {
+                    Some(resolved) => Object::string(resolved),
+                    None => Object::Nil,
+                };
+                {
+                    let mut filling = location.borrow_mut();
+                    filling.set_var("lineno".to_string(), Object::Int(line as i64));
+                    filling.set_var("path".to_string(), Object::string(path));
+                    filling.set_var("absolute_path".to_string(), absolute);
+                    filling.set_var("label".to_string(), Object::string(label));
+                    if let Some(column) = column {
+                        filling.set_var("column".to_string(), Object::Int(column as i64));
+                    }
+                }
+                Object::Instance(location)
+            })
             .collect()
     }
 

@@ -2,6 +2,12 @@
 
 use super::*;
 
+thread_local! {
+    /// The instances whose default `inspect` is being rendered now.
+    static INSPECTING_INSTANCES: std::cell::RefCell<Vec<usize>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
 impl VirtualMachine {
     /// `Object#inspect` for an instance with no `inspect` of its own: the
     /// class and address, then the instance variables and their values. A
@@ -16,6 +22,28 @@ impl VirtualMachine {
             return Ok(Object::string(receiver.to_string()));
         };
         let header = receiver.to_string();
+        // An object inside its own instance variables shows as its header
+        // with `...` in place of them.
+        let address = std::rc::Rc::as_ptr(instance) as usize;
+        if INSPECTING_INSTANCES.with(|held| held.borrow().contains(&address)) {
+            return Ok(Object::string(format!(
+                "{} ...>",
+                header.trim_end_matches('>')
+            )));
+        }
+        INSPECTING_INSTANCES.with(|held| held.borrow_mut().push(address));
+        let shown = self.instance_inspect_with_variables(receiver, instance, header, position);
+        INSPECTING_INSTANCES.with(|held| held.borrow_mut().retain(|seen| *seen != address));
+        shown
+    }
+
+    fn instance_inspect_with_variables(
+        &mut self,
+        receiver: &Object,
+        instance: &std::rc::Rc<std::cell::RefCell<crate::object::Instance>>,
+        header: String,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
         let chosen = match self.lookup_method(receiver, "instance_variables_to_inspect") {
             Some((class, method)) if !method.is_undefined => {
                 let answer =
@@ -95,6 +123,12 @@ impl VirtualMachine {
             && !method.body.is_empty()
         {
             let shown = self.invoke_method(class, method, value.clone(), Vec::new(), position)?;
+            return Ok(shown.to_string());
+        }
+        // An object of the program's own answers `inspect` the way any call
+        // reaches it, which shows its instance variables.
+        if let Object::Instance(_) = value {
+            let shown = self.send_to_object(value.clone(), "inspect", Vec::new(), position)?;
             return Ok(shown.to_string());
         }
         let class = self.builtins().class_of(value);

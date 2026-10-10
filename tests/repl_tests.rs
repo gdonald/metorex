@@ -390,6 +390,7 @@ fn format_object_block() {
         parameter_defaults: Vec::new(),
         body: vec![],
         captured_vars: Rc::default(),
+        reserved_names: Rc::default(),
         captured_def_scope: vec![],
         captured_nesting: vec![],
         defining_method: None,

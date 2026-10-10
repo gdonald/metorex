@@ -110,6 +110,7 @@ fn test_variable_shadowing_warning() {
         }],
         position: Position::default(),
         singleton_class: None,
+        end_position: Default::default(),
     };
 
     let result = resolver.resolve(&[stmt1, stmt2]);
@@ -147,6 +148,7 @@ fn test_function_parameters_in_scope() {
         }],
         position: Position::default(),
         singleton_class: None,
+        end_position: Default::default(),
     };
 
     let result = resolver.resolve(&[stmt]);
@@ -183,6 +185,7 @@ fn test_nested_scopes() {
         }],
         position: Position::default(),
         singleton_class: None,
+        end_position: Default::default(),
     };
 
     let result = resolver.resolve(&[outer_var, func]);
@@ -601,6 +604,7 @@ fn test_return_statement_resolution() {
         ],
         position: Position::default(),
         singleton_class: None,
+        end_position: Default::default(),
     };
 
     let result = resolver.resolve(&[stmt]);

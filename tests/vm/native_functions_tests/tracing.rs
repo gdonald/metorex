@@ -45,7 +45,7 @@ fn allow_reentry_is_refused_outside_a_handler() {
 #[test]
 fn a_trace_passes_over_the_core_library_it_runs_through() {
     // `upcase` is answered from the core library, whose statements a trace
-    // never sees, so only the program's own lines are counted.
+    // never sees, so only the program's own two lines are counted.
     let result = run(r#"
 seen = 0
 tracer = TracePoint.new(:line) { |point| seen += 1 }
@@ -54,5 +54,5 @@ held = "quiet".upcase
 tracer.disable
 seen
 "#);
-    assert_eq!(result.map(|value| value.to_string()), Some("1".to_string()));
+    assert_eq!(result.map(|value| value.to_string()), Some("2".to_string()));
 }

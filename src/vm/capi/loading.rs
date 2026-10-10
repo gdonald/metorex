@@ -58,6 +58,60 @@ impl VirtualMachine {
     }
 }
 
+unsafe extern "C-unwind" {
+    fn Init_nkf();
+}
+
+/// The C extensions build.rs compiles into the binary, by the feature name
+/// `require` finds each under, with its `Init` function.
+const STATIC_EXTENSIONS: &[(&str, unsafe extern "C-unwind" fn())] = &[("nkf", Init_nkf)];
+
+/// The `Init` function of a C extension compiled into the binary, for a
+/// name such as `nkf` or `nkf.so`.
+pub(crate) fn static_extension(name: &str) -> Option<unsafe extern "C-unwind" fn()> {
+    let stem = [".so", ".bundle"]
+        .iter()
+        .find_map(|ending| name.strip_suffix(ending))
+        .unwrap_or(name);
+    STATIC_EXTENSIONS
+        .iter()
+        .find(|(named, _)| *named == stem)
+        .map(|(_, init)| *init)
+}
+
+impl VirtualMachine {
+    /// Run the `Init` function of a C extension compiled into the binary,
+    /// once, and answer whether this was the first time.
+    pub(crate) fn run_static_extension(
+        &mut self,
+        name: &str,
+        init: unsafe extern "C-unwind" fn(),
+        position: Position,
+    ) -> Result<bool, MetorexError> {
+        let stem = name.split('.').next().unwrap_or(name);
+        let marker = std::path::PathBuf::from(format!("<metorex>/{stem}.so"));
+        if self.is_file_loaded(&marker) {
+            return Ok(false);
+        }
+        self.mark_file_loaded(marker);
+        self.publish_core_classes();
+        super::enter(
+            self,
+            super::Caller {
+                position,
+                block: None,
+                block_from_ampersand: false,
+                keywords_given: false,
+                method: None,
+            },
+            // SAFETY: an extension's Init function takes nothing and returns
+            // nothing.
+            || unsafe { init() },
+        )?;
+        Ok(true)
+    }
+}
+
 /// What the dynamic loader said about the call into it that just failed.
 fn loader_message() -> String {
     // SAFETY: called right after `dlopen` or `dlsym` failed, when `dlerror`

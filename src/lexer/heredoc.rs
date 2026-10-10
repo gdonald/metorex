@@ -65,15 +65,19 @@ impl<'a> Lexer<'a> {
         };
         let interpolate = quote != Some('\'');
 
-        // Read the terminator identifier.
+        // Read the terminator: a name, or between quotes anything up to the
+        // closing quote, as in racc's `<<'.,.,'`.
         let mut terminator = String::new();
         while let Some(ch) = self.peek() {
-            if ch.is_ascii_alphanumeric() || ch == '_' {
-                terminator.push(ch);
-                self.advance();
-            } else {
+            let belongs = match quote {
+                Some(q) => ch != q && ch != '\n',
+                None => ch.is_ascii_alphanumeric() || ch == '_',
+            };
+            if !belongs {
                 break;
             }
+            terminator.push(ch);
+            self.advance();
         }
         // A quoted terminator has to close on the same line. One that does
         // not is no heredoc at all, and `<<` is left to stand on its own,

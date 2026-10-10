@@ -81,6 +81,23 @@ impl VirtualMachine {
                     "private_methods" => self.private_method_names_for(receiver, include_super),
                     _ => self.protected_method_names_for(receiver, include_super),
                 };
+                if include_super {
+                    let visibility = match method_name {
+                        "public_methods" => CoreVisibility::Public,
+                        "private_methods" => CoreVisibility::Private,
+                        _ => CoreVisibility::Protected,
+                    };
+                    if !matches!(visibility, CoreVisibility::Protected) {
+                        let private = matches!(visibility, CoreVisibility::Private);
+                        names.extend(self.reopened_value_class_names(receiver, private));
+                    }
+                    names.extend(self.core_method_names_answered(receiver, visibility, position)?);
+                    let owners = self.receiver_owner_names(receiver, position)?;
+                    Self::keep_listed(&owners, &[visibility], &mut names, |name| {
+                        self.lookup_method(receiver, name)
+                            .is_some_and(|(_, method)| written_by_program(&method))
+                    });
+                }
                 names.sort();
                 names.dedup();
                 let symbols: Vec<Object> = names.into_iter().map(Object::symbol).collect();
@@ -238,6 +255,20 @@ impl VirtualMachine {
                 names.retain(|name| {
                     carried.contains(name) || !self.method_is_private_anywhere(&holder, name)
                 });
+                names.extend(self.reopened_value_class_names(receiver, false));
+                for visibility in [CoreVisibility::Public, CoreVisibility::Protected] {
+                    names.extend(self.core_method_names_answered(receiver, visibility, position)?);
+                }
+                let owners = self.receiver_owner_names(receiver, position)?;
+                Self::keep_listed(
+                    &owners,
+                    &[CoreVisibility::Public, CoreVisibility::Protected],
+                    &mut names,
+                    |name| {
+                        self.lookup_method(receiver, name)
+                            .is_some_and(|(_, method)| written_by_program(&method))
+                    },
+                );
                 names.sort();
                 names.dedup();
                 let method_symbols: Vec<Object> = names.into_iter().map(Object::symbol).collect();
@@ -357,4 +388,325 @@ fn singleton_level_names(base: &std::rc::Rc<crate::class::Class>, level: usize) 
         }
     }
     names
+}
+
+/// Which of the core method tables a listing draws from.
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum CoreVisibility {
+    Public,
+    Private,
+    Protected,
+}
+
+impl VirtualMachine {
+    /// The methods Ruby's core classes and modules define that `receiver`
+    /// answers, from the classes and modules among its ancestors, by
+    /// visibility. A public one counts only while nothing has made it private
+    /// or protected.
+    pub(crate) fn core_method_names_answered(
+        &mut self,
+        receiver: &Object,
+        visibility: CoreVisibility,
+        position: Position,
+    ) -> Result<Vec<String>, MetorexError> {
+        let owners = self.receiver_owner_names(receiver, position)?;
+        let mut names: Vec<String> = Vec::new();
+        // The nearest ancestor defining a name settles its visibility, so a
+        // name a nearer row already holds is passed over in a farther one.
+        let mut settled: Vec<&str> = Vec::new();
+        for owner in owners {
+            let Some(row) = crate::vm::native_methods::core_method_names::CORE_METHODS
+                .iter()
+                .find(|row| row.owner == owner)
+            else {
+                continue;
+            };
+            let candidates = match visibility {
+                CoreVisibility::Public => row.public,
+                CoreVisibility::Private => row.private,
+                CoreVisibility::Protected => row.protected,
+            };
+            let nearer = settled.len();
+            settled.extend(
+                row.public
+                    .iter()
+                    .chain(row.private)
+                    .chain(row.protected)
+                    .copied(),
+            );
+            for name in candidates {
+                if settled[..nearer].contains(name) {
+                    continue;
+                }
+                let listed = self.responds_to(receiver, name)
+                    && (!matches!(visibility, CoreVisibility::Public)
+                        || !self.method_is_restricted(receiver, name));
+                if listed && !names.iter().any(|held| held == name) {
+                    names.push(name.to_string());
+                }
+            }
+        }
+        Ok(names)
+    }
+}
+
+impl VirtualMachine {
+    /// The methods Ruby's core classes and modules define for instances of
+    /// `class`, from its own row of the core tables or, with `include_super`,
+    /// from those of its ancestors, by visibility. A name counts when an
+    /// instance of the class answers it, where one can be made to ask.
+    pub(crate) fn core_instance_method_names(
+        &mut self,
+        class: &std::rc::Rc<crate::class::Class>,
+        visibility: CoreVisibility,
+        include_super: bool,
+        position: Position,
+    ) -> Result<Vec<String>, MetorexError> {
+        let owners: Vec<String> = if include_super {
+            let ancestors = self.send_to_object(
+                Object::Class(std::rc::Rc::clone(class)),
+                "ancestors",
+                Vec::new(),
+                position,
+            )?;
+            match ancestors {
+                Object::Array(held) => held
+                    .borrow()
+                    .iter()
+                    .filter_map(|ancestor| match ancestor {
+                        Object::Class(module) | Object::Module(module) => Some(module.ruby_name()),
+                        _ => None,
+                    })
+                    .collect(),
+                _ => Vec::new(),
+            }
+        } else {
+            vec![class.ruby_name()]
+        };
+        let sample = self.sample_instance(class, position);
+        let mut names: Vec<String> = Vec::new();
+        // The nearest ancestor defining a name settles its visibility, so a
+        // name a nearer row already holds is passed over in a farther one.
+        let mut settled: Vec<&str> = Vec::new();
+        for owner in owners {
+            let Some(row) = crate::vm::native_methods::core_method_names::CORE_METHODS
+                .iter()
+                .find(|row| row.owner == owner)
+            else {
+                continue;
+            };
+            let candidates = match visibility {
+                CoreVisibility::Public => row.public,
+                CoreVisibility::Private => row.private,
+                CoreVisibility::Protected => row.protected,
+            };
+            let nearer = settled.len();
+            settled.extend(
+                row.public
+                    .iter()
+                    .chain(row.private)
+                    .chain(row.protected)
+                    .copied(),
+            );
+            for name in candidates {
+                if settled[..nearer].contains(name) {
+                    continue;
+                }
+                let listed = match &sample {
+                    Some(instance) => {
+                        self.responds_to(instance, name)
+                            && (!matches!(visibility, CoreVisibility::Public)
+                                || !self.method_is_restricted(instance, name))
+                    }
+                    None => class
+                        .find_method(name)
+                        .is_none_or(|method| !method.is_undefined),
+                };
+                if listed && !names.iter().any(|held| held == name) {
+                    names.push(name.to_string());
+                }
+            }
+        }
+        Ok(names)
+    }
+
+    /// An instance of `class` to ask which methods its instances answer:
+    /// a plain value for the classes whose instances are values, a bare
+    /// exception for an exception class, and otherwise what `allocate`
+    /// makes, when it makes anything.
+    fn sample_instance(
+        &mut self,
+        class: &std::rc::Rc<crate::class::Class>,
+        position: Position,
+    ) -> Option<Object> {
+        let made = match class.ruby_name().as_str() {
+            "String" => Object::string(String::new()),
+            "Symbol" => Object::symbol("sample".to_string()),
+            "Integer" => Object::Int(0),
+            "Float" => Object::Float(0.0),
+            "Array" => Object::array(Vec::new()),
+            "Hash" => Object::empty_dict(),
+            "Range" => Object::Range {
+                start: Box::new(Object::Int(0)),
+                end: Box::new(Object::Int(0)),
+                exclusive: false,
+                mark: std::rc::Rc::new(()),
+            },
+            "NilClass" => Object::Nil,
+            "TrueClass" => Object::Bool(true),
+            "FalseClass" => Object::Bool(false),
+            _ if self.is_exception_class(class) => {
+                let made = Object::exception(class.name(), "");
+                if let Object::Exception(details) = &made {
+                    details.borrow_mut().class = Some(std::rc::Rc::clone(class));
+                }
+                made
+            }
+            _ => self
+                .send_to_object(
+                    Object::Class(std::rc::Rc::clone(class)),
+                    "allocate",
+                    Vec::new(),
+                    position,
+                )
+                .ok()?,
+        };
+        Some(made)
+    }
+}
+
+impl VirtualMachine {
+    /// The names of the core table rows that answer for `receiver`: its
+    /// class's ancestors, behind `main` for the object a program runs against
+    /// at the top level.
+    pub(crate) fn receiver_owner_names(
+        &mut self,
+        receiver: &Object,
+        position: Position,
+    ) -> Result<Vec<String>, MetorexError> {
+        let class_object = self.send_to_object(receiver.clone(), "class", Vec::new(), position)?;
+        let mut owners = self.ancestor_names(class_object, position)?;
+        if self.is_the_main_object(receiver) {
+            owners.insert(0, "main".to_string());
+        }
+        Ok(owners)
+    }
+
+    /// The names of the classes and modules `class_object.ancestors` lists.
+    pub(crate) fn ancestor_names(
+        &mut self,
+        class_object: Object,
+        position: Position,
+    ) -> Result<Vec<String>, MetorexError> {
+        let ancestors = self.send_to_object(class_object, "ancestors", Vec::new(), position)?;
+        let Object::Array(held) = ancestors else {
+            return Ok(Vec::new());
+        };
+        let names = held
+            .borrow()
+            .iter()
+            .filter_map(|ancestor| match ancestor {
+                Object::Class(module) | Object::Module(module) => Some(module.ruby_name()),
+                _ => None,
+            })
+            .collect();
+        Ok(names)
+    }
+
+    /// Keep in a listing the names the program wrote, and the names Ruby's
+    /// core gives the visibility the listing is of, which the nearest of
+    /// `owners` defining the name decides. What the core library metorex writes
+    /// in Ruby defines for its own use, and a native name Ruby does not have,
+    /// is left out. `program_named` says whether the program wrote or named
+    /// the method a name reaches.
+    pub(crate) fn keep_listed(
+        owners: &[String],
+        wanted: &[CoreVisibility],
+        names: &mut Vec<String>,
+        program_named: impl Fn(&str) -> bool,
+    ) {
+        names.retain(|name| {
+            program_named(name)
+                || nearest_core_visibility(owners, name)
+                    .is_some_and(|visibility| wanted.contains(&visibility))
+        });
+    }
+}
+
+/// The visibility the nearest of `owners` that defines `name` in Ruby's core
+/// gives it.
+pub(crate) fn nearest_core_visibility(owners: &[String], name: &str) -> Option<CoreVisibility> {
+    owners.iter().find_map(|owner| {
+        let row = crate::vm::native_methods::core_method_names::CORE_METHODS
+            .iter()
+            .find(|row| row.owner == owner)?;
+        if row.public.contains(&name) {
+            Some(CoreVisibility::Public)
+        } else if row.private.contains(&name) {
+            Some(CoreVisibility::Private)
+        } else if row.protected.contains(&name) {
+            Some(CoreVisibility::Protected)
+        } else {
+            None
+        }
+    })
+}
+
+/// The nearest of `owners` Ruby's core defines `name` in, which is the
+/// owner Ruby names for a method a core class answers natively.
+pub(crate) fn nearest_core_owner(owners: &[String], name: &str) -> Option<&'static str> {
+    owners.iter().find_map(|owner| {
+        let row = crate::vm::native_methods::core_method_names::CORE_METHODS
+            .iter()
+            .find(|row| row.owner == owner)?;
+        [row.public, row.private, row.protected]
+            .iter()
+            .any(|names| names.contains(&name))
+            .then_some(row.owner)
+    })
+}
+
+/// Whether the program wrote a method, as against the core library metorex
+/// writes in Ruby or a stub standing for a native method. A body says where
+/// it was written. A method without one is the program's when it names a
+/// place in the source, a C function, or a method it stands for, as one made
+/// from a Method object does.
+pub(crate) fn written_by_program(method: &crate::object::Method) -> bool {
+    match method.body.first() {
+        Some(statement) => !statement.position().prelude,
+        None => {
+            method.source_location.is_some()
+                || method.c_function.is_some()
+                || method.native_alias.is_some()
+                || method.original_name.is_some()
+        }
+    }
+}
+
+impl VirtualMachine {
+    /// The names of the methods a program wrote on the class of nil, true,
+    /// false, a Symbol or a Regexp by reopening it, which lives apart from
+    /// the class the value is built from: the private ones, or the rest.
+    pub(crate) fn reopened_value_class_names(
+        &self,
+        receiver: &Object,
+        private: bool,
+    ) -> Vec<String> {
+        let Some(named) = crate::vm::method_lookup::reopened_class_name(receiver) else {
+            return Vec::new();
+        };
+        let Some(Object::Class(reopened)) = self.globals().get(named) else {
+            return Vec::new();
+        };
+        reopened
+            .method_names()
+            .into_iter()
+            .filter(|name| reopened.is_method_private(name) == private)
+            .filter(|name| {
+                reopened
+                    .find_method(name)
+                    .is_some_and(|method| !method.is_undefined)
+            })
+            .collect()
+    }
 }

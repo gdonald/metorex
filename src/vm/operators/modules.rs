@@ -118,6 +118,9 @@ impl VirtualMachine {
                 "bignum too big to convert into `long'",
                 position,
             )),
+            other if !self.responds_to(other, "to_int") => {
+                Err(crate::vm::errors::integer_conversion_error(other, position))
+            }
             other => match self.send_to_object(other.clone(), "to_int", vec![], position)? {
                 Object::Int(number) => Ok(number),
                 Object::BigInt(_) => Err(crate::vm::errors::simple_exception(
@@ -129,7 +132,7 @@ impl VirtualMachine {
                     "TypeError",
                     &format!(
                         "no implicit conversion of {} into Integer",
-                        self.builtins().class_of(&converted).name()
+                        crate::vm::errors::conversion_subject(&converted)
                     ),
                     position,
                 )),

@@ -33,10 +33,14 @@ impl VirtualMachine {
             if variables.contains_key(&name) {
                 continue;
             }
-            if let Some(cell) = self.environment().get_ref(&name) {
-                order.push(name.clone());
-                variables.insert(name, cell);
-            }
+            // A local the scope assigns after the block the binding is taken
+            // in has no cell the block can reach yet, and reads as nil.
+            let cell = self
+                .environment()
+                .get_ref(&name)
+                .unwrap_or_else(|| std::rc::Rc::new(std::cell::RefCell::new(Object::Nil)));
+            order.push(name.clone());
+            variables.insert(name, cell);
         }
         // At file scope there is no `self` binding; Ruby's top-level
         // self is `main`, which is what TOPLEVEL_BINDING holds.
@@ -60,8 +64,14 @@ impl VirtualMachine {
         // code run through the binding is nested in.
         // A class body opened inside the running method, `class << self`
         // included, is open here too, innermost first.
+        // A block `module_eval` runs counts too, though the method running
+        // it did not write it.
         let opened_in_method = self
             .written_in_method()
+            .or_else(|| {
+                self.current_method_frame
+                    .and_then(|frame| self.method_definees.get(&frame).cloned())
+            })
             .is_some_and(|(depth, _)| self.def_scope_stack.len() > depth);
         *held.nesting.borrow_mut() = match self.method_nesting_stack.last() {
             _ if opened_in_method => self.def_scope_stack.iter().rev().cloned().collect(),

@@ -38,6 +38,19 @@ impl VirtualMachine {
         arguments: &[Object],
         position: Position,
     ) -> Result<Option<Object>, MetorexError> {
+        let entered = self.enter_native_frame(Some(receiver), method_name, position);
+        let answered = self.call_object_method_body(receiver, method_name, arguments, position);
+        self.leave_native_call(entered, position, &answered);
+        answered
+    }
+
+    fn call_object_method_body(
+        &mut self,
+        receiver: &Object,
+        method_name: &str,
+        arguments: &[Object],
+        position: Position,
+    ) -> Result<Option<Object>, MetorexError> {
         // An instance of BasicObject, or of a class rooted there rather than
         // at Object, answers only the handful of methods BasicObject defines.
         // Everything Kernel and Object add arrives through Object, which such
@@ -61,13 +74,20 @@ impl VirtualMachine {
 
         // Operators reached by name rather than by syntax — `1.send(:+, 2)`,
         // or a method body built from `:+.to_proc`. Route them back through
-        // the binary-operator evaluator.
+        // the binary-operator evaluator. A pair it has no rule for is left to
+        // the receiver's own methods, which answer or refuse it as Ruby does.
         if arguments.len() == 1
             && let Some(op) = binary_op_for_method_name(method_name)
         {
-            return self
-                .evaluate_binary_operation(&op, receiver.clone(), arguments[0].clone(), position)
-                .map(Some);
+            return match self.evaluate_binary_operation(
+                &op,
+                receiver.clone(),
+                arguments[0].clone(),
+                position,
+            ) {
+                Err(MetorexError::TypeError { .. }) => Ok(None),
+                answered => answered.map(Some),
+            };
         }
 
         // A Proc is already one, so `to_proc` answers the same object.

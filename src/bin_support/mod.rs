@@ -15,6 +15,15 @@ mod options;
 mod records;
 mod startup;
 
+/// The name the interpreter was started by, as the command line spelled it,
+/// which a report made before any program runs begins with.
+pub(crate) fn program_name() -> String {
+    std::env::args_os()
+        .next()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "metorex".to_string())
+}
+
 pub(crate) use options::*;
 pub(crate) use records::*;
 pub(crate) use startup::*;

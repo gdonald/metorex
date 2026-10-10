@@ -29,7 +29,7 @@ puts plain.respond_to?(:visible)
 puts plain.respond_to?(:hidden)
 puts plain.respond_to?(:hidden, true)
 puts plain.respond_to?(:respond_to_missing?, true)
-puts plain.respond_to_missing?(:anything, true)
+puts(plain.send(:respond_to_missing?, :anything, true))
 
 puts Plain.respond_to?(:respond_to_missing?, true)
 

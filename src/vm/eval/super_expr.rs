@@ -497,8 +497,11 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<Object, MetorexError> {
         let self_val = self.environment().get("self").unwrap_or(Object::Nil);
-        if let Some(result) =
-            self.call_object_method(&self_val, method_name, &evaluated_args, position)?
+        // `method_missing` reached through `super` reports the method as one
+        // nothing defines, which the branch below writes.
+        if method_name != "method_missing"
+            && let Some(result) =
+                self.call_object_method(&self_val, method_name, &evaluated_args, position)?
         {
             return Ok(result);
         }
@@ -699,7 +702,9 @@ impl VirtualMachine {
             forward_args,
             block: super_block,
         } = call;
-        let receiver_class = self.builtins().class_of(&receiver);
+        let receiver_class = self
+            .exception_class(&receiver)
+            .unwrap_or_else(|| self.builtins().class_of(&receiver));
         let mut chain = Vec::new();
         if let Some(singleton) = self.existing_singleton_class(&receiver) {
             chain.push(singleton);
@@ -738,8 +743,12 @@ impl VirtualMachine {
             }
         }
 
+        // The native methods are reached through the record the value is
+        // built from, which for an exception the interpreter raised is not
+        // the class its name resolves to.
+        let native_class = self.builtins().class_of(&receiver);
         if let Some(result) = self.call_native_method(
-            &receiver_class,
+            &native_class,
             &receiver,
             method_name,
             &evaluated_args,

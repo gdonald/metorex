@@ -34,8 +34,6 @@ pub struct BuiltinClasses {
     pub runtime_error_class: Rc<Class>,
     /// TypeError class (inherits from StandardError)
     pub type_error_class: Rc<Class>,
-    /// ValueError class (inherits from StandardError)
-    pub value_error_class: Rc<Class>,
     /// File class for file I/O operations
     pub io_class: Rc<Class>,
     pub file_class: Rc<Class>,
@@ -90,7 +88,6 @@ impl BuiltinClasses {
         let runtime_error_class =
             Class::new("RuntimeError", Some(Rc::clone(&standard_error_class)));
         let type_error_class = Class::new("TypeError", Some(Rc::clone(&standard_error_class)));
-        let value_error_class = Class::new("ValueError", Some(Rc::clone(&standard_error_class)));
 
         Self {
             object_class,
@@ -107,7 +104,6 @@ impl BuiltinClasses {
             standard_error_class,
             runtime_error_class,
             type_error_class,
-            value_error_class,
             io_class,
             file_class,
             dir_class,
@@ -264,7 +260,6 @@ impl BuiltinClasses {
             Rc::clone(&self.runtime_error_class),
         );
         classes.insert("TypeError".to_string(), Rc::clone(&self.type_error_class));
-        classes.insert("ValueError".to_string(), Rc::clone(&self.value_error_class));
         classes.insert("File".to_string(), Rc::clone(&self.file_class));
         classes.insert("Dir".to_string(), Rc::clone(&self.dir_class));
         classes.insert("Range".to_string(), Rc::clone(&self.range_class));
@@ -426,13 +421,15 @@ pub fn init_object_methods(object_class: &Class) {
     let class_method = Rc::new(Method::new("class".to_string(), vec![], vec![]));
     object_class.define_method("class", class_method);
 
-    // Object#respond_to? - check if object responds to a method
-    let respond_to_method = Rc::new(Method::new(
+    // Object#respond_to? - check if object responds to a method, taking the
+    // name and whether private methods count.
+    let mut respond_to_method = Method::new(
         "respond_to?".to_string(),
-        vec![crate::object::UNNAMED_PARAMETER.to_string()],
+        vec!["arguments".to_string()],
         vec![],
-    ));
-    object_class.define_method("respond_to?", respond_to_method);
+    );
+    respond_to_method.variadic_param = Some((0, "arguments".to_string()));
+    object_class.define_method("respond_to?", Rc::new(respond_to_method));
 
     // Object#instance_of? - check exact class match
     let instance_of_method = Rc::new(Method::new(
@@ -497,10 +494,6 @@ pub fn init_string_methods(string_class: &Class) {
         vec![],
     ));
     string_class.define_method("+", concat_method);
-
-    // String#trim
-    let trim_method = Rc::new(Method::new("trim".to_string(), vec![], vec![]));
-    string_class.define_method("trim", trim_method);
 
     // String#reverse
     let reverse_method = Rc::new(Method::new("reverse".to_string(), vec![], vec![]));

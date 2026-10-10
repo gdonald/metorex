@@ -137,7 +137,7 @@ s.add("b")
 s.add("c")
 count = 0
 s.each do |x|
-  continue
+  next
 end
 count
 "#);

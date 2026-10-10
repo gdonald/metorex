@@ -1,10 +1,9 @@
 pub(super) const SOURCE: &str = r##"
 class Binding
-  # A session that reads Ruby from standard input and runs it here, with
-  # this binding's locals in scope, until `exit` or the end of the input.
+  # Loading irb defines this method over again, as the session it opens.
   def irb
     require "irb"
-    IRB.run_session(self, caller(1))
+    irb
   end
 end
 

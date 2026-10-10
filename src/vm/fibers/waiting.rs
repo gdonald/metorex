@@ -6,37 +6,16 @@ impl VirtualMachine {
     /// Where the code running now stands, one line per frame, innermost
     /// first. This is what the running thread answers for its own backtrace.
     pub(crate) fn own_backtrace_lines(&mut self, position: Position) -> Vec<String> {
-        let here = self
-            .current_source_file
-            .clone()
-            .or_else(|| {
-                self.current_file
-                    .as_ref()
-                    .map(|path| path.display().to_string())
-            })
-            .unwrap_or_default();
-        let frames: Vec<_> = self.call_stack().iter().rev().cloned().collect();
-        let innermost = frames
-            .first()
-            .map(|frame| frame.name().to_string())
-            .unwrap_or_else(|| "<main>".to_string());
-        let mut lines = vec![format!("{}:{}:in '{}'", here, position.line, innermost)];
-        for (index, frame) in frames.iter().enumerate() {
-            let line = frame_line(frame);
-            let path = frame.source_file().unwrap_or(&here);
-            let label = frames
-                .get(index + 1)
-                .map(|caller| caller.name().to_string())
-                .unwrap_or_else(|| "<main>".to_string());
-            lines.push(format!("{}:{}:in '{}'", path, line, label));
-        }
-        lines
+        self.running_backtrace_sites(position)
+            .into_iter()
+            .map(|((path, line, label), _)| format!("{}:{}:in '{}'", path, line, label))
+            .collect()
     }
 
     /// Where a thread stands: one line per frame it is inside, innermost
     /// first, the way a backtrace reads. A thread that has not started yet
     /// has no frames of its own.
-    pub(crate) fn thread_backtrace_lines(&self, thread: &Object) -> Option<Vec<String>> {
+    pub(crate) fn thread_backtrace_lines(&mut self, thread: &Object) -> Option<Vec<String>> {
         let Object::Instance(instance) = thread else {
             return None;
         };
@@ -53,7 +32,25 @@ impl VirtualMachine {
             _ => None,
         };
         let held = self.fibers.get(handle)?.held.as_ref()?;
-        let frames: Vec<_> = held.call_stack.iter().rev().collect();
+        let (call_stack, natives) = (held.call_stack.clone(), held.native_frames.clone());
+        // A thread inside a native method, such as `sleep`, stands where
+        // that method was called.
+        if let Some(innermost) = natives.last() {
+            let at = crate::lexer::Position::new(innermost.line, innermost.column, 0);
+            let standing = innermost.file.clone().unwrap_or_else(|| written_in.clone());
+            let flagged = self.frames_with_native_flags_of(&call_stack, &natives);
+            let native_flags: Vec<bool> = flagged.iter().rev().map(|(_, native)| *native).collect();
+            let merged = flagged.into_iter().map(|(frame, _)| frame).collect();
+            let (sites, _) =
+                crate::vm::exceptions::backtrace_sites(merged, &native_flags, standing, at);
+            return Some(
+                sites
+                    .into_iter()
+                    .map(|(path, line, label)| format!("{}:{}:in '{}'", path, line, label))
+                    .collect(),
+            );
+        }
+        let frames: Vec<_> = call_stack.iter().rev().collect();
         let mut lines = Vec::with_capacity(frames.len() + 1);
         // The innermost entry is where the thread stands right now, which is
         // the name of the wait it is parked in when it is parked in one.
@@ -543,12 +540,13 @@ impl VirtualMachine {
                 .map(|shown| shown.to_string())
                 .unwrap_or_default();
             message.push_str(&format!("* {described}\n"));
-            if let Ok(Object::Array(lines)) =
-                self.send_to_object(thread.clone(), "backtrace", vec![], position)
-            {
-                for line in lines.borrow().iter() {
-                    message.push_str(&format!("   {line}\n"));
-                }
+            let lines = if thread == &main {
+                self.own_backtrace_lines(position)
+            } else {
+                self.thread_backtrace_lines(thread).unwrap_or_default()
+            };
+            for line in lines {
+                message.push_str(&format!("   {line}\n"));
             }
         }
         let exception = Object::exception("fatal", message.clone());

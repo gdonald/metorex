@@ -395,6 +395,7 @@ fn test_class_with_nested_function() {
                 }],
                 position: pos(3, 5),
                 singleton_class: None,
+                end_position: Default::default(),
             }],
             position: pos(2, 3),
             end_position: pos(2, 3),

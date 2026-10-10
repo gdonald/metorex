@@ -11,6 +11,18 @@ impl VirtualMachine {
         arguments: Vec<Object>,
         position: Position,
     ) -> Result<Object, MetorexError> {
+        let entered = self.enter_native_frame(None, name, position);
+        let answered = self.call_native_function_body(name, arguments, position);
+        self.leave_native_call(entered, position, &answered);
+        answered
+    }
+
+    fn call_native_function_body(
+        &mut self,
+        name: &str,
+        arguments: Vec<Object>,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
         // The receiver the call was written with reaches the function invoked
         // here and no further, so a function that runs code of its own does
         // not hand it on to whatever that code calls.
@@ -50,8 +62,36 @@ impl VirtualMachine {
             "srand" => self.seed_generator(arguments, position),
             "sleep" => self.sleep_for(arguments, position),
             "__timeout_open__" => self.open_timeout(arguments, position),
+            "__continuation_site__" => Ok(self.continuation_site()),
+            "__continuation_resumed__" => Ok(self.continuation_resumed(&arguments)),
+            "__continuation_resume__" => self.continuation_resume(&arguments, position),
+            "__singleton_given__" => Ok(Object::Bool(
+                arguments
+                    .first()
+                    .is_some_and(|given| self.singleton_given(given)),
+            )),
+            "iterator?" => Ok(self.iterator_query(position)),
+            // Ruby leaves the choice of instance variables to the default
+            // `inspect` unless a class says otherwise.
+            "instance_variables_to_inspect" => Ok(Object::Nil),
             // The names `require` finds a library metorex carries under,
             // which did_you_mean suggests from alongside the load path.
+            // The source of a program given on the command line or on
+            // standard input, which has no file to read it back from.
+            "__console_mode_get__"
+            | "__console_mode_set__"
+            | "__console_mode_change__"
+            | "__console_mode_query__"
+            | "__console_winsize__"
+            | "__console_set_winsize__"
+            | "__console_flush__"
+            | "__console_beep__"
+            | "__console_ttyname__" => self.call_console_function(name, &arguments),
+            "__prism_version__"
+            | "__prism_serialize__"
+            | "__prism_serialize_stream__"
+            | "__prism_parse_success__"
+            | "__prism_string_query__" => self.call_prism_function(name, &arguments, position),
             "__embedded_library_names__" => Ok(Object::array(
                 crate::vm::stdlib::embedded_library_names()
                     .map(|name| Object::string(name.to_string()))
@@ -153,7 +193,8 @@ impl VirtualMachine {
             "require_relative" => self.require_relative_feature(arguments, position),
             "print" => self.print_values(arguments, position),
             "printf" => self.print_formatted(arguments, position),
-            "p" | "pp" => self.inspect_values(arguments, position),
+            "p" => self.inspect_values(arguments, position),
+            "pp" => self.pretty_print_values(arguments, position),
             "readline" => self.read_through_argf("readline", arguments, position),
             "readlines" => self.read_through_argf("readlines", arguments, position),
             "gets" => self.read_through_argf("gets", arguments, position),

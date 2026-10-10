@@ -192,7 +192,7 @@ impl VirtualMachine {
             if let Object::Method(method) = &val
                 && self.name_is_a_definition(name, &val)
             {
-                let receiver = self.environment().get("self").unwrap_or(Object::Nil);
+                let receiver = self.eval_self(position).unwrap_or(Object::Nil);
                 let class = self.builtins().class_of(&receiver);
                 let method = Rc::clone(method);
                 return self.invoke_method(class, method, receiver, vec![], position);
@@ -474,6 +474,8 @@ pub(crate) fn runs_when_named_bare(name: &str) -> bool {
             | "using"
             | "__method__"
             | "__callee__"
+            | "iterator?"
+            | "instance_variables_to_inspect"
             | "__timeout_close__"
             | "__load_abstract_syntax_tree__"
             | "__load_instruction_sequence__"

@@ -601,7 +601,7 @@ impl VirtualMachine {
         let Object::String(source) = replacement else {
             let message = format!(
                 "no implicit conversion of {} into String",
-                self.builtins().class_of(replacement).name()
+                crate::vm::errors::conversion_subject(replacement)
             );
             return Err(crate::vm::errors::simple_exception(
                 "TypeError",

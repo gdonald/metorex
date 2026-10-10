@@ -40,14 +40,6 @@ fn string_bytes_returns_array_of_ints() {
 }
 
 #[test]
-fn string_trim_method() {
-    let result = run(r#"
-"  hello  ".trim
-"#);
-    assert_eq!(result, Some(Object::string("hello")));
-}
-
-#[test]
 fn string_strip_method() {
     let result = run(r#"
 "  hello  ".strip

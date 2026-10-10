@@ -16,7 +16,7 @@ pub(crate) fn symbol_to_proc_block(
         }),
         // The call goes out through `public_send`, so a name the receiver
         // keeps to itself is refused rather than reached.
-        method: "public_send".to_string(),
+        method: SYMBOL_PROC_SEND.to_string(),
         arguments: vec![
             Expression::Symbol {
                 value: name.to_string(),
@@ -56,6 +56,10 @@ pub(crate) fn symbol_to_proc_block(
 /// The names the block `Symbol#to_proc` builds takes. Ruby reports them with
 /// no names at all, so the pair is recognized by these.
 pub(crate) const SYMBOL_PROC_RECEIVER: &str = "__symbol_proc_receiver";
+
+/// The name a symbol proc sends through: `public_send`, with no frame of
+/// its own in a backtrace, as MRI lists none.
+pub(crate) const SYMBOL_PROC_SEND: &str = "__symbol_proc_send__";
 pub(crate) const SYMBOL_PROC_ARGS: &str = "__symbol_proc_args";
 
 /// Map an operator method name back to its `BinaryOp`, for calls that arrive

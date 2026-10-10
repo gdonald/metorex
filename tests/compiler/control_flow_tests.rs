@@ -199,13 +199,13 @@ fn compile_break_outside_loop_errors() {
 
 #[test]
 fn compile_continue_in_while() {
-    let chunk = compile("while true\n  continue\nend");
+    let chunk = compile("while true\n  next\nend");
     let ops = opcodes(&chunk);
     // continue emits a Loop instruction to jump back
     let loop_count = ops.iter().filter(|&&op| op == OpCode::Loop).count();
     assert!(
         loop_count >= 2,
-        "Expected at least 2 Loop ops (continue + loop end)"
+        "Expected at least 2 Loop ops (next + loop end)"
     );
 }
 
@@ -218,7 +218,7 @@ fn compile_continue_outside_loop_errors() {
     let result = compile_stmts(&stmts);
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(err.contains("continue outside of loop"), "Error was: {err}");
+    assert!(err.contains("next outside of loop"), "Error was: {err}");
 }
 
 // ── Break and continue with nested scopes ────────────────────────────
@@ -234,7 +234,7 @@ fn compile_break_in_nested_if() {
 
 #[test]
 fn compile_continue_in_nested_if() {
-    let chunk = compile("while true\n  if true\n    continue\n  end\nend");
+    let chunk = compile("while true\n  if true\n    next\n  end\nend");
     let ops = opcodes(&chunk);
     let loop_count = ops.iter().filter(|&&op| op == OpCode::Loop).count();
     assert!(loop_count >= 2);

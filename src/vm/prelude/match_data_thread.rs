@@ -309,13 +309,6 @@ class << __main__
   def inspect
     "main"
   end
-
-  private
-
-  # A module included at the top level is included into Object.
-  def include(*modules)
-    Object.include(*modules)
-  end
 end
 
 class Thread

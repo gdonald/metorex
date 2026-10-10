@@ -558,7 +558,7 @@ value + " world"
 fn an_operator_written_on_an_ancestor_leaves_the_native_arithmetic_in_place() {
     let error = run_err(r#"42 % "not a number""#);
     assert!(
-        error.contains("Cannot apply operator 'Modulo' to types 'Int' and 'String'"),
+        error.contains("String can't be coerced into Integer"),
         "unexpected error: {}",
         error
     );

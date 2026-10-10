@@ -14,6 +14,9 @@ pub(crate) struct RunningCode {
     /// The line the body last ran, which a `return` or `b_return` event
     /// reports.
     pub(crate) line: usize,
+    /// Whether the body left through a `return`, whose line a `return`
+    /// event names rather than the line the definition ends on.
+    pub(crate) returned_explicitly: bool,
     /// How many native calls were running when the body started, put back
     /// when it ends.
     native_calls_before: usize,
@@ -28,6 +31,7 @@ impl VirtualMachine {
         self.running_code.push(RunningCode {
             within,
             line,
+            returned_explicitly: false,
             native_calls_before,
         });
     }
@@ -212,6 +216,28 @@ impl VirtualMachine {
         for (name, value) in extra {
             entries.insert((*name).to_string(), value.clone());
         }
+        // Code written in Ruby is read through a binding of the scope it
+        // runs in, which a C method has none of.
+        if !entries.contains_key("binding")
+            && !matches!(event, "c_call" | "c_return")
+            && let Ok(binding) = self.kernel_binding(position)
+        {
+            entries.insert("binding".to_string(), binding);
+        }
+        // A line or a raise inside a method names that method and the class
+        // it was written on.
+        if matches!(event, "line" | "raise")
+            && !entries.contains_key("method_id")
+            && let Some((callee, defined)) = self.enclosing_method_names()
+        {
+            entries.insert("method_id".to_string(), Object::symbol(defined));
+            entries.insert("callee_id".to_string(), Object::symbol(callee));
+            if let Some((Some(owner), _)) = self.enclosing_method_owner()
+                && let Some(class) = self.resolve_qualified_constant(&owner)
+            {
+                entries.insert("defined_class".to_string(), class);
+            }
+        }
         let within = self
             .running_code
             .last()
@@ -295,11 +321,16 @@ impl VirtualMachine {
                     None => position,
                 },
             ),
+            // A method's return names the line it returned from, or the
+            // line its definition ends on when the body ran to its end.
             (false, _) => (
                 event,
-                match self.running_code.last() {
-                    Some(running) => Position::new(running.line, 0, 0),
-                    None => position,
+                match (self.running_code.last(), method.end_line) {
+                    (Some(running), Some(end)) if !running.returned_explicitly => {
+                        Position::new(end, 0, 0)
+                    }
+                    (Some(running), _) => Position::new(running.line, 0, 0),
+                    (None, _) => position,
                 },
             ),
         };

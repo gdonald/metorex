@@ -89,7 +89,11 @@ impl Parser {
                 });
             }
         }
-        self.parse_expression()
+        // A `rescue` after the names is a modifier on the whole statement.
+        self.paren_less_arg_depth += 1;
+        let parsed = self.parse_expression();
+        self.paren_less_arg_depth -= 1;
+        parsed
     }
 }
 

@@ -5,13 +5,15 @@ use super::*;
 impl Parser {
     /// Parse a single statement
     pub(crate) fn parse_statement(&mut self) -> Result<Statement, MetorexError> {
-        // A statement is never itself part of a paren-less argument list, even
-        // when it sits in a block body inside one. Clearing the depth here is
-        // what lets `guard -> { a or b }` read the `or` as its own.
-        let enclosing_arg_depth = self.paren_less_arg_depth;
-        self.paren_less_arg_depth = 0;
+        // A statement is never itself part of a paren-less argument list or
+        // the right side of an assignment, even when it sits in a body inside
+        // one. Clearing the depths here is what lets `guard -> { a or b }`
+        // and `v = if ready then a or b end` read the `or` as their own.
+        let enclosing_arg_depth = std::mem::take(&mut self.paren_less_arg_depth);
+        let enclosing_assignment_depth = std::mem::take(&mut self.assignment_rhs_depth);
         let parsed = self.parse_statement_inner();
         self.paren_less_arg_depth = enclosing_arg_depth;
+        self.assignment_rhs_depth = enclosing_assignment_depth;
         // `value => pattern` and `value in pattern` stand where a statement
         // does, so the test is read once the value has been.
         let Ok(Statement::Expression {
@@ -99,7 +101,12 @@ impl Parser {
                     self.definition_chained_onto(definition, token.position)
                 }
             }
-            TokenKind::Def => self.parse_function_def(),
+            // `def name; end if condition` defines the method only when the
+            // condition holds.
+            TokenKind::Def => {
+                let definition = self.parse_function_def()?;
+                self.wrap_with_modifier(definition)
+            }
             TokenKind::If => self.control_flow_statement(token.position, Self::parse_if_statement),
             TokenKind::Unless => {
                 self.control_flow_statement(token.position, Self::parse_unless_statement)
@@ -128,9 +135,18 @@ impl Parser {
                 let stmt = self.parse_return_statement()?;
                 self.wrap_with_modifier(stmt)
             }
-            TokenKind::AttrReader => self.parse_attr_reader(),
-            TokenKind::AttrWriter => self.parse_attr_writer(),
-            TokenKind::AttrAccessor => self.parse_attr_accessor(),
+            TokenKind::AttrReader => {
+                let call = self.parse_attr_reader()?;
+                self.wrap_with_modifier(call)
+            }
+            TokenKind::AttrWriter => {
+                let call = self.parse_attr_writer()?;
+                self.wrap_with_modifier(call)
+            }
+            TokenKind::AttrAccessor => {
+                let call = self.parse_attr_accessor()?;
+                self.wrap_with_modifier(call)
+            }
             TokenKind::Module => {
                 let definition = self.parse_module_def()?;
                 self.definition_chained_onto(definition, token.position)
@@ -288,7 +304,10 @@ impl Parser {
                         }
                         TokenKind::LogicalOrAssign => Expression::BinaryOp {
                             op: BinaryOp::Or,
-                            left: Box::new(expr.clone()),
+                            left: Box::new(crate::parser::statements::or_assign_reading(
+                                &BinaryOp::Or,
+                                expr.clone(),
+                            )),
                             right: Box::new(value),
                             position: op_token.position,
                         },

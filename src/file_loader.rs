@@ -308,6 +308,18 @@ pub fn resolve_relative_path(
 /// * `Ok(Vec<Statement>)` - The parsed AST
 /// * `Err(MetorexError)` - If there are syntax errors in the source code
 pub fn parse_file(source: &str, filename: &str) -> Result<Vec<Statement>, MetorexError> {
+    parse_file_with_warnings(source, filename).map(|(statements, _)| statements)
+}
+
+/// The warnings reading a file gave, each at the place it names.
+pub type ParseWarnings = Vec<(crate::lexer::Position, String)>;
+
+/// A file's statements, with the warnings reading it gave whatever the
+/// verbosity.
+pub fn parse_file_with_warnings(
+    source: &str,
+    filename: &str,
+) -> Result<(Vec<Statement>, ParseWarnings), MetorexError> {
     // Create lexer from source
     let lexer = Lexer::new(source);
 
@@ -318,23 +330,27 @@ pub fn parse_file(source: &str, filename: &str) -> Result<Vec<Statement>, Metore
     let mut parser = Parser::new(tokens);
 
     // Parse and return AST, converting parse errors to MetorexError
-    parser.parse().map_err(|errors| {
-        // If there are multiple parse errors, we'll return the first one
-        // In the future, we might want to collect all errors
-        if let Some(first_error) = errors.first() {
-            // Create a new error with the filename context
-            MetorexError::runtime_error(
-                format!("Parse error in '{}': {}", filename, first_error),
-                SourceLocation::new(0, 0, 0),
-            )
-        } else {
-            // Shouldn't happen, but handle gracefully
-            MetorexError::runtime_error(
-                format!("Unknown parse error in '{}'", filename),
-                SourceLocation::new(0, 0, 0),
-            )
-        }
-    })
+    let parsed = parser.parse();
+    let warnings = parser.default_warnings().to_vec();
+    parsed
+        .map(|statements| (statements, warnings))
+        .map_err(|errors| {
+            // If there are multiple parse errors, we'll return the first one
+            // In the future, we might want to collect all errors
+            if let Some(first_error) = errors.first() {
+                // Create a new error with the filename context
+                MetorexError::runtime_error(
+                    format!("Parse error in '{}': {}", filename, first_error),
+                    SourceLocation::new(0, 0, 0),
+                )
+            } else {
+                // Shouldn't happen, but handle gracefully
+                MetorexError::runtime_error(
+                    format!("Unknown parse error in '{}'", filename),
+                    SourceLocation::new(0, 0, 0),
+                )
+            }
+        })
 }
 
 /// The text a file holds. A file whose bytes do not spell UTF-8 is read in

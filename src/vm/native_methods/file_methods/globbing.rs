@@ -33,8 +33,14 @@ impl VirtualMachine {
                         .iter()
                         .map(|(key, value)| (key.clone(), value.clone()))
                         .collect();
+                    let mut unknown = Vec::new();
                     for (key, value) in entries {
                         match key.as_str() {
+                            ":flags" => {
+                                if let Object::Int(held) = value {
+                                    flags = held;
+                                }
+                            }
                             ":base" => {
                                 base = match &value {
                                     Object::Nil => None,
@@ -52,8 +58,21 @@ impl VirtualMachine {
                                     ));
                                 }
                             },
+                            named if named.starts_with(':') => unknown.push(named.to_string()),
                             _ => {}
                         }
+                    }
+                    if !unknown.is_empty() {
+                        let word = if unknown.len() == 1 {
+                            "keyword"
+                        } else {
+                            "keywords"
+                        };
+                        return Err(crate::vm::errors::simple_exception(
+                            "ArgumentError",
+                            &format!("unknown {word}: {}", unknown.join(", ")),
+                            position,
+                        ));
                     }
                 }
                 other => patterns.push(self.glob_pattern_text(other, position)?),

@@ -8,7 +8,7 @@ impl Parser {
         let start_pos = self.expect(TokenKind::If, "Expected 'if'")?.position;
         self.skip_whitespace();
 
-        let condition = self.parse_condition()?;
+        let condition = self.parse_tested_condition()?;
         self.skip_whitespace();
         // `if cond then` may hold its body on the following line.
         self.match_token(&[TokenKind::Then]);
@@ -32,7 +32,7 @@ impl Parser {
             let elsif_pos = self.previous().position;
             self.skip_whitespace();
 
-            let elsif_condition = self.parse_condition()?;
+            let elsif_condition = self.parse_tested_condition()?;
             self.skip_whitespace();
             // `elsif cond then` may hold its body on the same line.
             self.match_token(&[TokenKind::Then]);
@@ -94,7 +94,7 @@ impl Parser {
         let start_pos = self.expect(TokenKind::While, "Expected 'while'")?.position;
         self.skip_whitespace();
 
-        let condition = self.parse_condition()?;
+        let condition = self.parse_tested_condition()?;
         self.skip_whitespace();
 
         // Optionally consume 'do'
@@ -128,7 +128,7 @@ impl Parser {
         let start_pos = self.expect(TokenKind::Until, "Expected 'until'")?.position;
         self.skip_whitespace();
 
-        let condition = self.parse_condition()?;
+        let condition = self.parse_tested_condition()?;
         self.skip_whitespace();
         self.match_token(&[TokenKind::Do]);
         self.skip_whitespace();
@@ -188,6 +188,9 @@ impl Parser {
 
         // Expect 'in' keyword
         self.expect(TokenKind::In, "Expected 'in' after loop variable")?;
+        for target in &targets {
+            self.declare_target(target);
+        }
         self.skip_whitespace();
 
         // Parse the iterable expression

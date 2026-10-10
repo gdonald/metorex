@@ -150,7 +150,10 @@ impl Records {
                     return Some(true);
                 }
                 Err(trouble) => {
-                    eprintln!("metorex: No such file or directory -- {named} ({trouble})");
+                    eprintln!(
+                        "{}: No such file or directory -- {named} ({trouble})",
+                        program_name()
+                    );
                     return Some(false);
                 }
             }

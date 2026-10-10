@@ -155,7 +155,7 @@ fn an_ftp_uri_carries_a_typecode_and_a_rootless_path() {
     );
     assert!(
         run_err("require 'uri'\nURI.parse('ftp://host/x').typecode = 'z'")
-            .contains("bad component")
+            .contains("bad typecode(expected a, i, d): z")
     );
 }
 
@@ -168,9 +168,11 @@ fn an_ldap_uri_splits_its_query_into_named_fields() {
     assert_eq!(quoted(&format!("{HELD}held.scope")), "sub");
     assert_eq!(quoted(&format!("{HELD}held.filter")), "filter");
     assert_eq!(quoted(&format!("{HELD}held.extensions")), "ext");
-    assert!(
-        run_err("require 'uri'\nURI.parse('ldap://host/dn').scope = 'nowhere'")
-            .contains("bad component")
+    assert_eq!(
+        quoted(
+            "require 'uri'\nheld = URI.parse('ldap://host/dn')\nheld.scope = 'nowhere'\nheld.scope"
+        ),
+        "nowhere"
     );
 }
 
@@ -188,7 +190,7 @@ fn a_mailto_uri_splits_its_address_from_its_headers() {
     );
     assert!(
         run_err("require 'uri'\nURI::MailTo.build(['javascript:alert()', []])")
-            .contains("invalid as URI")
+            .contains("unrecognised opaque part for mailtoURL")
     );
 }
 
@@ -259,15 +261,24 @@ fn join_walks_a_base_through_every_reference_in_turn() {
         quoted("require 'uri'\nURI.join('http://a/b', 'http://x/y', 'z').to_s"),
         "http://x/z"
     );
-    assert!(run_err("require 'uri'\nURI.join").contains("wrong number of arguments"));
+    assert!(
+        run_err("require 'uri'\nURI.join")
+            .contains("bad argument (expected URI object or URI string)")
+    );
 }
 
 // ── Escaping and forms ─────────────────────────────────────────────────────
 
 #[test]
 fn escaping_replaces_what_a_uri_may_not_carry() {
-    assert_eq!(quoted("require 'uri'\nURI.escape('a b&c')"), "a%20b&c");
-    assert_eq!(quoted("require 'uri'\nURI.unescape('a%20b%26c')"), "a b&c");
+    assert_eq!(
+        quoted("require 'uri'\nURI::RFC2396_PARSER.escape('a b&c')"),
+        "a%20b&c"
+    );
+    assert_eq!(
+        quoted("require 'uri'\nURI::RFC2396_PARSER.unescape('a%20b%26c')"),
+        "a b&c"
+    );
     assert_eq!(
         quoted("require 'uri'\nURI.encode_www_form_component('a b&c')"),
         "a+b%26c"
@@ -358,7 +369,7 @@ fn a_component_that_the_scheme_has_no_room_for_is_refused() {
     );
     assert!(
         run_err("require 'uri'\nURI.parse('http://a').registry = 'x'")
-            .contains("can not set registry")
+            .contains("cannot set registry")
     );
     assert!(
         run_err("require 'uri'\nURI.parse('http://a/p').select('scheme')").contains("expected")

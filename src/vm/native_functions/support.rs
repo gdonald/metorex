@@ -153,8 +153,6 @@ pub(crate) const BUILT_IN_FEATURES: &[&str] = &[
     "complex",
     "enumerator",
     "fiber",
-    "pathname",
-    "prettyprint",
     "rational",
     "ruby2_keywords",
     "set",

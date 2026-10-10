@@ -136,6 +136,15 @@ impl VirtualMachine {
         self.primitive_singleton_classes.get(&key).map(Rc::clone)
     }
 
+    /// Whether `receiver` was given a singleton class, without making one.
+    pub(crate) fn singleton_given(&self, receiver: &Object) -> bool {
+        match receiver {
+            Object::Instance(held) => held.borrow().singleton_class.borrow().is_some(),
+            Object::Class(held) | Object::Module(held) => held.singleton_class_slot().is_some(),
+            other => self.existing_singleton_class(other).is_some(),
+        }
+    }
+
     /// Carry the methods an object was given of its own over to a copy of it,
     /// which is what `clone` does and `dup` does not.
     pub(crate) fn copy_singleton_methods(&mut self, source: &Object, copy: &Object) {

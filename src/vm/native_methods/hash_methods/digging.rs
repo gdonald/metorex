@@ -121,7 +121,7 @@ impl VirtualMachine {
                         other => {
                             let message = format!(
                                 "no implicit conversion of {} into Hash",
-                                self.builtins().class_of(other).ruby_name()
+                                crate::vm::errors::conversion_subject(other)
                             );
                             return Err(crate::vm::errors::simple_exception(
                                 "TypeError",
@@ -155,7 +155,11 @@ impl VirtualMachine {
                         };
                         merged.insert(key, settled);
                     }
-                    // The key objects the other hash recorded travel with it.
+                    // The key objects the other hash recorded travel with it,
+                    // and so does its note of keys placed by how they render.
+                    if other_rc.borrow().contains_key(RENDERED_OBJECTS_KEY) {
+                        merged.insert(RENDERED_OBJECTS_KEY.to_string(), Object::Bool(true));
+                    }
                     if let Some(Object::Dict(other_keys)) = other_rc.borrow().get(KEY_OBJECTS_KEY) {
                         let mut ours = match merged.get(KEY_OBJECTS_KEY) {
                             Some(Object::Dict(existing)) => existing.borrow().clone(),

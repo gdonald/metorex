@@ -208,7 +208,215 @@ class RubyVM
         node(:SCOPE, [@frames.last.names, nil, body], span)
       end
 
+      # The spans of the keywords and operators MRI records for a node of
+      # its type, in the order `Node#locations` lists them after the node's
+      # own span, or nil for a type that records none.
+      def recorded_locations(node)
+        own = owned_tokens(node)
+        find = ->(*types) { own.find { |token| types.include?(token.type) } }
+        last = ->(*types) { own.reverse_each.find { |token| types.include?(token.type) } }
+        opening = ->(token) { token if token && [token.line, token.column] == [node.first_lineno, node.first_column] }
+        spans = case node.type
+                when :ALIAS, :VALIAS then [find.(:k_alias)]
+                when :AND then [find.(:"&&", :k_and)]
+                when :OR then [find.(:"||", :k_or, :|)]
+                when :BLOCK_PASS then [block_pass_operator(node)]
+                when :BREAK then [find.(:k_break)]
+                when :NEXT then [find.(:k_next)]
+                when :REDO then [find.(:k_redo)]
+                when :RETURN then [find.(:k_return)]
+                when :CASE, :CASE2, :CASE3 then [find.(:k_case), last.(:k_end)]
+                when :CLASS then [find.(:k_class), find.(:<), last.(:k_end)]
+                when :SCLASS then [find.(:k_class), find.(:<<), last.(:k_end)]
+                when :MODULE then [find.(:k_module), last.(:k_end)]
+                when :COLON2 then [find.(:colon2), own.last]
+                when :COLON3 then [find.(:colon3), own.last]
+                when :DEFINED then [find.(:"k_defined?")]
+                when :DOT2, :DOT3, :FLIP2, :FLIP3 then [find.(:dot2, :dot3, :bdot2, :bdot3)]
+                when :EVSTR then [find.(:string_dbeg, :string_dvar), find.(:string_dend)]
+                when :FOR then [find.(:k_for), find.(:k_in), find.(:k_do_cond), last.(:k_end)]
+                when :LAMBDA then lambda_tokens(node)
+                when :IF, :UNLESS then conditional_tokens(node, own, opening)
+                when :IN then pattern_branch_tokens(node, own)
+                when :WHEN then [find.(:k_when), then_span(node, own, find.(:k_when))]
+                when :OP_ASGN1 then [nil, find.(:"[", :lbrack), find.(:"]"), find.(:op_asgn)]
+                when :OP_ASGN2 then [find.(:".", :"&.", :colon2), find.(:ident, :const, :fid), find.(:op_asgn)]
+                when :POSTEXE then [find.(:k_END), find.(:"{"), last.(:"}")]
+                when :REGX then regexp_tokens(own)
+                when :SPLAT then [find.(:star, :*)]
+                when :SUPER then [find.(:k_super), find.(:"(", :lparen_arg), last.(:")")]
+                when :YIELD then [find.(:k_yield), find.(:"(", :lparen_arg), last.(:")")]
+                when :UNDEF then [find.(:k_undef)]
+                when :WHILE then [find.(:k_while, :k_while_mod), opening.(find.(:k_while)) && last.(:k_end)]
+                when :UNTIL then [find.(:k_until, :k_until_mod), opening.(find.(:k_until)) && last.(:k_end)]
+                else return nil
+                end
+        spans.map { |held| held.is_a?(Token) ? span_of_tokens(held.index, held.index) : held }
+      end
+
       private
+
+      # Whether the span of `inner` lies inside that of `outer` and is not
+      # all of it.
+      def within_span?(inner, outer)
+        first = [inner.first_lineno, inner.first_column]
+        last = [inner.last_lineno, inner.last_column]
+        (first <=> [outer.first_lineno, outer.first_column]) >= 0 &&
+          (last <=> [outer.last_lineno, outer.last_column]) <= 0 &&
+          [first, last] != [[outer.first_lineno, outer.first_column], [outer.last_lineno, outer.last_column]]
+      end
+
+      # The tokens written within a node and outside each of its children.
+      # A child spanning all of the node or more, such as the scope of a
+      # class body, gives way to its own children.
+      def owned_tokens(node)
+        inside = ->(token, first, last) do
+          finish = end_of(token.index)
+          ([token.line, token.column] <=> first) >= 0 && (finish <=> last) <= 0
+        end
+        children = []
+        gather = lambda do |value|
+          case value
+          when Node
+            if within_span?(value, node)
+              children << value
+            else
+              value.children.each { |child| gather.call(child) }
+            end
+          when Array then value.each { |item| gather.call(item) }
+          end
+        end
+        node.children.each { |child| gather.call(child) }
+        first = [node.first_lineno, node.first_column]
+        last = [node.last_lineno, node.last_column]
+        @tokens.select do |token|
+          next false unless inside.(token, first, last)
+
+          children.none? do |child|
+            inside.(token, [child.first_lineno, child.first_column], [child.last_lineno, child.last_column])
+          end
+        end
+      end
+
+      # The `if`, `elsif` or `unless`, the `then` and the `end` of a
+      # conditional. A ternary records its `:` as the `then`, and an `elsif`
+      # the `end` that closes the whole conditional after it.
+      def conditional_tokens(node, own, opening)
+        if (mark = own.find { |token| token.type == :"?" })
+          return [nil, own.find { |token| token.type == :":" && token.index > mark.index }, nil]
+        end
+
+        keyword = own.find { |token| %i[k_if k_elsif k_if_mod k_unless k_unless_mod].include?(token.type) }
+        return [keyword, nil, nil] unless opening.(keyword)
+
+        closing = if keyword&.type == :k_elsif
+                    following = end_index_of(node)
+                    following += 1 while following && %i[nl ;].include?(@tokens[following]&.type)
+                    following && @tokens[following]&.type == :k_end ? @tokens[following] : nil
+                  else
+                    own.reverse_each.find { |token| token.type == :k_end }
+                  end
+        [keyword, then_span(node, own, keyword), closing]
+      end
+
+      # The `in` and `then` of a pattern branch. A one-line pattern match
+      # written `value in pattern` or `value => pattern` records the `in`
+      # or the `=>` written before the pattern.
+      def pattern_branch_tokens(node, own)
+        keyword = own.find { |token| token.type == :k_in }
+        return [keyword, then_span(node, own, keyword), nil] if keyword
+
+        before = @tokens.reverse_each.find do |token|
+          token.type != :nl && (end_of(token.index) <=> [node.first_lineno, node.first_column]) <= 0
+        end
+        case before&.type
+        when :k_in then [before, nil, nil]
+        when :"=>" then [nil, nil, before]
+        else [nil, nil, nil]
+        end
+      end
+
+      # The `&` of a block argument, which an anonymous one is written as
+      # alone.
+      def block_pass_operator(node)
+        block = node.children.last
+        @tokens.reverse_each.find do |token|
+          %i[amper &].include?(token.type) &&
+            ([token.line, token.column] <=> [block.first_lineno, block.first_column]) <= 0 &&
+            ([token.line, token.column] <=> [node.first_lineno, node.first_column]) >= 0
+        end
+      end
+
+      # The index of the first token after a node.
+      def end_index_of(node)
+        @tokens.index { |token| ([token.line, token.column] <=> [node.last_lineno, node.last_column]) >= 0 }
+      end
+
+      # Where the `then` of a branch is: the newline or `;` that ends its
+      # condition, through a `then` keyword that follows it. A newline is
+      # recorded without width, where the line's text ends.
+      def then_span(node, own, keyword)
+        return nil if keyword.nil?
+
+        condition = node.children[0]
+        reached = end_of(keyword.index)
+        if condition.is_a?(Node) && within_span?(condition, node)
+          reached = [reached, [condition.last_lineno, condition.last_column]].max
+        end
+        term = nil
+        depth = 0
+        own.each do |token|
+          next if token.index <= keyword.index
+
+          depth = [depth + nesting(token), 0].max
+          next if ([token.line, token.column] <=> reached).negative?
+          break term = token if depth.zero? && %i[nl ; k_then].include?(token.type)
+
+          reached = [reached, end_of(token.index)].max
+        end
+        line, column = reached
+        text = @source_lines[line - 1].to_s
+        gap = text.byteslice(column..).to_s[/\A[ \t]*/].to_s
+        newline_at = column + gap.bytesize
+        # MRI places the newline after a comment past the line's end.
+        newline_at = text.bytesize if text.getbyte(newline_at) == "#".ord
+        newline = text.getbyte(newline_at).nil? || text.getbyte(newline_at) == 10
+        first = if newline && (term.nil? || term.line > line || term.type == :nl)
+                  [line, newline_at, line, newline_at]
+                elsif term && term.type != :nl
+                  span_of_tokens(term.index, term.index)
+                end
+        return nil if first.nil?
+        return first if term&.type == :k_then && first == span_of_tokens(term.index, term.index)
+
+        following = @tokens.find do |token|
+          token.type != :nl && ([token.line, token.column] <=> first[2, 2]) >= 0
+        end
+        return first unless following&.type == :k_then && own.include?(following)
+
+        [*first[0, 2], *end_of(following.index)]
+      end
+
+      # A regexp's opening, its text, and its closing. An empty regexp's
+      # text has no width.
+      def regexp_tokens(own)
+        opening = own.find { |token| token.type == :regexp_beg }
+        closing = own.reverse_each.find { |token| token.type == :regexp_end }
+        content = own.find { |token| token.type == :string_content }
+        content ||= opening && [*end_of(opening.index), *end_of(opening.index)]
+        [opening, content, closing]
+      end
+
+      # A lambda's `->`, the `{` or `do` that opens its body and the `}` or
+      # `end` that closes it. Its body's scope covers the braces.
+      def lambda_tokens(node)
+        first = [node.first_lineno, node.first_column]
+        last = [node.last_lineno, node.last_column]
+        written = @tokens.select do |token|
+          ([token.line, token.column] <=> first) >= 0 && (end_of(token.index) <=> last) <= 0
+        end
+        [written.first, written.find { |token| %i[lambeg k_do_lambda].include?(token.type) }, written.last]
+      end
 
       # How a token changes the bracket depth, counting the `#{` that opens
       # an interpolation.
@@ -596,10 +804,12 @@ class RubyVM
         left = convert(event.args[0])
         operator = event.args[1]
         right = convert(event.args[2])
-        if operator == :"&&" || operator == :and
-          return node(:AND, [left, right], between(left, right))
-        elsif operator == :"||" || operator == :or
-          return node(:OR, [left, right], between(left, right))
+        logic = { "&&": :AND, and: :AND, "||": :OR, or: :OR }[operator]
+        if logic
+          # A chain of the same operator is one node, its operands its
+          # children.
+          operands = left.type == logic ? [*left.children, right] : [left, right]
+          return node(logic, operands, between(left, right))
         end
         return match(left, right) if operator == :=~
 
@@ -1711,7 +1921,9 @@ class RubyVM
           return node(:SUPER, [list], span_of_tokens(opener, close))
         end
         list = arguments_node(arguments)
-        keyword = opener_before(first_index(arguments), ["super"])
+        # An argument such as a bare `super` names no token of its own, so
+        # the search for the keyword starts from the last token read.
+        keyword = opener_before(token_range(arguments)&.first || event.last, ["super"])
         node(:SUPER, [list], from_token(keyword, list))
       end
 
@@ -2468,15 +2680,34 @@ class RubyVM
       def compile_error(message)
         (@problems ||= []) << message
       end
+
+      def on_parse_error(message) = compile_error(message)
+
+      # MRI writes the warnings its parser gives under the name of the
+      # source, `(none)` for a string, unless `-W0` turned them off.
+      def warn(fmt, *args)
+        return if $VERBOSE.nil?
+
+        $stderr.write("#{filename}:#{lineno}: warning: #{format(fmt, *args)}\n")
+      end
+
+      %i[on_assign_error on_alias_error on_class_name_error on_param_error].each do |event|
+        define_method(event) do |message, value|
+          compile_error(message)
+          value
+        end
+      end
     end
 
     # What the nodes of one parse share: the program's lines and tokens,
     # when the parse was asked to keep them.
-    Tree = Struct.new(:script_lines, :tokens)
+    # The builder that made them answers where the keywords of a node are.
+    Tree = Struct.new(:script_lines, :tokens, :builder)
 
     def self.__parse__(source, keep_script_lines: false, error_tolerant: false, keep_tokens: false)
       source = source.to_str
-      reader = Reader.new(source)
+      # MRI names the source of a parse with no file `(none)`.
+      reader = Reader.new(source, "(none)")
       bridge = Ripper::Engine::Bridge.new(reader)
       scanner = Ripper::Engine::Scanner.new(bridge, source, 1)
       grammar = Ripper::Engine::Grammar.new(bridge, scanner)
@@ -2484,30 +2715,56 @@ class RubyVM
       tree, tokens = begin
         grammar.syntax_tree
       rescue Ripper::Engine::SyntaxFailure => failure
-        raise __syntax_error__(failure.message, failure.token && __parse_error_message__(source, failure), failure.token && __token_place__(source, failure.token)[0])
+        # The errors found before the parse stopped come first, as MRI's
+        # parser lists every error it met.
+        earlier = __error_messages__(source, grammar.taken, grammar.reported_errors)
+        earlier += "\n" unless earlier.empty? || earlier.end_with?("\n")
+        first = grammar.reported_errors.first
+        line = if first
+                 first[5] ? first[5][0] : first[3] && grammar.taken[first[3]]&.line
+               else
+                 failure.token && __token_place__(source, failure.token)[0]
+               end
+        quoted = failure.token && __parse_error_message__(source, failure)
+        raise __syntax_error__(earlier + failure.message, earlier + (quoted || failure.message), line)
       end
       if reader.problems
         error = grammar.reported_errors.first
-        raise __syntax_error__(__error_message__(source, tokens, error), nil, error[3] && tokens[error[3]]&.line)
+        line = error[5] ? error[5][0] : error[3] && tokens[error[3]]&.line
+        raise __syntax_error__(__error_messages__(source, tokens, grammar.reported_errors), nil, line)
       end
       builder = Builder.new(tokens, source)
       root = builder.program(tree)
-      kept = Tree.new(keep_script_lines ? source.lines : nil, keep_tokens ? builder.all_tokens(source) : nil)
+      kept = Tree.new(keep_script_lines ? source.lines : nil, keep_tokens ? builder.all_tokens(source) : nil, builder)
       builder.finish(root, kept)
+    end
+
+    # Every error's message, each with the line it names quoted beneath it,
+    # one after another.
+    def self.__error_messages__(source, tokens, errors)
+      errors.map { |error| __error_message__(source, tokens, error) }.reduce("") do |text, part|
+        text.empty? || text.end_with?("\n") ? text + part : "#{text}\n#{part}"
+      end
     end
 
     # An error's message, with the line it names quoted beneath it and a
     # caret under the tokens it names. MRI quotes the line only while its
     # lexer is still on it when the error is reported.
     def self.__error_message__(source, tokens, error)
-      message, first, last, at = error
+      message, first, last, at, after, place = error
+      if place
+        line, from, to = place
+        quoted = __error_line__(source.lines[line - 1].to_s, from, to, true)
+        return quoted ? "#{message}\n#{quoted}" : message
+      end
       return message if first.nil? || tokens[first].line != tokens[at].line
 
       start = tokens[first]
       finish = tokens[last]
       ends_on_line = finish.line == start.line
       end_column = ends_on_line ? finish.column + finish.text.bytesize : nil
-      quoted = __error_line__(source.lines[start.line - 1].to_s, start.column, end_column, ends_on_line)
+      begin_column = after ? end_column : start.column
+      quoted = __error_line__(source.lines[start.line - 1].to_s, begin_column, end_column, ends_on_line)
       quoted ? "#{message}\n#{quoted}" : message
     end
 
@@ -2626,13 +2883,17 @@ class RubyVM
           named == name && node.first_lineno == line
         end
       else
-        # A location that knows its column names the call written there,
-        # and otherwise the innermost call on its line.
+        # A location that knows its column names a call written there: the
+        # innermost one, which is the call still running, or for the place
+        # an exception was raised the outermost, which is the call that
+        # raised. Without a column it names the innermost call on its line.
         # A location counts its column in characters, and a node in bytes.
         column = body.instance_variable_get(:@column)
         column &&= source.lines[line - 1].to_s[0, column].bytesize
         calls = nodes.select { |node| CALL_TYPES.include?(node.type) && node.first_lineno == line }
-        (column && calls.find { |node| node.first_column == column }) || calls.last
+        written = column && calls.select { |node| node.first_column == column }
+        chosen = body.instance_variable_get(:@raised) ? written&.first : written&.last
+        chosen || calls.last
       end
     end
   end

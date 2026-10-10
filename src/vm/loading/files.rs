@@ -5,6 +5,15 @@ use super::*;
 impl VirtualMachine {
     /// The path `__FILE__` reports for the file running now: the spelling the
     /// main script was named by, and the current file for anything else.
+    /// The file the code running now was written in, which a frame
+    /// records as the file its call site is in.
+    pub(crate) fn file_for_frames(&self) -> Option<String> {
+        self.current_source_file.clone().or_else(|| {
+            self.reported_current_file()
+                .map(|file| file.display().to_string())
+        })
+    }
+
     pub(crate) fn reported_current_file(&self) -> Option<PathBuf> {
         let current = self.current_file.as_ref()?;
         Some(self.reported_spelling(current))
@@ -85,20 +94,6 @@ impl VirtualMachine {
         if let Some(Object::Array(arr)) = self.globals.get(":") {
             arr.borrow_mut().push(entry);
         }
-    }
-
-    /// Define an empty module under `name`, which is what a feature the
-    /// command line turned on leaves behind for `defined?` to find.
-    pub fn define_feature_module(&mut self, name: &str) {
-        if self.globals().get(name).is_some() {
-            return;
-        }
-        let made = Object::Module(crate::class::Class::new_module(name));
-        self.globals_mut().set(name, made.clone());
-        // The name is a constant the program reads, which the scope every
-        // file runs in has to hold alongside the built-in ones.
-        self.environment_mut().define(name.to_string(), made);
-        self.seeded_global_names.insert(name.to_string());
     }
 
     /// Load a library `-r` named, which runs before the script does. Its

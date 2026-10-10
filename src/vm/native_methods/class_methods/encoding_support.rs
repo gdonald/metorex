@@ -23,7 +23,7 @@ impl VirtualMachine {
             other => {
                 let message = format!(
                     "no implicit conversion of {} into String",
-                    self.builtins().class_of(other).name()
+                    crate::vm::errors::conversion_subject(other)
                 );
                 return Err(crate::vm::errors::simple_exception(
                     "TypeError",

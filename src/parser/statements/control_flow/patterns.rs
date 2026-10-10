@@ -319,6 +319,12 @@ impl Parser {
                 let held = self.parse_primary()?;
                 Ok(MatchPattern::Expression(Box::new(held)))
             }
+            // A `when` compares against any expression, such as `-1` or
+            // `!flag`.
+            _ if self.in_when_clause => {
+                let held = self.parse_expression()?;
+                Ok(MatchPattern::Expression(Box::new(held)))
+            }
             _ => Err(MetorexError::syntax_error(
                 format!("Expected pattern, found {:?}", token.kind),
                 SourceLocation::new(

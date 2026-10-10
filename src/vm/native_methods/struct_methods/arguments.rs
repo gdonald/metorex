@@ -145,13 +145,7 @@ pub(crate) fn remember_key_object(
     rendered: &str,
     key: &Object,
 ) {
-    let sentinel = "__MX_KEY_OBJECTS__".to_string();
-    let mut objects = match pairs.get(&sentinel) {
-        Some(Object::Dict(existing)) => existing.borrow().clone(),
-        _ => IndexMap::new(),
-    };
-    objects.insert(rendered.to_string(), key.clone());
-    pairs.insert(sentinel, Object::Dict(Rc::new(RefCell::new(objects))));
+    crate::vm::native_methods::remember_key_object(pairs, rendered, key);
 }
 
 pub(crate) fn index_error(message: String, position: Position) -> MetorexError {

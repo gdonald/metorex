@@ -30,6 +30,12 @@ pub(super) fn format_exception(exception: &Object) -> String {
 /// Convert an object into a dictionary key string representation.
 pub(super) fn object_to_dict_key(value: &Object) -> Option<String> {
     match value {
+        // A String that reads as a number, a boolean or nil takes a slot of
+        // its own, so `"1"` and `1` are different keys, as `eql?` makes
+        // them. The key object kept beside the entry reads it back.
+        Object::String(s) if reads_as_another_kind(&s.as_str()) => {
+            Some(format!("{AMBIGUOUS_STRING_PREFIX}{}", s.as_str()))
+        }
         Object::String(s) => Some(s.as_str().to_string()),
         Object::Symbol(s) => Some(format!(":{}", s)),
         Object::Int(i) => Some(i.to_string()),
@@ -42,6 +48,9 @@ pub(super) fn object_to_dict_key(value: &Object) -> Option<String> {
         other => Some(format!("{}", other)),
     }
 }
+
+/// What starts the slot of a String key that reads as another kind.
+const AMBIGUOUS_STRING_PREFIX: char = '\u{2}';
 
 /// Whether a string reads back as a number, a boolean, or nil, which is what
 /// makes it ambiguous as a hash key.

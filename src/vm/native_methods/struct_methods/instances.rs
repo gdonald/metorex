@@ -156,7 +156,7 @@ impl VirtualMachine {
                             return Err(MetorexError::type_error(
                                 format!(
                                     "no implicit conversion of {} into Integer",
-                                    self.builtins().class_of(other).ruby_name()
+                                    crate::vm::errors::conversion_subject(other)
                                 ),
                                 position_to_location(position),
                             ));
@@ -218,13 +218,15 @@ impl VirtualMachine {
                         .map(Some);
                 };
                 for member in members {
+                    // `each_pair` yields each member and its value as one
+                    // pair, which a block taking two parameters spreads.
                     let args = if method_name == "each" {
                         vec![member_value(receiver, member)]
                     } else {
-                        vec![
+                        vec![Object::array(vec![
                             Object::symbol(member.clone()),
                             member_value(receiver, member),
-                        ]
+                        ])]
                     };
                     self.execute_block_with_control_flow(&block, args, position)?;
                 }

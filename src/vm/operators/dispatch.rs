@@ -4,7 +4,9 @@
 use super::*;
 
 impl VirtualMachine {
-    /// Evaluate a binary operation across runtime values.
+    /// Evaluate a binary operation across runtime values. An error the
+    /// operator raises itself lists the operator's method as its first
+    /// frame, as `Integer#/` heads a ZeroDivisionError.
     pub(crate) fn evaluate_binary_operation(
         &mut self,
         op: &BinaryOp,
@@ -12,7 +14,40 @@ impl VirtualMachine {
         right: Object,
         position: Position,
     ) -> Result<Object, MetorexError> {
+        let receiver = left.clone();
+        let answered = self.evaluate_binary_operation_body(op, left, right, position);
+        if let Err(error) = &answered
+            && let Some(name) = crate::vm::eval::binary_op_method_name(op)
+        {
+            self.trace_native_error(&receiver, name, position, error);
+        }
+        answered
+    }
+
+    fn evaluate_binary_operation_body(
+        &mut self,
+        op: &BinaryOp,
+        left: Object,
+        right: Object,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
         use BinaryOp::*;
+
+        // An operator a class undefined is one its instances do not answer,
+        // whatever the interpreter would otherwise make of the pair.
+        if matches!(left, Object::Instance(_))
+            && let Some(name) = crate::vm::eval::binary_op_method_name(op)
+            && self
+                .lookup_method(&left, name)
+                .is_some_and(|(_, method)| method.is_undefined)
+        {
+            return Err(crate::vm::errors::undefined_method_error(
+                name,
+                &left,
+                std::slice::from_ref(&right),
+                position,
+            ));
+        }
 
         // A Complex carries its own arithmetic too, and a real number on the
         // left of one is promoted so that arithmetic runs.

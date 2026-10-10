@@ -389,3 +389,173 @@ fn numeric_lookup(
         Object::Int(i64::from(port as u16)),
     ]))
 }
+
+/// Every address `getaddrinfo` answers for the request `text` spells as the
+/// node, family, socket type, protocol, flags and whether a node was given
+/// at all, joined by NULs, and `port` as the service. A written
+/// address with a numbered or no service is answered the way MRI answers
+/// it before asking the resolver. The answer is `[true, entries]`, each
+/// entry `[family, socktype, protocol, address, port, canonname]` in the
+/// order the resolver gave them, or `[false, code, reason]` when the lookup
+/// failed.
+pub(crate) fn socket_addrinfo_list(text: &str, port: Option<&Object>) -> Object {
+    let mut parts = text.split('\0');
+    let node = parts.next().unwrap_or_default().to_string();
+    let mut hint =
+        || -> libc::c_int { parts.next().and_then(|held| held.parse().ok()).unwrap_or(0) };
+    let (family, socktype, protocol, flags) = (hint(), hint(), hint(), hint());
+    let node_given = hint() == 1;
+    let service = match port {
+        Some(Object::Int(number)) => Some(number.to_string()),
+        Some(Object::String(named)) => Some(named.as_str().to_string()),
+        _ => None,
+    };
+    let numbered_service = service
+        .as_deref()
+        .is_none_or(|held| held.parse::<u16>().is_ok());
+    if node_given
+        && numbered_service
+        && let Some(entries) =
+            numeric_entries(&node, service.as_deref(), family, socktype, protocol)
+    {
+        return Object::array(vec![Object::Bool(true), Object::array(entries)]);
+    }
+    let failed = |code: libc::c_int| {
+        // SAFETY: gai_strerror answers a static string for any code.
+        let reason = unsafe { std::ffi::CStr::from_ptr(libc::gai_strerror(code)) }
+            .to_string_lossy()
+            .to_string();
+        Object::array(vec![
+            Object::Bool(false),
+            Object::Int(i64::from(code)),
+            Object::string(reason),
+        ])
+    };
+    let Ok(node_text) = std::ffi::CString::new(node.clone()) else {
+        return failed(libc::EAI_NONAME);
+    };
+    let service_text = service.and_then(|held| std::ffi::CString::new(held).ok());
+    let mut entries = Vec::new();
+    // SAFETY: the hints are zeroed and then filled, the strings live for the
+    // call, and the list is read and then freed once.
+    unsafe {
+        let mut hints: libc::addrinfo = std::mem::zeroed();
+        hints.ai_family = family;
+        hints.ai_socktype = socktype;
+        hints.ai_protocol = protocol;
+        hints.ai_flags = flags;
+        let mut found: *mut libc::addrinfo = std::ptr::null_mut();
+        let answered = libc::getaddrinfo(
+            if !node_given {
+                std::ptr::null()
+            } else {
+                node_text.as_ptr()
+            },
+            service_text
+                .as_ref()
+                .map_or(std::ptr::null(), |held| held.as_ptr()),
+            &hints,
+            &mut found,
+        );
+        if answered != 0 {
+            return failed(answered);
+        }
+        let mut cursor = found;
+        while !cursor.is_null() {
+            let entry = &*cursor;
+            let (address, number) = match entry.ai_family {
+                libc::AF_INET6 => {
+                    let held = &*(entry.ai_addr as *const libc::sockaddr_in6);
+                    (
+                        std::net::Ipv6Addr::from(held.sin6_addr.s6_addr).to_string(),
+                        u16::from_be(held.sin6_port),
+                    )
+                }
+                libc::AF_INET => {
+                    let held = &*(entry.ai_addr as *const libc::sockaddr_in);
+                    (
+                        std::net::Ipv4Addr::from(u32::from_be(held.sin_addr.s_addr)).to_string(),
+                        u16::from_be(held.sin_port),
+                    )
+                }
+                _ => {
+                    cursor = entry.ai_next;
+                    continue;
+                }
+            };
+            let canonical = if entry.ai_canonname.is_null() {
+                Object::Nil
+            } else {
+                Object::string(
+                    std::ffi::CStr::from_ptr(entry.ai_canonname)
+                        .to_string_lossy()
+                        .to_string(),
+                )
+            };
+            entries.push(Object::array(vec![
+                Object::Int(i64::from(entry.ai_family)),
+                Object::Int(i64::from(entry.ai_socktype)),
+                Object::Int(i64::from(entry.ai_protocol)),
+                Object::string(address),
+                Object::Int(i64::from(number)),
+                canonical,
+            ]));
+            cursor = entry.ai_next;
+        }
+        libc::freeaddrinfo(found);
+    }
+    Object::array(vec![Object::Bool(true), Object::array(entries)])
+}
+
+/// The entries MRI makes on its own for an address written as digits: one
+/// for each of STREAM with TCP, DGRAM with UDP, and RAW with any protocol
+/// that fits the hints. None when the node is no written address.
+fn numeric_entries(
+    node: &str,
+    service: Option<&str>,
+    family: libc::c_int,
+    socktype: libc::c_int,
+    protocol: libc::c_int,
+) -> Option<Vec<Object>> {
+    const KINDS: [(libc::c_int, libc::c_int); 3] = [
+        (libc::SOCK_STREAM, libc::IPPROTO_TCP),
+        (libc::SOCK_DGRAM, libc::IPPROTO_UDP),
+        (libc::SOCK_RAW, 0),
+    ];
+    let spelled_as = |allowed: &str| node.chars().all(|held| allowed.contains(held));
+    let found_family = if (family == libc::PF_UNSPEC || family == libc::PF_INET6)
+        && spelled_as("0123456789abcdefABCDEF.:")
+        && node.parse::<std::net::Ipv6Addr>().is_ok()
+    {
+        libc::AF_INET6
+    } else if (family == libc::PF_UNSPEC || family == libc::PF_INET)
+        && spelled_as("0123456789.")
+        && node.parse::<std::net::Ipv4Addr>().is_ok()
+    {
+        libc::AF_INET
+    } else {
+        return None;
+    };
+    let port = service
+        .and_then(|held| held.parse::<u16>().ok())
+        .unwrap_or(0);
+    Some(
+        KINDS
+            .iter()
+            .filter(|(kind, paired)| {
+                (socktype == 0 || socktype == *kind)
+                    && (protocol == 0 || *paired == 0 || protocol == *paired)
+            })
+            .map(|(kind, paired)| {
+                Object::array(vec![
+                    Object::Int(i64::from(found_family)),
+                    Object::Int(i64::from(*kind)),
+                    Object::Int(i64::from(*paired)),
+                    Object::string(node.to_string()),
+                    Object::Int(i64::from(port)),
+                    Object::Nil,
+                ])
+            })
+            .collect(),
+    )
+}

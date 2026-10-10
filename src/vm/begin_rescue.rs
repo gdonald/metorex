@@ -133,6 +133,13 @@ impl VirtualMachine {
         let mut last_value = Object::Nil;
         for (i, statement) in statements.iter().enumerate() {
             let is_last = i == statements.len() - 1;
+            // The last statement answered here is a `:line` event as well.
+            if is_last
+                && !self.tracepoints.is_empty()
+                && !matches!(statement, Statement::Begin { .. })
+            {
+                self.fire_line_event(statement.position())?;
+            }
             if is_last && let Some(value) = self.terminal_statement_value(statement)? {
                 // The last statement answered here rather than through
                 // `execute_statement`, so it is counted here too.

@@ -14,6 +14,15 @@ impl VirtualMachine {
         // Integer#[] reads the bits of the two's-complement representation:
         // one bit by position, or a run of them named by a length or a range.
         if method_name == "[]" && matches!(receiver, Object::Int(_) | Object::BigInt(_)) {
+            // A bit position of a machine-word Integer is taken through
+            // `to_int`, which names nil as any other value without one.
+            if let (Object::Int(_), [Object::Nil]) = (receiver, arguments) {
+                return Err(crate::vm::errors::simple_exception(
+                    "TypeError",
+                    "no implicit conversion of nil into Integer",
+                    position,
+                ));
+            }
             return self
                 .integer_bits_at(
                     &receiver.as_big_integer().expect("integer-kinded"),

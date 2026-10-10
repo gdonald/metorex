@@ -41,7 +41,10 @@ impl Parser {
                     names.push("*".to_string());
                 } else {
                     match self.advance().kind {
-                        TokenKind::Ident(name) => names.push(format!("{}{}", star, name)),
+                        TokenKind::Ident(name) => {
+                            self.declare_local(&name);
+                            names.push(format!("{}{}", star, name))
+                        }
                         _ => {
                             return Err(self.error_at_previous("Expected parameter name in group"));
                         }
@@ -202,148 +205,52 @@ impl Parser {
         })
     }
 
-    /// Parse expression with arrow lambda support (for top-level expressions only)
+    /// An expression where a value is read, a `->` lambda among them.
     pub(crate) fn parse_expression_with_lambda(&mut self) -> Result<Expression, MetorexError> {
-        self.parse_arrow_lambda()
-    }
-
-    /// Parse arrow lambda syntax: x -> expr, (x, y) -> expr, or -> expr
-    pub(crate) fn parse_arrow_lambda(&mut self) -> Result<Expression, MetorexError> {
-        // A `->` lambda is a primary like any other, so the ordinary
-        // expression parser handles it along with whatever follows: a method
-        // chain, an operator, or both. Only the `(x, y) -> expr` form below
-        // needs its own lookahead.
         if self.check(&[TokenKind::Arrow]) {
             return self.parse_expression();
         }
-        // Special case: check for multi-param arrow lambda: (x, y) -> expr
-        // Use lookahead to avoid consuming tokens unless it's definitely a lambda
-        if self.check(&[TokenKind::LParen]) {
-            let saved_position = self.stream().current_position();
-            let start_pos = self.peek().position;
+        self.parse_assignment()
+    }
 
-            self.advance(); // consume '('
-            self.skip_whitespace();
+    /// A condition, with Ruby's warnings for a literal written where a test
+    /// goes: a regexp or a string, or an integer as an end of a flip-flop.
+    pub(crate) fn parse_tested_condition(&mut self) -> Result<Expression, MetorexError> {
+        let condition = self.parse_condition()?;
+        self.warn_literal_condition(&condition);
+        Ok(condition)
+    }
 
-            // Try to parse as comma-separated identifiers
-            let mut params = Vec::new();
-            let mut is_param_list = true;
-
-            if !self.check(&[TokenKind::RParen]) {
-                loop {
-                    self.skip_whitespace();
-                    if let TokenKind::Ident(name) = self.peek().kind.clone() {
-                        params.push(name);
-                        self.advance();
-                    } else {
-                        is_param_list = false;
-                        break;
-                    }
-
-                    self.skip_whitespace();
-                    if self.match_token(&[TokenKind::Comma]) {
-                        continue;
-                    } else {
-                        break;
+    /// Note the warnings a literal in a condition earns, looking through
+    /// `and`, `or` and parentheses.
+    pub(crate) fn warn_literal_condition(&mut self, condition: &Expression) {
+        match condition {
+            Expression::RegexLiteral { position, .. } => self
+                .default_warnings
+                .push((*position, "regex literal in condition".to_string())),
+            Expression::StringLiteral { position, .. } => self
+                .default_warnings
+                .push((*position, "string literal in condition".to_string())),
+            Expression::Range { start, end, .. } => {
+                for bound in [start, end] {
+                    if let Expression::IntLiteral { position, .. } = bound.as_ref() {
+                        self.default_warnings
+                            .push((*position, "integer literal in flip-flop".to_string()));
                     }
                 }
             }
-
-            self.skip_whitespace();
-
-            // Check if this looks like a parameter list: ) followed by ->
-            if is_param_list && self.check(&[TokenKind::RParen]) {
-                self.advance(); // consume ')'
-                self.skip_whitespace();
-
-                if self.check(&[TokenKind::Arrow]) {
-                    // It's a multi-param arrow lambda!
-                    let arrow_pos = self.advance().position;
-                    self.skip_whitespace();
-
-                    let body_expr = self.parse_assignment()?;
-                    let body = vec![crate::ast::Statement::Expression {
-                        expression: body_expr,
-                        position: arrow_pos,
-                    }];
-
-                    return Ok(Expression::Lambda {
-                        parameters: params,
-                        parameter_defaults: Vec::new(),
-                        body,
-                        captured_vars: Some(Vec::new()), // Empty vec signals automatic capture
-                        outer_locals: Vec::new(),
-                        is_lambda: true,
-                        position: start_pos,
-                    });
-                }
+            Expression::BinaryOp {
+                op: crate::ast::BinaryOp::And | crate::ast::BinaryOp::Or,
+                left,
+                right,
+                ..
+            } => {
+                self.warn_literal_condition(left);
+                self.warn_literal_condition(right);
             }
-
-            // Not a multi-param lambda, backtrack and parse normally
-            let stream = &mut self.stream;
-            stream.restore_position(saved_position);
+            Expression::Grouped { expression, .. } => self.warn_literal_condition(expression),
+            _ => {}
         }
-
-        // Try to parse as regular expression first
-        let expr = self.parse_assignment()?;
-
-        // `x -> expr` names `x` as the lambda's parameter, but only where the
-        // two are written as one expression. A `;` or a newline between them
-        // ends the statement, so what follows is a lambda of its own.
-        let at = self.stream.current_position();
-        let after_a_terminator = at > 0
-            && matches!(
-                self.stream.tokens()[at - 1].kind,
-                TokenKind::Semicolon | TokenKind::Newline | TokenKind::Comment(_)
-            );
-
-        // Check if there's an arrow after the expression
-        if !after_a_terminator && self.check(&[TokenKind::Arrow]) {
-            let arrow_pos = self.advance().position;
-            self.skip_whitespace();
-
-            // Extract parameters from the left side
-            let parameters = match &expr {
-                // Single parameter: x -> expr
-                Expression::Identifier { name, .. } => {
-                    vec![name.clone()]
-                }
-                // Multiple parameters: (x, y) -> expr
-                Expression::Grouped { expression, .. } => {
-                    // Check if it's a tuple of identifiers (we'll handle this as comma-separated for now)
-                    // For now, we'll just support single grouped identifier
-                    if let Expression::Identifier { name, .. } = expression.as_ref() {
-                        vec![name.clone()]
-                    } else {
-                        return Err(
-                            self.error_at_current("Arrow lambda parameters must be identifiers")
-                        );
-                    }
-                }
-                _ => {
-                    return Err(self.error_at_current("Left side of arrow must be parameter(s)"));
-                }
-            };
-
-            // Parse the lambda body
-            let body_expr = self.parse_assignment()?;
-            let body = vec![crate::ast::Statement::Expression {
-                expression: body_expr,
-                position: arrow_pos,
-            }];
-
-            return Ok(Expression::Lambda {
-                parameters,
-                parameter_defaults: Vec::new(),
-                body,
-                captured_vars: Some(Vec::new()), // Empty vec signals automatic capture
-                outer_locals: Vec::new(),
-                is_lambda: true,
-                position: expr.position(),
-            });
-        }
-
-        Ok(expr)
     }
 
     /// Parse assignment (lowest precedence)
@@ -356,16 +263,27 @@ impl Parser {
         let expr = parsed?;
 
         // Check for inline assignment: ident = expr (in condition context)
-        if matches!(expr, Expression::Identifier { .. }) && self.check(&[TokenKind::Equal]) {
+        if matches!(
+            expr,
+            Expression::Identifier { .. }
+                | Expression::InstanceVariable { .. }
+                | Expression::ClassVariable { .. }
+                | Expression::GlobalVariable { .. }
+        ) && self.check(&[TokenKind::Equal])
+        {
             let position = self.advance().position;
             self.skip_whitespace();
             // The value is read as part of the condition, so a `do` after it
             // opens the loop body rather than a block on the value.
             self.condition_depth += 1;
+            self.assignment_rhs_depth += 1;
             let read = self.parse_expression();
+            self.assignment_rhs_depth -= 1;
             self.condition_depth -= 1;
             let value = read?;
-            return Ok(Expression::BinaryOp {
+            // `while line = gets and line.size > 1` tests the assignment and
+            // then the rest.
+            return self.fold_keyword_logic_onto(Expression::BinaryOp {
                 op: crate::ast::BinaryOp::Assign,
                 left: Box::new(expr),
                 right: Box::new(value),
@@ -384,12 +302,13 @@ impl Parser {
             let read = self.parse_expression();
             self.condition_depth -= 1;
             let value = read?;
+            let reading = crate::parser::statements::or_assign_reading(&operation, expr.clone());
             return Ok(Expression::BinaryOp {
                 op: crate::ast::BinaryOp::Assign,
-                left: Box::new(expr.clone()),
+                left: Box::new(expr),
                 right: Box::new(Expression::BinaryOp {
                     op: operation,
-                    left: Box::new(expr),
+                    left: Box::new(reading),
                     right: Box::new(value),
                     position,
                 }),
@@ -514,6 +433,7 @@ impl Parser {
                     let param_token = self.advance();
                     match param_token.kind {
                         TokenKind::Ident(name) => {
+                            self.declare_local(&name);
                             // `|x:|` names a keyword parameter, which takes
                             // its value from the keyword arguments.
                             if prefix.is_empty()
@@ -572,6 +492,7 @@ impl Parser {
                 }
                 match self.advance().kind {
                     TokenKind::Ident(name) => {
+                        self.declare_local(&name);
                         params.push(format!("{}{}", crate::object::BLOCK_LOCAL_PREFIX, name))
                     }
                     _ => return Err(self.error_at_previous("Expected a name after ';'")),
@@ -919,8 +840,24 @@ impl Parser {
     /// where a call goes, after a dot, or as the target of an assignment is
     /// not the implicit parameter.
     fn mentions_implicit_it(&self, opened_at: usize, closed_at: usize) -> bool {
+        // A local named `it` bound before the block opens is what a bare
+        // `it` in the block reads.
+        if self.names_a_local_at("it", opened_at) {
+            return false;
+        }
         let tokens = self.stream.tokens();
-        for (offset, token) in tokens[opened_at..closed_at].iter().enumerate() {
+        // An assignment to `it` makes it a local from there on, so only a
+        // mention ahead of the first one is the implicit parameter.
+        let first_assignment = tokens[opened_at..closed_at]
+            .windows(2)
+            .enumerate()
+            .find(|(offset, pair)| {
+                matches!(&pair[0].kind, TokenKind::Ident(name) if name == "it")
+                    && matches!(pair[1].kind, TokenKind::Equal)
+                    && !self.inside_a_nested_block(opened_at + offset, opened_at, closed_at)
+            })
+            .map_or(closed_at, |(offset, _)| opened_at + offset);
+        for (offset, token) in tokens[opened_at..first_assignment].iter().enumerate() {
             let TokenKind::Ident(name) = &token.kind else {
                 continue;
             };
@@ -976,6 +913,9 @@ impl Parser {
                     | Some(TokenKind::Then)
                     | Some(TokenKind::If)
                     | Some(TokenKind::Unless)
+                    | Some(TokenKind::While)
+                    | Some(TokenKind::Until)
+                    | Some(TokenKind::Rescue)
             );
             if !reads_as_value {
                 continue;

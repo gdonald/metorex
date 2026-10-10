@@ -288,6 +288,17 @@ impl VirtualMachine {
                     ControlFlow::Return { position, .. } => {
                         return Err(return_in_a_body_error(position));
                     }
+                    // An exception the body raised leaves it.
+                    ControlFlow::Exception {
+                        exception,
+                        position,
+                    } => {
+                        return Err(MetorexError::UncaughtException {
+                            message: crate::vm::utils::format_exception(&exception),
+                            exception,
+                            location: position_to_location(position),
+                        });
+                    }
                     _ => {}
                 },
             }

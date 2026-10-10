@@ -42,16 +42,13 @@ impl VirtualMachine {
         // At the top level the program runs against `main`, which
         // is where a bare `method(:name)` looks when the scope binds
         // no `self` of its own.
-        let here = self
-            .environment()
-            .get("self")
-            .or_else(|| self.globals().get("__main__"));
+        let here = self.eval_self(position).ok();
         // Look up the method in the current environment
         if let Some(obj) = self.environment().get(&method_name) {
             if let Object::Method(held) = &obj {
                 if held.owner_class.is_none() {
                     if let Some(found) = written_on_object {
-                        return Ok(found);
+                        return Ok(bound_to(found, here.as_ref()));
                     }
                     // A load wrapped in a module writes what it
                     // defines there, which is what the receiver
@@ -65,7 +62,7 @@ impl VirtualMachine {
                         }
                     }
                 }
-                return Ok(obj);
+                return Ok(bound_to(obj, here.as_ref()));
             }
             // A name the environment holds as something other than a
             // method may still name one the receiver defines, which is
@@ -92,7 +89,7 @@ impl VirtualMachine {
                     },
                 )
         } else if let Some(found) = written_on_object {
-            Ok(found)
+            Ok(bound_to(found, here.as_ref()))
         } else {
             Err(MetorexError::runtime_error(
                 format!("undefined method '{}'", method_name),
@@ -126,5 +123,18 @@ impl VirtualMachine {
         };
         self.call_class_methods(&owner, name, &arguments, position)
             .map(|result| result.unwrap_or(Object::Nil))
+    }
+}
+
+/// A Method that carries no receiver, bound to `receiver`, which is the
+/// object a top-level `method(:name)` was asked of.
+fn bound_to(found: Object, receiver: Option<&Object>) -> Object {
+    match (&found, receiver) {
+        (Object::Method(method), Some(receiver)) if method.receiver.is_none() => {
+            let mut bound = (**method).clone();
+            bound.receiver = Some(Box::new(receiver.clone()));
+            Object::Method(std::rc::Rc::new(bound))
+        }
+        _ => found,
     }
 }

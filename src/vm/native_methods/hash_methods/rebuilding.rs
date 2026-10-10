@@ -143,9 +143,10 @@ impl VirtualMachine {
                 };
                 let mut picked = Vec::with_capacity(arguments.len());
                 for argument in arguments {
-                    let rendered =
-                        crate::vm::utils::object_to_dict_key(argument).unwrap_or_default();
-                    let found = dict_rc.borrow().get(&rendered).cloned();
+                    let found = match self.hash_find_key(dict_rc, argument, position)? {
+                        Some(slot) => dict_rc.borrow().get(&slot).cloned(),
+                        None => None,
+                    };
                     match found {
                         Some(value) => picked.push(value),
                         None if method_name == "values_at" => picked.push(Object::Nil),

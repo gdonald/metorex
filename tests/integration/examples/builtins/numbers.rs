@@ -193,3 +193,79 @@ fn test_builtins_numbers_written_out_no_parens_execution() {
     let output = run_example("builtins/numbers_written_out_no_parens.rb");
     assert_eq!(output, NUMBERS_WRITTEN_OUT_OUTPUT);
 }
+
+/// The expected output of both `builtins/operators_by_name` variants.
+const OPERATORS_BY_NAME: &str = concat!(
+    "Integer +: TypeError: nil can't be coerced into Integer\n",
+    "Integer <<: TypeError: no implicit conversion of nil into Integer\n",
+    "Integer &: TypeError: true can't be coerced into Integer\n",
+    "Integer []: TypeError: no implicit conversion of nil into Integer\n",
+    "Float &: NoMethodError: undefined method '&' for an instance of Float\n",
+    "Float <: ArgumentError: comparison of Float with :sym failed\n",
+    "Rational +: TypeError: :sym can't be coerced into Rational\n",
+    "Rational <: ArgumentError: comparison of Rational with String failed\n",
+    "Rational |: NoMethodError: undefined method '|' for an instance of Rational\n",
+    "Complex +: TypeError: String can't be coerced into Complex\n",
+    "Complex **: TypeError: Object can't be coerced into Complex\n",
+    "Complex <: NoMethodError: undefined method '<' for an instance of Complex\n",
+    "Complex %: NoMethodError: undefined method '%' for an instance of Complex\n",
+    "String +: TypeError: no implicit conversion of nil into String\n",
+    "String *: TypeError: no implicit conversion from nil to integer\n",
+    "String *: TypeError: no implicit conversion of String into Integer\n",
+    "String []: TypeError: no implicit conversion of Symbol into Integer\n",
+    "String <<: TypeError: no implicit conversion of true into String\n",
+    "String =~: TypeError: type mismatch: String given\n",
+    "String =~: NoMethodError: undefined method '=~' for an instance of Array\n",
+    "String &: NoMethodError: undefined method '&' for an instance of String\n",
+    "Array +: TypeError: no implicit conversion of nil into Array\n",
+    "Array -: TypeError: no implicit conversion of String into Array\n",
+    "Array &: TypeError: no implicit conversion of true into Array\n",
+    "Array *: TypeError: no implicit conversion from nil to integer\n",
+    "Array ^: NoMethodError: undefined method '^' for an instance of Array\n",
+    "Hash <: TypeError: no implicit conversion of nil into Hash\n",
+    "Hash +: NoMethodError: undefined method '+' for an instance of Hash\n",
+    "Symbol <: false\n",
+    "Symbol <: ArgumentError: comparison of Symbol with 1 failed\n",
+    "Symbol -@: NoMethodError: undefined method '-@' for an instance of Symbol\n",
+    "Symbol []: TypeError: no implicit conversion from nil to integer\n",
+    "NilClass +: NoMethodError: undefined method '+' for nil\n",
+    "TrueClass <: NoMethodError: undefined method '<' for true\n",
+    "Object -: NoMethodError: undefined method '-' for an instance of Object\n",
+    "Range +: NoMethodError: undefined method '+' for an instance of Range\n",
+    "Time -: TypeError: can't convert String into an exact number\n",
+    "Integer =~: NoMethodError: undefined method '=~' for an instance of Integer\n",
+    "[false, false, false, false, true, false, false]\n",
+);
+
+#[test]
+fn test_builtins_operators_by_name_execution() {
+    let output = run_example("builtins/operators_by_name.rb");
+    assert_eq!(output, OPERATORS_BY_NAME);
+}
+
+#[test]
+fn test_builtins_operators_by_name_no_parens_execution() {
+    let output = run_example("builtins/operators_by_name_no_parens.rb");
+    assert_eq!(output, OPERATORS_BY_NAME);
+}
+
+/// The expected output of both `builtins/numeric_coerce` variants.
+const NUMERIC_COERCE: &str = concat!(
+    "[3.0, 2.0]\n",
+    "[4.0, 2.0]\n",
+    "can't define singleton method \"unit\" for Measure\n",
+    "[3.0, 2.0]\n",
+    "true\n",
+);
+
+#[test]
+fn test_builtins_numeric_coerce_execution() {
+    let output = run_example("builtins/numeric_coerce.rb");
+    assert_eq!(output, NUMERIC_COERCE);
+}
+
+#[test]
+fn test_builtins_numeric_coerce_no_parens_execution() {
+    let output = run_example("builtins/numeric_coerce_no_parens.rb");
+    assert_eq!(output, NUMERIC_COERCE);
+}

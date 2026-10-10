@@ -321,9 +321,9 @@ class Enumerator
     # The walk runs as it goes rather than collecting first, so what the
     # method behind it sets, `$~` among them, is there for the block.
     collected = []
-    # Several values yielded together reach the block as one array, which is
-    # what a walk over pairs hands over.
-    each { |*values| collected.push(block.call(packed(values))) }
+    # The values one step yielded reach the block spread out, so a block
+    # taking one parameter takes the first of a pair.
+    each { |*values| collected.push(block.call(*values)) }
     collected
   end
 

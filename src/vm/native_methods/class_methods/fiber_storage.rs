@@ -43,7 +43,7 @@ impl VirtualMachine {
                 "TypeError",
                 &format!(
                     "no implicit conversion of {} into Hash",
-                    self.builtins().class_of(given).name()
+                    crate::vm::errors::conversion_subject(given)
                 ),
                 position,
             ));

@@ -37,6 +37,10 @@ impl Parser {
         if self.signed_literal_argument() || self.spaced_splat_argument() {
             return !names_a_variable;
         }
+        // A `&` after a variable is the operator, glued to its operand or not.
+        if names_a_variable && self.peek().kind == TokenKind::Ampersand {
+            return false;
+        }
 
         // Don't parse as function call if we see operators or punctuation that
         // indicate we're in a different context (like dictionary key: value)
@@ -103,6 +107,8 @@ impl Parser {
                 | TokenKind::Defined
                 | TokenKind::Def
                 | TokenKind::Yield
+                | TokenKind::Case
+                | TokenKind::Begin
         ) || (self.peek().kind == TokenKind::Arrow
             && self.arrow_starts_lambda_argument());
 
@@ -132,11 +138,15 @@ impl Parser {
         // Pattern 1: <ident> ':' is a keyword argument (name: value), allow it
         // but only for Ident — not Int/Float/String followed by colon (those are dict-like).
         // A `[` is the exception: `p [:only]` opens an array whose first
-        // element is a symbol, not a key.
+        // element is a symbol, not a key, and `handle &:upcase` passes the
+        // symbol as the block.
         if matches!(self.peek_ahead(1).kind, TokenKind::Colon)
             && !matches!(
                 self.peek().kind,
-                TokenKind::Ident(_) | TokenKind::LBracket | TokenKind::LParen
+                TokenKind::Ident(_)
+                    | TokenKind::LBracket
+                    | TokenKind::LParen
+                    | TokenKind::Ampersand
             )
         {
             return false;
@@ -248,6 +258,8 @@ impl Parser {
                     | TokenKind::Def
                     | TokenKind::Arrow
                     | TokenKind::Yield
+                    | TokenKind::Case
+                    | TokenKind::Begin
             );
 
         // Same disambiguation for method-call paren-less args:
@@ -390,9 +402,14 @@ impl Parser {
                 expression: Box::new(expr),
                 position,
             });
+        } else if self.match_token(&[TokenKind::Ampersand]) {
+            let position = self.previous().position;
+            let expr = self.parse_expression()?;
+            arguments.push(Expression::BlockArg {
+                expression: Box::new(expr),
+                position,
+            });
         } else {
-            // Handle &expr (block-to-proc conversion)
-            self.match_token(&[TokenKind::Ampersand]);
             // An argument may assign, which answers what it assigned:
             // `puts text[0] = "y"` passes "y".
             let first = self.parse_expression_with_assignment()?;

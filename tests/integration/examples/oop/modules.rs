@@ -236,14 +236,14 @@ fn test_oop_included_hook_parens_execution() {
 
 #[test]
 fn test_oop_module_dup_singleton_execution() {
-    let expected = "[:hello]\n[:hello]\n:hi\n[]\n[:blank]\n[:build]\n:built\n";
+    let expected = "[:hello]\n[:hello]\n:hi\n[]\n[:&, :===, :=~, :^, :blank, :inspect, :nil?, :rationalize, :to_a, :to_c, :to_f, :to_h, :to_i, :to_r, :to_s, :|]\n[:build]\n:built\n";
     let output = run_example("oop/module_dup_singleton.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_oop_module_dup_singleton_parens_execution() {
-    let expected = "[:hello]\n[:hello]\n:hi\n[]\n[:blank]\n[:build]\n:built\n";
+    let expected = "[:hello]\n[:hello]\n:hi\n[]\n[:&, :===, :=~, :^, :blank, :inspect, :nil?, :rationalize, :to_a, :to_c, :to_f, :to_h, :to_i, :to_r, :to_s, :|]\n[:build]\n:built\n";
     let output = run_example("oop/module_dup_singleton_parens.rb");
     assert_eq!(output, expected);
 }
@@ -499,4 +499,39 @@ fn test_oop_refinement_indirect_calls_execution() {
 fn test_oop_refinement_indirect_calls_no_parens_execution() {
     let output = run_example("oop/refinement_indirect_calls_no_parens.rb");
     assert_eq!(output, REFINEMENT_INDIRECT_CALLS_OUTPUT);
+}
+
+const AUTOLOAD_ENCLOSING_SUPERCLASS_OUTPUT: &str =
+    concat!("\"truck after carrier\"\n", "Shipping::Carrier\n",);
+
+#[test]
+fn test_oop_autoload_enclosing_superclass_execution() {
+    let output = run_example("oop/autoload_enclosing_superclass.rb");
+    assert_eq!(output, AUTOLOAD_ENCLOSING_SUPERCLASS_OUTPUT);
+}
+
+#[test]
+fn test_oop_autoload_enclosing_superclass_no_parens_execution() {
+    let output = run_example("oop/autoload_enclosing_superclass_no_parens.rb");
+    assert_eq!(output, AUTOLOAD_ENCLOSING_SUPERCLASS_OUTPUT);
+}
+
+const AUTOLOAD_REOPENING_OUTPUT: &str = concat!(
+    "\"constant\"\n",
+    "\"constant\"\n",
+    "75\n",
+    "true\n",
+    "1042\n",
+);
+
+#[test]
+fn test_oop_autoload_reopening_execution() {
+    let output = run_example("oop/autoload_reopening.rb");
+    assert_eq!(output, AUTOLOAD_REOPENING_OUTPUT);
+}
+
+#[test]
+fn test_oop_autoload_reopening_no_parens_execution() {
+    let output = run_example("oop/autoload_reopening_no_parens.rb");
+    assert_eq!(output, AUTOLOAD_REOPENING_OUTPUT);
 }

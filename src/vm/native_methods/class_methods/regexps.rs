@@ -100,7 +100,34 @@ impl VirtualMachine {
                     return Ok(Answered(Object::Instance(instance)));
                 }
                 // Only a String, or something answering `to_str`, spells a
-                // pattern: a Symbol names no source.
+                // pattern: a Symbol names no source. UTF-8 held as bytes is
+                // read as the text it spells, and refused where it spells
+                // none.
+                Some(Object::String(text))
+                    if text.holds_bytes() && text.encoding_name() == "UTF-8" =>
+                {
+                    let bytes = crate::vm::native_methods::string_methods::binary_bytes(text);
+                    match String::from_utf8(bytes.clone()) {
+                        Ok(spelled) => spelled,
+                        Err(_) => {
+                            let shown: String = bytes
+                                .iter()
+                                .map(|byte| {
+                                    if byte.is_ascii() {
+                                        (*byte as char).to_string()
+                                    } else {
+                                        format!("\\x{byte:02X}")
+                                    }
+                                })
+                                .collect();
+                            return Err(crate::vm::errors::simple_exception(
+                                "RegexpError",
+                                &format!("invalid multibyte character: /{shown}/"),
+                                position,
+                            ));
+                        }
+                    }
+                }
                 Some(Object::String(text)) => text.as_str().to_string(),
                 Some(argument) => {
                     let named = self.builtins().class_of(argument).name().to_string();

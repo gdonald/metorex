@@ -456,7 +456,7 @@ impl VirtualMachine {
                     return Err(type_error(
                         format!(
                             "no implicit conversion of {} into String",
-                            self.builtins().class_of(&arguments[0]).ruby_name()
+                            crate::vm::errors::conversion_subject(&arguments[0])
                         ),
                         position,
                     ));
@@ -567,14 +567,50 @@ impl VirtualMachine {
             // with its slashes escaped, and the flags that change how it
             // matches, in the order Ruby writes them.
             "inspect" => {
+                let named = self.pattern_encoding_name(pattern, flags);
+                // A pattern in an encoding other than UTF-8 holds a character
+                // to each of its bytes, and a byte past ASCII is written by
+                // its value, a character of several bytes by them together.
+                let bytes: Option<Vec<u8>> = (!matches!(named.as_str(), "UTF-8" | "US-ASCII"))
+                    .then(|| pattern.chars().map(|held| held as u32).collect::<Vec<_>>())
+                    .filter(|codes| codes.iter().all(|code| *code < 0x100))
+                    .map(|codes| codes.into_iter().map(|code| code as u8).collect());
                 let mut written = String::new();
                 let mut escaped = false;
-                for held in pattern.chars() {
-                    if held == '/' && !escaped {
-                        written.push('\\');
+                if let Some(bytes) = bytes {
+                    let mut at = 0;
+                    while at < bytes.len() {
+                        let byte = bytes[at];
+                        if byte.is_ascii() {
+                            if byte == b'/' && !escaped {
+                                written.push('\\');
+                            }
+                            escaped = byte == b'\\' && !escaped;
+                            written.push(byte as char);
+                            at += 1;
+                            continue;
+                        }
+                        escaped = false;
+                        let width = multibyte_width(&named, &bytes[at..]);
+                        if width > 1 {
+                            written.push_str("\\x{");
+                            for held in &bytes[at..at + width] {
+                                written.push_str(&format!("{held:02X}"));
+                            }
+                            written.push('}');
+                        } else {
+                            written.push_str(&format!("\\x{byte:02X}"));
+                        }
+                        at += width.max(1);
                     }
-                    escaped = held == '\\' && !escaped;
-                    written.push(held);
+                } else {
+                    for held in pattern.chars() {
+                        if held == '/' && !escaped {
+                            written.push('\\');
+                        }
+                        escaped = held == '\\' && !escaped;
+                        written.push(held);
+                    }
                 }
                 let mut shown = String::new();
                 for flag in ['m', 'i', 'x', 'n'] {
@@ -608,6 +644,19 @@ impl VirtualMachine {
             _ => Ok(None),
         }
     }
+}
+
+/// How many bytes the character at the start of `bytes` takes in `named`,
+/// for the Japanese encodings that spell a character in several.
+fn multibyte_width(named: &str, bytes: &[u8]) -> usize {
+    let decoded = if named == "EUC-JP" {
+        crate::vm::native_methods::euc_jp_table::euc_jp_character(bytes)
+    } else if crate::vm::native_methods::string_methods::spells_shift_jis(named) {
+        crate::vm::native_methods::shift_jis_table::shift_jis_character(bytes)
+    } else {
+        None
+    };
+    decoded.map_or(1, |(_, width)| width)
 }
 
 /// The names a pattern gives its capture groups, in the order they are

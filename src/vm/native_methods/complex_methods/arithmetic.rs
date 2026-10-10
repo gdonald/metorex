@@ -81,13 +81,21 @@ impl VirtualMachine {
             }
             // A power that is none of the numbers coerces the pair, and the
             // two it answers are raised in its own terms.
+            let refused = format!(
+                "{} can't be coerced into Complex",
+                crate::vm::errors::coercion_subject(exponent)
+            );
+            if !self.responds_to(exponent, "coerce") {
+                return Err(crate::vm::errors::simple_exception(
+                    "TypeError",
+                    &refused,
+                    position,
+                ));
+            }
             let base = self.make_complex(real.clone(), imaginary.clone(), position)?;
             let coerced = self.send_to_object(exponent.clone(), "coerce", vec![base], position)?;
             let Object::Array(pair) = coerced else {
-                let message = format!(
-                    "{} can't be coerced into Complex",
-                    self.builtins().class_of(exponent).name()
-                );
+                let message = refused;
                 return Err(crate::vm::errors::simple_exception(
                     "TypeError",
                     &message,
@@ -160,7 +168,7 @@ impl VirtualMachine {
         }
         let message = format!(
             "{} can't be coerced into Complex",
-            self.builtins().class_of(value).name()
+            crate::vm::errors::coercion_subject(value)
         );
         Err(crate::vm::errors::simple_exception(
             "TypeError",

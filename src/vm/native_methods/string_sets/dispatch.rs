@@ -429,9 +429,8 @@ impl VirtualMachine {
             }
             "center" => {
                 if arguments.is_empty() || arguments.len() > 2 {
-                    return Err(method_argument_error(
-                        method_name,
-                        1,
+                    return Err(crate::vm::errors::argument_count_error(
+                        crate::vm::errors::Arity::Range(1, 2),
                         arguments.len(),
                         position,
                     ));

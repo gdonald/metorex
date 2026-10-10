@@ -286,8 +286,13 @@ impl VirtualMachine {
             .get_mut(&handle)
             .ok_or_else(|| refused(position, "write to a closed connection".to_string()))?;
         let bytes = crate::vm::native_methods::pack_format::string_to_bytes(&text);
-        let written = super::transfer::write_what_fits(stream, &bytes)
-            .map_err(|problem| refused(position, format!("write: {problem}")))?;
+        let written = super::transfer::write_what_fits(stream, &bytes).map_err(|problem| {
+            crate::vm::errors::simple_exception(
+                errno_class(&problem),
+                &format!("write: {problem}"),
+                position,
+            )
+        })?;
         Ok(Object::Int(written as i64))
     }
 

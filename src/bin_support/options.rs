@@ -224,20 +224,24 @@ pub(crate) struct LineLoop {
 }
 
 /// The features `--enable` and `--disable` name, resolved from the command
-/// line. Ruby turns gems, did_you_mean, and RUBYOPT on by default and leaves
+/// line. Ruby turns gems, error_highlight, did_you_mean, and RUBYOPT on by default and leaves
 /// frozen string literals to each source unless a flag says otherwise.
 pub(crate) struct Features {
     pub(crate) gems: bool,
+    pub(crate) error_highlight: bool,
     pub(crate) did_you_mean: bool,
+    pub(crate) syntax_suggest: bool,
     pub(crate) frozen_string_literal: Option<bool>,
 }
 
 /// The feature names Ruby answers to, as `--enable` and `--disable` spell
 /// them. `gem` is the singular Ruby also accepts for `gems`.
-pub(crate) const FEATURE_NAMES: [&str; 5] = [
+pub(crate) const FEATURE_NAMES: [&str; 7] = [
     "gems",
     "gem",
+    "error_highlight",
     "did_you_mean",
+    "syntax_suggest",
     "rubyopt",
     "frozen_string_literal",
 ];
@@ -253,7 +257,9 @@ impl Features {
     pub(crate) fn read(cli: &Cli) -> Self {
         let mut held = Features {
             gems: true,
+            error_highlight: true,
             did_you_mean: true,
+            syntax_suggest: true,
             frozen_string_literal: None,
         };
         for written in &cli.enabled_features {
@@ -272,11 +278,15 @@ impl Features {
             match feature_key(part).as_str() {
                 "all" => {
                     self.gems = on;
+                    self.error_highlight = on;
                     self.did_you_mean = on;
+                    self.syntax_suggest = on;
                     self.frozen_string_literal = Some(on);
                 }
                 "gems" | "gem" => self.gems = on,
+                "error_highlight" => self.error_highlight = on,
                 "did_you_mean" => self.did_you_mean = on,
+                "syntax_suggest" => self.syntax_suggest = on,
                 "frozen_string_literal" => self.frozen_string_literal = Some(on),
                 // Whether RUBYOPT is read is settled before the arguments
                 // are, so the name is taken here and nothing more is done.
@@ -284,11 +294,14 @@ impl Features {
                 other => {
                     let flag = if on { "--enable" } else { "--disable" };
                     eprintln!(
-                        "metorex: warning: unknown argument for {}: '{}'",
-                        flag, other
+                        "{}: warning: unknown argument for {}: '{}'",
+                        program_name(),
+                        flag,
+                        other
                     );
                     eprintln!(
-                        "metorex: warning: features are [{}].",
+                        "{}: warning: features are [{}].",
+                        program_name(),
                         FEATURE_NAMES.join(", ")
                     );
                 }
@@ -372,7 +385,8 @@ pub(crate) fn rubyopt_arguments(arguments: &[String]) -> Vec<String> {
     for word in written.split_whitespace() {
         if !allowed_in_rubyopt(word) {
             eprintln!(
-                "metorex: invalid switch in RUBYOPT: {} (RuntimeError)",
+                "{}: invalid switch in RUBYOPT: {} (RuntimeError)",
+                program_name(),
                 word
             );
             process::exit(1);

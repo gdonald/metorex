@@ -40,7 +40,7 @@ p [source, target]
 
 p arrays.aref [1, 2, 3, 4], 1
 p arrays.aref [1, 2, 3, 4], 1, 2
-p arrays.aref [1, 2, 3, 4], 1..
+p arrays.aref [1, 2, 3, 4], (1..)
 p arrays.cat [1], 2, 3
 report { arrays.cat [].freeze, 1 }
 p arrays.clear [1, 2]

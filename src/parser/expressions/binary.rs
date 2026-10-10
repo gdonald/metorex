@@ -89,6 +89,11 @@ impl Parser {
                 // captures behind as local variables.
                 let named = matches!(op_token.kind, TokenKind::Match)
                     && matches!(expr, Expression::RegexLiteral { .. });
+                if named && let Expression::RegexLiteral { pattern, .. } = &expr {
+                    for name in crate::parser::named_groups(pattern) {
+                        self.declare_local(&name);
+                    }
+                }
                 expr = Expression::MethodCall {
                     receiver: Box::new(expr),
                     method: if named {
@@ -237,6 +242,36 @@ impl Parser {
 
     /// Parse range operators (.., ...), which bind looser than every
     /// operator but the conditional and what follows it.
+    /// Whether the first token after the line breaks and comments ahead
+    /// can start a value, rather than close what is open around it.
+    fn value_starts_next_line(&self) -> bool {
+        let mut offset = 0;
+        while matches!(
+            self.peek_ahead(offset).kind,
+            TokenKind::Newline | TokenKind::Comment(_)
+        ) {
+            offset += 1;
+        }
+        !matches!(
+            self.peek_ahead(offset).kind,
+            TokenKind::RParen
+                | TokenKind::RBracket
+                | TokenKind::RBrace
+                | TokenKind::Comma
+                | TokenKind::Semicolon
+                | TokenKind::End
+                | TokenKind::Else
+                | TokenKind::Elsif
+                | TokenKind::When
+                | TokenKind::In
+                | TokenKind::Rescue
+                | TokenKind::Ensure
+                | TokenKind::Then
+                | TokenKind::Do
+                | TokenKind::EOF
+        )
+    }
+
     pub(crate) fn parse_range(&mut self) -> Result<Expression, MetorexError> {
         // Beginless range: `..expr` or `...expr`
         if self.check(&[TokenKind::DotDot, TokenKind::DotDotDot]) {
@@ -261,6 +296,11 @@ impl Parser {
         if self.check(&[TokenKind::DotDot, TokenKind::DotDotDot]) {
             let op_token = self.advance();
             let exclusive = op_token.kind == TokenKind::DotDotDot;
+            // A range that ends its line goes on to the next one when that
+            // line starts a value, so `x = 1..` above `2` is `1..2`.
+            if self.check(&[TokenKind::Newline]) && self.value_starts_next_line() {
+                self.skip_whitespace();
+            }
             // Endless range: `x..` followed by `)`, `]`, `,`, `}`, newline, or EOF.
             let is_endless = self.check(&[
                 TokenKind::RParen,

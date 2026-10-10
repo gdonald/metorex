@@ -496,7 +496,7 @@ fn test_stdlib_libraries_http_headers_no_parens_execution() {
 }
 
 /// The expected output of both `stdlib_libraries/http_response` variants.
-const HTTP_RESPONSE_OUTPUT: &str = "Net::HTTPOK\n\"200\"\n\"OK\"\n\"1.1\"\n\"text/plain\"\n{\"content-type\" => [\"text/plain\"], \"x-trace\" => [\"alpha\"]}\nNet::HTTPOK\nNet::HTTPError\ntrue\nfalse\n\"#<Net::HTTPOK 200 OK readbody=false>\"\n\"maintenance window moves to 02:00\\n\"\n\"#<Net::HTTPOK 200 OK readbody=true>\"\nnil\nNet::HTTPClientException\n\"404 Not Found\"\ntrue\nNet::HTTPRetriableError\n";
+const HTTP_RESPONSE_OUTPUT: &str = "Net::HTTPOK\n\"200\"\n\"OK\"\n\"1.1\"\n\"text/plain\"\n{\"content-type\" => [\"text/plain\"], \"x-trace\" => [\"alpha\"]}\nNet::HTTPOK\nNet::HTTPError\ntrue\nfalse\n\"#<Net::HTTPOK 200 OK readbody=false>\"\n\"maintenance window moves to 02:00\\n\"\n\"#<Net::HTTPOK 200 OK readbody=true>\"\nnil\nNet::HTTPClientException\n\"404 \\\"Not Found\\\"\"\ntrue\nNet::HTTPRetriableError\n";
 
 #[test]
 fn test_stdlib_libraries_http_response_execution() {
@@ -511,7 +511,7 @@ fn test_stdlib_libraries_http_response_no_parens_execution() {
 }
 
 /// The expected output of both `stdlib_libraries/http_request_exec` variants.
-const HTTP_REQUEST_EXEC_OUTPUT: &str = "[\"POST /orders HTTP/1.1\", \"Content-Type: text/plain\", \"Accept: */*\", \"User-Agent: Ruby\", \"Content-Length: 33\", \"\", \"maintenance window moves to 02:00\"]\n[\"PUT /orders HTTP/1.0\", \"Content-Type: text/plain\", \"Transfer-Encoding: chunked\", \"Accept: */*\", \"User-Agent: Ruby\", \"\", \"8\", \"chunk me\", \"0\"]\nArgumentError\ntrue\ntrue\n\"#<Net::HTTP::Trace TRACE>\"\n";
+const HTTP_REQUEST_EXEC_OUTPUT: &str = "[\"POST /orders HTTP/1.1\", \"Content-Type: text/plain\", \"Accept-Encoding: gzip;q=1.0,deflate;q=0.6,identity;q=0.3\", \"Accept: */*\", \"User-Agent: Ruby\", \"Content-Length: 33\", \"\", \"maintenance window moves to 02:00\"]\n[\"PUT /orders HTTP/1.0\", \"Content-Type: text/plain\", \"Transfer-Encoding: chunked\", \"Accept-Encoding: gzip;q=1.0,deflate;q=0.6,identity;q=0.3\", \"Accept: */*\", \"User-Agent: Ruby\", \"\", \"8\", \"chunk me\", \"0\"]\nArgumentError\ntrue\ntrue\n\"#<Net::HTTP::Trace TRACE>\"\n";
 
 #[test]
 fn test_stdlib_libraries_http_request_exec_execution() {
@@ -600,7 +600,7 @@ fn test_stdlib_libraries_first_thread_no_parens_execution() {
 }
 
 /// The expected output of both `stdlib_libraries/build_settings` variants.
-const BUILD_SETTINGS_OUTPUT: &str = "true\ntrue\ntrue\ntrue\nnil\n64\n[4, 8]\ntrue\n[-32768, 32767]\n\"127.0.0.1\"\ntrue\nResolv::ResolvError\n{verbose: true, require: \"optparse\"}\n[\"leftover\"]\ntrue\n";
+const BUILD_SETTINGS_OUTPUT: &str = "true\ntrue\ntrue\ntrue\nnil\n64\n[4, 8]\ntrue\n[-32768, 32767]\n\"::1\"\ntrue\n[\"10.0.0.5\"]\nResolv::ResolvError\n{verbose: true, require: \"optparse\"}\n[\"leftover\"]\ntrue\n";
 
 #[test]
 fn test_stdlib_libraries_build_settings_execution() {
@@ -1261,6 +1261,30 @@ fn test_stdlib_libraries_continuations_no_parens_execution() {
     assert_eq!(output, CONTINUATIONS);
 }
 
+/// The expected output of both `stdlib_libraries/continuation_reentry`
+/// variants.
+const CONTINUATION_REENTRY: &str = concat!(
+    "0\n",
+    "1\n",
+    "2\n",
+    "in method 10\n",
+    "in method 11\n",
+    "in method 12\n",
+    ":done\n",
+);
+
+#[test]
+fn test_stdlib_libraries_continuation_reentry_execution() {
+    let output = run_example("stdlib_libraries/continuation_reentry.rb");
+    assert_eq!(output, CONTINUATION_REENTRY);
+}
+
+#[test]
+fn test_stdlib_libraries_continuation_reentry_no_parens_execution() {
+    let output = run_example("stdlib_libraries/continuation_reentry_no_parens.rb");
+    assert_eq!(output, CONTINUATION_REENTRY);
+}
+
 /// Run `code` with `-e`, answering what it wrote to stderr.
 fn stderr_of(code: &str) -> String {
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_metorex"))
@@ -1277,19 +1301,6 @@ fn test_continuation_warning_names_the_library_file() {
     assert_eq!(
         written,
         "<metorex>/continuation.rb: warning: callcc is obsolete; use Fiber instead\n"
-    );
-}
-
-#[test]
-fn test_continuation_resumed_after_its_block_returned_is_refused() {
-    let written = stderr_of(
-        "$VERBOSE = nil; require 'continuation'; saved = nil; callcc { |k| saved = k }; saved.call",
-    );
-    assert!(
-        written.contains(
-            "a continuation cannot be resumed once its callcc block has returned (NotImplementedError)"
-        ),
-        "{written}"
     );
 }
 
@@ -1884,4 +1895,496 @@ fn test_stdlib_libraries_colorized_code_execution() {
 fn test_stdlib_libraries_colorized_code_no_parens_execution() {
     let output = run_example("stdlib_libraries/colorized_code_no_parens.rb");
     assert_eq!(output, COLORIZED_CODE);
+}
+
+const PRISM_PARSING_OUTPUT: &str = concat!(
+    "\"1.9.0\"\n",
+    "true\n",
+    "[:def_node, :call_node]\n",
+    ":total\n",
+    "[:items]\n",
+    "[1, 54]\n",
+    "\"total\"\n",
+    "[:sum, :*, :price, :puts, :total]\n",
+    "[:sum]\n",
+    "[[:IDENTIFIER, \"rate\"], [:EQUAL, \"=\"], [:INTEGER, \"7\"], [:EOF, \"\"]]\n",
+    "[[:def_params_term, 9], [:unexpected_token_close_context, 9], [:def_term, 0]]\n",
+    "true\n",
+    "true\n",
+    "[\"# shipping\", \"# per pound\"]\n",
+    "4\n",
+    "[10, 11]\n",
+    "[:fee, :rate]\n",
+    "32\n",
+    "2\n",
+    "104\n",
+    "[:program, [[:binary, [:vcall, [:@ident, \"rate\", [1, 0]]], :+, [:@int, \"1\", [1, 7]]]]]\n",
+    "true\n",
+    "true\n",
+);
+
+#[test]
+fn test_stdlib_prism_parsing_execution() {
+    let output = run_example("stdlib/prism_parsing.rb");
+    assert_eq!(output, PRISM_PARSING_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_prism_parsing_no_parens_execution() {
+    let output = run_example("stdlib/prism_parsing_no_parens.rb");
+    assert_eq!(output, PRISM_PARSING_OUTPUT);
+}
+
+const BUNDLED_GEMS_OUTPUT: &str = concat!(
+    "[[:posted], false]\n",
+    "true\n",
+    "#<Encoding:Shift_JIS>\n",
+    "\"日本\"\n",
+    "[147, 250, 150, 123]\n",
+    "\"日本\"\n",
+    "\"2.1.5 (2018-12-15)\"\n",
+    "9\n",
+    "\"1.8.1\"\n",
+    "\"127.0.0.1\"\n",
+    "2\n",
+    "[:invoice, 1043, 15]\n",
+    "[[:invoice, 1042, 99]]\n",
+    "7647\n",
+    "[198, 252, 203, 220]\n",
+    "#<Encoding:Shift_JIS>\n",
+);
+
+#[test]
+fn test_stdlib_bundled_gems_execution() {
+    let output = run_example("stdlib/bundled_gems.rb");
+    assert_eq!(output, BUNDLED_GEMS_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_bundled_gems_no_parens_execution() {
+    let output = run_example("stdlib/bundled_gems_no_parens.rb");
+    assert_eq!(output, BUNDLED_GEMS_OUTPUT);
+}
+
+const IRB_TERMINAL_OUTPUT: &str = concat!(
+    "irb(main):001> irb(main):001> rate = 7\n",
+    "=> 7\n",
+    "irb(main):002> irb(main):002> rate * 2\n",
+    "=> 14\n",
+    "irb(main):003> irb(main):003> [1, 2].first\n",
+    "=> 1\n",
+    "irb(main):004> irb(main):004> exit\n",
+    "0\n",
+);
+
+#[test]
+fn test_stdlib_libraries_irb_terminal_execution() {
+    let output = run_example("stdlib_libraries/irb_terminal.rb");
+    assert_eq!(output, IRB_TERMINAL_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_libraries_irb_terminal_no_parens_execution() {
+    let output = run_example("stdlib_libraries/irb_terminal_no_parens.rb");
+    assert_eq!(output, IRB_TERMINAL_OUTPUT);
+}
+
+/// The expected output of both `stdlib_libraries/ripper_brace_after_command`
+/// variants.
+const RIPPER_BRACE_AFTER_COMMAND_OUTPUT: &str = concat!(
+    "foo 1 { }      refused\n",
+    "p(foo 1 { })   refused\n",
+    "a.b 1 { }      refused\n",
+    "super 1 { }    refused\n",
+    "foo(1) { }     read\n",
+    "foo (1) { }    read\n",
+    "foo a { }      read\n",
+    "a.b c { }      read\n",
+    "super(1) { }   read\n",
+);
+
+#[test]
+fn test_stdlib_libraries_ripper_brace_after_command_execution() {
+    let output = run_example("stdlib_libraries/ripper_brace_after_command.rb");
+    assert_eq!(output, RIPPER_BRACE_AFTER_COMMAND_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_libraries_ripper_brace_after_command_no_parens_execution() {
+    let output = run_example("stdlib_libraries/ripper_brace_after_command_no_parens.rb");
+    assert_eq!(output, RIPPER_BRACE_AFTER_COMMAND_OUTPUT);
+}
+
+/// The expected output of both `stdlib_libraries/ripper_error_events` variants.
+const RIPPER_ERROR_EVENTS_OUTPUT: &str = concat!(
+    "\"class A; return; end\"\n",
+    "  parse_error: Invalid return in class/module body\n",
+    "  | Invalid return in class/module body\n",
+    "  | class A; return; end\n",
+    "  |          ^~~~~~\n",
+    "\"def f; class A; end; end\"\n",
+    "  parse_error: class definition in method body\n",
+    "  | class definition in method body\n",
+    "  | def f; class A; end; end\n",
+    "  |        ^~~~~~~\n",
+    "\"def f; module M; end; end\"\n",
+    "  parse_error: module definition in method body\n",
+    "  | module definition in method body\n",
+    "  | def f; module M; end; end\n",
+    "  |        ^~~~~~~~\n",
+    "\"def f; A = 1; end\"\n",
+    "  assign_error: dynamic constant assignment\n",
+    "  | dynamic constant assignment\n",
+    "  | def f; A = 1; end\n",
+    "  |        ^\n",
+    "\"alias $a $1\"\n",
+    "  alias_error: can't make alias for the number variables\n",
+    "  | can't make alias for the number variables\n",
+    "  | alias $a $1\n",
+    "  |          ^~\n",
+    "\"def f(a, a); end\"\n",
+    "  parse_error: duplicated argument name\n",
+    "  | duplicated argument name\n",
+    "  | def f(a, a); end\n",
+    "  |           ^\n",
+    "\"foo { |a, a| }\"\n",
+    "  parse_error: duplicated argument name\n",
+    "  | duplicated argument name\n",
+    "  | foo { |a, a| }\n",
+    "  |            ^\n",
+    "\"->(a, a) {}\"\n",
+    "  parse_error: duplicated argument name\n",
+    "  | duplicated argument name\n",
+    "  | ->(a, a) {}\n",
+    "  |        ^\n",
+    "\"def f(a:, a:); end\"\n",
+    "  parse_error: duplicated argument name\n",
+    "  | duplicated argument name\n",
+    "  | def f(a:, a:); end\n",
+    "  |             ^\n",
+    "\"case 1; in [x, x]; end\"\n",
+    "  parse_error: duplicated variable name\n",
+    "  | duplicated variable name\n",
+    "  | case 1; in [x, x]; end\n",
+    "  |                ^\n",
+    "\"case a; in x | 1; end\"\n",
+    "  parse_error: alternative pattern after variable capture\n",
+    "  | alternative pattern after variable capture\n",
+    "  | case a; in x | 1; end\n",
+    "  |              ^\n",
+    "\"case a; in 1 | x; end\"\n",
+    "  parse_error: variable capture in alternative pattern\n",
+    "  | variable capture in alternative pattern\n",
+    "  | case a; in 1 | x; end\n",
+    "  |                ^\n",
+    "\"[1].each { _1; it }\"\n",
+    "  compile_error: 'it' is not allowed when a numbered parameter is already used\n",
+    "(ripper):1: numbered parameter is already used here\n",
+    "  | 'it' is not allowed when a numbered parameter is already used\n",
+    "  | (none):1: numbered parameter is already used here\n",
+    "  | [1].each { _1; it }\n",
+    "  |            ^~\n",
+    "\"[1].each { it; _1 }\"\n",
+    "  compile_error: numbered parameters are not allowed when 'it' is already used\n",
+    "(ripper):1: 'it' is already used here\n",
+    "  | numbered parameters are not allowed when 'it' is already used\n",
+    "  | (none):1: 'it' is already used here\n",
+    "  | [1].each { it; _1 }\n",
+    "  |            ^~\n",
+    "\"[1].each { _1; [2].each { _1 } }\"\n",
+    "  compile_error: numbered parameter is already used in outer block\n",
+    "(ripper):1: numbered parameter is already used here\n",
+    "  | numbered parameter is already used in outer block\n",
+    "  | (none):1: numbered parameter is already used here\n",
+    "  | [1].each { _1; [2].each { _1 } }\n",
+    "  |            ^~\n",
+    "\"_1 = 1\"\n",
+    "  compile_error: _1 is reserved for numbered parameter\n",
+    "  | _1 is reserved for numbered parameter\n",
+    "\"self = 1\"\n",
+    "  assign_error: Can't change the value of self\n",
+    "  | Can't change the value of self\n",
+    "  | self = 1\n",
+    "  | ^~~~\n",
+    "\"$1 = 1\"\n",
+    "  assign_error: Can't set variable $1\n",
+    "  | Can't set variable $1\n",
+    "\"class foo; end\"\n",
+    "  class_name_error: class/module name must be CONSTANT\n",
+    "  | class/module name must be CONSTANT\n",
+    "  | class foo; end\n",
+    "  |       ^~~\n",
+    "\"x = return\"\n",
+    "  parse_error: void value expression\n",
+    "  | void value expression\n",
+    "  | x = return\n",
+    "  |     ^~~~~~\n",
+    "\"next next\"\n",
+    "  parse_error: void value expression\n",
+    "  parse_error: Invalid next\n",
+    "  parse_error: Invalid next\n",
+    "  | void value expression\n",
+    "  | next next\n",
+    "  |      ^~~~\n",
+    "  | Invalid next\n",
+    "  | next next\n",
+    "  |      ^~~~\n",
+    "  | Invalid next\n",
+    "  | next next\n",
+    "  | ^~~~~~~~~\n",
+    "\"def foo=() = 1\"\n",
+    "  parse_error: setter method cannot be defined in an endless method definition\n",
+    "  | setter method cannot be defined in an endless method definition\n",
+    "  | def foo=() = 1\n",
+    "  | ^~~~~~~~\n",
+    "\"def f; BEGIN {}; end\"\n",
+    "  parse_error: BEGIN is permitted only at toplevel\n",
+    "  | BEGIN is permitted only at toplevel\n",
+    "  | def f; BEGIN {}; end\n",
+    "  |        ^~~~~\n",
+    "\"x = 1; x = *\"\n",
+    "  compile_error: no anonymous rest parameter\n",
+    "  parse_error: syntax error, unexpected end-of-input, expecting ','\n",
+    "  | no anonymous rest parameter\n",
+    "  | syntax error, unexpected end-of-input, expecting ','\n",
+    "  | x = 1; x = *\n",
+    "  |             ^\n",
+    "\"\\\"abc\"\n",
+    "  compile_error: unterminated string meets end of file\n",
+    "  | unterminated string meets end of file\n",
+    "\"0o8\"\n",
+    "  parse_error: Invalid octal digit\n",
+    "  | Invalid octal digit\n",
+);
+
+#[test]
+fn test_stdlib_libraries_ripper_error_events_execution() {
+    let output = run_example("stdlib_libraries/ripper_error_events.rb");
+    assert_eq!(output, RIPPER_ERROR_EVENTS_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_libraries_ripper_error_events_no_parens_execution() {
+    let output = run_example("stdlib_libraries/ripper_error_events_no_parens.rb");
+    assert_eq!(output, RIPPER_ERROR_EVENTS_OUTPUT);
+}
+
+/// The expected output of both `stdlib_libraries/scanner_errors` variants.
+const SCANNER_ERRORS_OUTPUT: &str = concat!(
+    "\"\\\"\\\\xg\\\"\"\n",
+    "  parse_error: invalid hex escape\n",
+    "  | invalid hex escape\n",
+    "  | \"\\xg\"\n",
+    "  |  ^~\n",
+    "\"\\\"\\\\u{zz}\\\"\"\n",
+    "  parse_error: invalid Unicode escape\n",
+    "  parse_error: unterminated Unicode escape\n",
+    "  | invalid Unicode escape\n",
+    "  | \"\\u{zz}\"\n",
+    "  |     ^\n",
+    "  | unterminated Unicode escape\n",
+    "  | \"\\u{zz}\"\n",
+    "  |     ^\n",
+    "\"\\\"\\\\u{61\\\"\"\n",
+    "  parse_error: unterminated Unicode escape\n",
+    "  | unterminated Unicode escape\n",
+    "  | \"\\u{61\"\n",
+    "  |       ^\n",
+    "\"\\\"\\\\u12\\\"\"\n",
+    "  parse_error: invalid Unicode escape\n",
+    "  | invalid Unicode escape\n",
+    "  | \"\\u12\"\n",
+    "  |  ^~~~\n",
+    "\"x = 0x + 1\"\n",
+    "  parse_error: numeric literal without digits\n",
+    "  | numeric literal without digits\n",
+    "  | x = 0x + 1\n",
+    "  |     ^~\n",
+    "\"0xg\"\n",
+    "  parse_error: numeric literal without digits\n",
+    "  parse_error: syntax error, unexpected local variable or method, expecting end-of-input\n",
+    "  | numeric literal without digits\n",
+    "  | syntax error, unexpected local variable or method, expecting end-of-input\n",
+    "\"0b2\"\n",
+    "  parse_error: numeric literal without digits\n",
+    "  parse_error: syntax error, unexpected integer literal, expecting end-of-input\n",
+    "  | numeric literal without digits\n",
+    "  | syntax error, unexpected integer literal, expecting end-of-input\n",
+    "\"@1\"\n",
+    "  compile_error: '@1' is not allowed as an instance variable name\n",
+    "  parse_error: syntax error, unexpected integer literal, expecting end-of-input\n",
+    "  | '@1' is not allowed as an instance variable name\n",
+    "  | syntax error, unexpected integer literal, expecting end-of-input\n",
+    "\"@@1a\"\n",
+    "  compile_error: '@@1' is not allowed as a class variable name\n",
+    "  parse_error: syntax error, unexpected integer literal, expecting end-of-input\n",
+    "  | '@@1' is not allowed as a class variable name\n",
+    "  | syntax error, unexpected integer literal, expecting end-of-input\n",
+    "\"$-\"\n",
+    "  parse_error: syntax error, unexpected invalid token\n",
+    "  | syntax error, unexpected invalid token\n",
+    "\"?\\\\xg\"\n",
+    "  parse_error: invalid hex escape\n",
+    "  parse_error: syntax error, unexpected local variable or method, expecting end-of-input\n",
+    "  | invalid hex escape\n",
+    "  | syntax error, unexpected local variable or method, expecting end-of-input\n",
+    "\"%(\\\\xg)\"\n",
+    "  parse_error: invalid hex escape\n",
+    "  | invalid hex escape\n",
+    "  | %(\\xg)\n",
+    "  |   ^~\n",
+    "\"/\\\\xg/\"\n",
+    "  parse_error: invalid hex escape\n",
+    "  | invalid hex escape\n",
+    "  | /\\xg/\n",
+    "  |  ^~\n",
+    "\"'\\\\xg'\"\n",
+    "[[:on_tstring_beg, \"\\\"\"], [:on_tstring_content, \"a\\\\u{\"], [:on_tstring_content, \"zz}b\"], [:on_tstring_end, \"\\\"\"]]\n",
+    "[[:on_ivar, \"@\"], [:on_int, \"1\"]]\n",
+);
+
+#[test]
+fn test_stdlib_libraries_scanner_errors_execution() {
+    let output = run_example("stdlib_libraries/scanner_errors.rb");
+    assert_eq!(output, SCANNER_ERRORS_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_libraries_scanner_errors_no_parens_execution() {
+    let output = run_example("stdlib_libraries/scanner_errors_no_parens.rb");
+    assert_eq!(output, SCANNER_ERRORS_OUTPUT);
+}
+
+/// The expected output of both `stdlib_libraries/address_lookups` variants.
+const ADDRESS_LOOKUPS: &str = concat!(
+    "true\n",
+    "true\n",
+    "true\n",
+    "Socket::ResolutionError\n",
+    "[#<Addrinfo: 0.0.0.0:80 TCP ()>]\n",
+    "[#<Addrinfo: 0.0.0.0:80 TCP (<any>)>]\n",
+    "[#<Addrinfo: 0.0.0.0:80 TCP>]\n",
+    "[#<Addrinfo: 127.0.0.1:80 TCP>, #<Addrinfo: 127.0.0.1:80 UDP>, #<Addrinfo: 127.0.0.1:80 SOCK_RAW>]\n",
+    "[#<Addrinfo: ::1 UDP>]\n",
+    "#<Addrinfo: 127.0.0.1:80 TCP (:http)>\n",
+    "[\"#<Addrinfo: 127.0.0.1:80 TCP (localhost:http)>\"]\n",
+    "#<Addrinfo: 127.0.0.1:80 SOCK_RAW>\n",
+    "#<Addrinfo: 127.0.0.1:80 SOCK_STREAM IPPROTO_UDP>\n",
+    "#<Addrinfo: 127.0.0.1:80 SOCK_RAW IPPROTO_TCP>\n",
+);
+
+#[test]
+fn test_stdlib_libraries_address_lookups_execution() {
+    let output = run_example("stdlib_libraries/address_lookups.rb");
+    assert_eq!(output, ADDRESS_LOOKUPS);
+}
+
+#[test]
+fn test_stdlib_libraries_address_lookups_no_parens_execution() {
+    let output = run_example("stdlib_libraries/address_lookups_no_parens.rb");
+    assert_eq!(output, ADDRESS_LOOKUPS);
+}
+
+/// Run `code` with `-e`, answering what it wrote to stdout.
+fn stdout_of(code: &str) -> String {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_metorex"))
+        .arg("-e")
+        .arg(code)
+        .output()
+        .expect("failed to run metorex");
+    String::from_utf8(output.stdout).expect("stdout was not utf8")
+}
+
+#[test]
+fn test_continuation_resume_of_a_finished_list_answers_false() {
+    let written = stdout_of(
+        "p __continuation_resume__(999_999, 0, 1), __continuation_resume__(), __continuation_resumed__(1, 0), __continuation_resumed__()",
+    );
+    assert_eq!(written, "false\nfalse\nnil\nnil\n");
+}
+
+#[test]
+fn test_continuation_called_after_its_method_returned_raises() {
+    let written = stderr_of(
+        "require 'continuation'; def leaves = callcc { |k| $later = k; 1 }; leaves; $later.call(2)",
+    );
+    assert!(written.contains(
+        "a continuation cannot be resumed once the code its callcc was written in has returned (NotImplementedError)"
+    ));
+}
+
+#[test]
+fn test_continuation_site_is_nil_outside_any_method() {
+    let written = stdout_of("p __continuation_site__()");
+    assert_eq!(written, "nil\n");
+}
+
+/// The expected output of both `stdlib_libraries/socket_reading_lengths` variants.
+const SOCKET_READING_LENGTHS: &str = concat!(
+    "\"sleep\"\n",
+    "\"abcdefghij\"\n",
+    "\"klm\"\n",
+    "nil\n",
+    "false\n",
+    "\"1234\"\n",
+    "\"line one\\r\\n\\r\\n\"\n",
+    "\"rest\"\n",
+    "true\n",
+    "nil\n",
+    "nil\n",
+    "\"foo\"\n",
+);
+
+#[test]
+fn test_stdlib_libraries_socket_reading_lengths_execution() {
+    let output = run_example("stdlib_libraries/socket_reading_lengths.rb");
+    assert_eq!(output, SOCKET_READING_LENGTHS);
+}
+
+#[test]
+fn test_stdlib_libraries_socket_reading_lengths_no_parens_execution() {
+    let output = run_example("stdlib_libraries/socket_reading_lengths_no_parens.rb");
+    assert_eq!(output, SOCKET_READING_LENGTHS);
+}
+
+/// The expected output of both `stdlib_libraries/http_exchange` variants.
+const HTTP_EXCHANGE: &str = concat!(
+    "\"GET /zipped answered\"\n",
+    "\"GET /plain answered\"\n",
+    "nil\n",
+    "\"POST /form answered\"\n",
+);
+
+#[test]
+fn test_stdlib_libraries_http_exchange_execution() {
+    let output = run_example("stdlib_libraries/http_exchange.rb");
+    assert_eq!(output, HTTP_EXCHANGE);
+}
+
+#[test]
+fn test_stdlib_libraries_http_exchange_no_parens_execution() {
+    let output = run_example("stdlib_libraries/http_exchange_no_parens.rb");
+    assert_eq!(output, HTTP_EXCHANGE);
+}
+
+/// The expected output of both `stdlib_libraries/inflating_gzip_in_pieces` variants.
+const INFLATING_GZIP_IN_PIECES: &str = concat!(
+    "\"m\"\n",
+    "\"aintenance window moves to 02:00\"\n",
+    "[\"maintenance window moves to 02:00\", true]\n",
+    "[\"zlib wrapped\"]\n",
+    "\"named stream\"\n",
+    "[\"\", \"\", \"\"]\n",
+);
+
+#[test]
+fn test_stdlib_libraries_inflating_gzip_in_pieces_execution() {
+    let output = run_example("stdlib_libraries/inflating_gzip_in_pieces.rb");
+    assert_eq!(output, INFLATING_GZIP_IN_PIECES);
+}
+
+#[test]
+fn test_stdlib_libraries_inflating_gzip_in_pieces_no_parens_execution() {
+    let output = run_example("stdlib_libraries/inflating_gzip_in_pieces_no_parens.rb");
+    assert_eq!(output, INFLATING_GZIP_IN_PIECES);
 }

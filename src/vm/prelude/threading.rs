@@ -387,7 +387,7 @@ class Thread
   # Ruby warns about and settles in the block's favor.
   def fetch(name, *default, &block)
     if default.size > 1
-      raise ArgumentError, "wrong number of arguments (given #{1 + default.size}, expected 1..2)"
+      Kernel.raise ArgumentError, "wrong number of arguments (given #{1 + default.size}, expected 1..2)"
     end
     return self[name] if key?(name)
     unless block.nil?
@@ -395,7 +395,7 @@ class Thread
       return block.call(name)
     end
     return default[0] unless default.empty?
-    raise KeyError, "key not found: #{name.inspect}"
+    Kernel.raise KeyError, "key not found: #{name.inspect}"
   end
 end
 
@@ -403,7 +403,7 @@ class Thread
   # A thread is set up when it is made. Calling `initialize` on one again is
   # refused, since the thread it would start is already running.
   def initialize(*_arguments)
-    raise ThreadError, "already initialized thread"
+    Kernel.raise ThreadError, "already initialized thread"
   end
 
   # The group this thread belongs to, which is the default one until another

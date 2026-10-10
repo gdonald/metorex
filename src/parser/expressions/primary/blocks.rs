@@ -1,6 +1,6 @@
 // Block / lambda primary parsing: `lambda { ... }`, `do ... end`, `-> { ... }`.
 
-use crate::ast::{Expression, Statement};
+use crate::ast::Expression;
 use crate::error::MetorexError;
 use crate::lexer::{Position, TokenKind};
 use crate::parser::Parser;
@@ -39,6 +39,9 @@ impl Parser {
             && trailing_block.is_none()
             && (self.check(&[TokenKind::Equal]) || self.names_a_local("lambda"))
         {
+            if self.check(&[TokenKind::Equal]) {
+                self.declare_local("lambda");
+            }
             return Ok(Expression::Identifier {
                 name: "lambda".to_string(),
                 position: token_position,
@@ -84,10 +87,7 @@ impl Parser {
 
     /// Parse a stabby lambda `-> { ... }` / `-> (params) { ... }` after the
     /// `->` token has been consumed.
-    pub(super) fn parse_stabby_lambda(
-        &mut self,
-        token_position: Position,
-    ) -> Result<Expression, MetorexError> {
+    pub(super) fn parse_stabby_lambda(&mut self) -> Result<Expression, MetorexError> {
         self.skip_whitespace();
         if self.check(&[TokenKind::LBrace]) {
             return self.lambda_with_brace_block();
@@ -96,7 +96,7 @@ impl Parser {
             return self.lambda_with_do_block();
         }
         if self.check(&[TokenKind::LParen]) {
-            return self.stabby_lambda_with_params(token_position);
+            return self.stabby_lambda_with_params();
         }
         // Paren-less params: `-> e { ... }` / `-> a, b { ... }`. Collect a
         // comma-separated identifier list; if a `{` or `do` follows, those
@@ -131,6 +131,7 @@ impl Parser {
             }
             if !params.is_empty() && self.check(&[TokenKind::LBrace, TokenKind::Do]) {
                 self.refuse_duplicate_parameters(&params)?;
+                self.refuse_lambda_body_parameters()?;
                 let block = if self.check(&[TokenKind::LBrace]) {
                     self.parse_brace_block()?
                 } else {
@@ -151,23 +152,34 @@ impl Parser {
             }
             self.stream.restore_position(saved_position);
         }
-        // Bare `-> expr`
-        let expr = self.parse_assignment()?;
-        Ok(Expression::Lambda {
-            parameters: Vec::new(),
-            parameter_defaults: Vec::new(),
-            body: vec![Statement::Expression {
-                expression: expr,
-                position: token_position,
-            }],
-            captured_vars: Some(Vec::new()),
-            outer_locals: Vec::new(),
-            is_lambda: true,
-            position: token_position,
-        })
+        Err(self.error_at_current("expected a `do` keyword or a `{` to open the lambda block"))
+    }
+
+    /// Refuse block parameters written at the start of a `->` lambda's
+    /// body, which takes its parameters before the body opens.
+    fn refuse_lambda_body_parameters(&self) -> Result<(), MetorexError> {
+        let mut offset = 1;
+        while matches!(self.peek_ahead(offset).kind, TokenKind::Newline) {
+            offset += 1;
+        }
+        if matches!(
+            self.peek_ahead(offset).kind,
+            TokenKind::Pipe | TokenKind::LogicalOr
+        ) {
+            return Err(MetorexError::syntax_error(
+                "syntax error, unexpected '|'",
+                crate::error::SourceLocation::new(
+                    self.peek_ahead(offset).position.line,
+                    self.peek_ahead(offset).position.column,
+                    self.peek_ahead(offset).position.offset,
+                ),
+            ));
+        }
+        Ok(())
     }
 
     fn lambda_with_brace_block(&mut self) -> Result<Expression, MetorexError> {
+        self.refuse_lambda_body_parameters()?;
         let block = self.parse_brace_block()?;
         if let Expression::Lambda {
             parameters,
@@ -191,6 +203,7 @@ impl Parser {
     }
 
     fn lambda_with_do_block(&mut self) -> Result<Expression, MetorexError> {
+        self.refuse_lambda_body_parameters()?;
         let block = self.parse_block()?;
         if let Expression::Lambda {
             parameters,
@@ -252,6 +265,7 @@ impl Parser {
             return (!prefix.is_empty()).then(|| (prefix.to_string(), None));
         };
         self.advance();
+        self.declare_local(&name);
         // `-> x: 1 { }` names a keyword parameter, and `-> x = 1 { }` an
         // optional one. Either way the value that follows is its default.
         if prefix.is_empty() && self.check(&[TokenKind::Colon]) && !self.peek().had_leading_space {
@@ -286,10 +300,7 @@ impl Parser {
         Some((format!("{}{}", prefix, name), None))
     }
 
-    fn stabby_lambda_with_params(
-        &mut self,
-        token_position: Position,
-    ) -> Result<Expression, MetorexError> {
+    fn stabby_lambda_with_params(&mut self) -> Result<Expression, MetorexError> {
         self.advance(); // consume (
         let mut params = Vec::new();
         let mut defaults = Vec::new();
@@ -314,6 +325,7 @@ impl Parser {
         self.skip_whitespace();
 
         if self.check(&[TokenKind::LBrace, TokenKind::Do]) {
+            self.refuse_lambda_body_parameters()?;
             let block = if self.check(&[TokenKind::LBrace]) {
                 self.parse_brace_block()?
             } else {
@@ -366,19 +378,6 @@ impl Parser {
             }
             return Ok(block);
         }
-
-        let expr = self.parse_expression()?;
-        Ok(Expression::Lambda {
-            parameters: params,
-            parameter_defaults: defaults,
-            body: vec![Statement::Expression {
-                expression: expr,
-                position: token_position,
-            }],
-            captured_vars: Some(Vec::new()),
-            outer_locals: Vec::new(),
-            is_lambda: true,
-            position: token_position,
-        })
+        Err(self.error_at_current("expected a `do` keyword or a `{` to open the lambda block"))
     }
 }

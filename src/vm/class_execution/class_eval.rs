@@ -105,7 +105,14 @@ impl VirtualMachine {
         self.push_refinement_scope();
         // The method running this block did not write it.
         self.borrowed_frames.push(self.current_method_frame);
-        let result = self.apply_class_body(class, &block.body, position);
+        let frame = self.block_frame_at(block, position);
+        let result = self.apply_class_body_in_frame(
+            class,
+            &block.body,
+            position,
+            frame,
+            Some(block.home_frame),
+        );
         self.borrowed_frames.pop();
         self.pop_refinement_scope();
         self.user_def_nesting = saved_nesting;
@@ -164,7 +171,14 @@ impl VirtualMachine {
         self.user_def_nesting = 0;
         // The method running this block did not write it.
         self.borrowed_frames.push(self.current_method_frame);
-        let result = self.apply_class_body(class, &block.body, position);
+        let frame = self.block_frame_at(block, position);
+        let result = self.apply_class_body_in_frame(
+            class,
+            &block.body,
+            position,
+            frame,
+            Some(block.home_frame),
+        );
         self.borrowed_frames.pop();
         self.user_def_nesting = saved_nesting;
         self.constant_homes.pop();
@@ -260,6 +274,7 @@ impl VirtualMachine {
         let tokens = crate::lexer::Lexer::with_start_line(&code, lineno).tokenize();
         let statements = crate::parser::Parser::new(tokens)
             .inside_eval()
+            .with_outer_locals(self.visible_local_names())
             .parse()
             .map_err(|errors| {
                 MetorexError::runtime_error(
@@ -319,7 +334,29 @@ impl VirtualMachine {
         if self.coverage_counts_eval() {
             self.coverage_note_eval(&filename, &statements);
         }
-        let result = self.apply_class_body(class_rc, &statements, position);
+        // The code is a place of its own in a backtrace, named as the code
+        // that ran it and standing where the call was made, as Kernel#eval's
+        // code is, rather than as a class body.
+        let written_in = self
+            .call_stack()
+            .last()
+            .cloned()
+            .unwrap_or_else(|| crate::vm::CallFrame::boundary("<main>"));
+        self.call_stack_push(
+            written_in
+                .with_location(Some(format!("{}:{}", position.line, position.column)))
+                .with_source_file(
+                    prev_source_file
+                        .clone()
+                        .or_else(|| prev_file.as_ref().map(|file| file.display().to_string())),
+                ),
+        );
+        class_rc.set_current_visibility("public");
+        let result = self.apply_class_body_statements(class_rc, &statements, position);
+        if let Err(error) = &result {
+            self.trace_error_leaving_frame(error);
+        }
+        self.call_stack_pop();
         self.user_def_nesting = saved_nesting;
         self.current_file = prev_file;
         self.current_source_file = prev_source_file;

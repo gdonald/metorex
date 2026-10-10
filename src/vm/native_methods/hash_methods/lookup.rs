@@ -108,9 +108,7 @@ impl VirtualMachine {
                 let mut dict = dict_rc.borrow_mut();
                 let removed = dict.shift_remove(&key_str).unwrap_or(Object::Nil);
                 // Also remove from key objects sentinel if present
-                if let Some(Object::Dict(key_objs)) = dict.get(KEY_OBJECTS_KEY) {
-                    key_objs.borrow_mut().shift_remove(&key_str);
-                }
+                forget_key_object(&mut dict, &key_str);
                 Ok(Some(removed))
             }
             // The value and the block a hash answers with for a key it has no

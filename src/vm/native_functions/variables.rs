@@ -21,9 +21,22 @@ impl VirtualMachine {
                 crate::vm::utils::position_to_location(position),
             ));
         }
-        let names: Vec<Object> = self
+        // A global given a second name, such as `$>` for `$stdout`, is listed
+        // under both.
+        let mut aliases: Vec<String> = self.global_aliases.keys().cloned().collect();
+        aliases.sort();
+        let mut listed: Vec<String> = self
             .globals()
             .variable_names()
+            .map(|name| name.to_string())
+            .collect();
+        for alias in aliases {
+            if !listed.contains(&alias) {
+                listed.push(alias);
+            }
+        }
+        let names: Vec<Object> = listed
+            .into_iter()
             .map(|name| Object::symbol(format!("${}", name)))
             .collect();
         Ok(Object::Array(std::rc::Rc::new(std::cell::RefCell::new(
@@ -49,6 +62,19 @@ impl VirtualMachine {
                 crate::vm::utils::position_to_location(position),
             ));
         }
+        let names: Vec<Object> = self
+            .visible_local_names()
+            .into_iter()
+            .map(Object::symbol)
+            .collect();
+        Ok(Object::Array(std::rc::Rc::new(std::cell::RefCell::new(
+            names,
+        ))))
+    }
+
+    /// The locals the code running now sees, each once, in the order they
+    /// were bound.
+    pub(crate) fn visible_local_names(&self) -> Vec<String> {
         let mut names: Vec<String> = self
             .environment()
             .binding_variable_names()
@@ -68,9 +94,6 @@ impl VirtualMachine {
             .collect();
         let mut seen = std::collections::HashSet::new();
         names.retain(|name| seen.insert(name.clone()));
-        let names: Vec<Object> = names.into_iter().map(Object::symbol).collect();
-        Ok(Object::Array(std::rc::Rc::new(std::cell::RefCell::new(
-            names,
-        ))))
+        names
     }
 }

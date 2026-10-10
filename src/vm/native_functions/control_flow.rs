@@ -28,6 +28,16 @@ impl VirtualMachine {
             ));
         }
         let exception = self.build_raise_exception(&arguments, position)?;
+        if !arguments.is_empty() {
+            self.note_raise_spot(&exception, position);
+        }
+        // A trace sees the exception on its way up, before anything has had
+        // the chance to handle it.
+        self.fire_event(
+            "raise",
+            position,
+            vec![("raised_exception", exception.clone())],
+        )?;
         let message = match &exception {
             Object::Exception(_) => crate::vm::utils::format_exception(&exception),
             _ => String::new(),

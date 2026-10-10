@@ -492,3 +492,105 @@ fn test_encodings_converting_through_jis_no_parens_execution() {
     let output = run_example("encodings/converting_through_jis_no_parens.rb");
     assert_eq!(output, CONVERTING_THROUGH_JIS_OUTPUT);
 }
+
+/// The expected output of both `encodings/conversion_error_details` variants.
+const CONVERSION_ERROR_DETAILS_OUTPUT: &str = concat!(
+    "sjis ff: Encoding::InvalidByteSequenceError: \"\\xFF\" on Shift_JIS [source_encoding_name=\"Shift_JIS\", destination_encoding_name=\"UTF-8\", error_bytes=\"\\xFF\", readagain_bytes=nil, incomplete_input?=false]\n",
+    "sjis followed: Encoding::InvalidByteSequenceError: \"\\x82\" followed by \" \" on Shift_JIS [source_encoding_name=\"Shift_JIS\", destination_encoding_name=\"UTF-8\", error_bytes=\"\\x82\", readagain_bytes=\" \", incomplete_input?=false]\n",
+    "sjis 80: Encoding::InvalidByteSequenceError: \"\\x80\" on Shift_JIS [source_encoding_name=\"Shift_JIS\", destination_encoding_name=\"UTF-8\", error_bytes=\"\\x80\", readagain_bytes=nil, incomplete_input?=false]\n",
+    "euc ff: Encoding::InvalidByteSequenceError: \"\\xFF\" on EUC-JP [source_encoding_name=\"EUC-JP\", destination_encoding_name=\"UTF-8\", error_bytes=\"\\xFF\", readagain_bytes=nil, incomplete_input?=false]\n",
+    "euc followed: Encoding::InvalidByteSequenceError: \"\\xA4\" followed by \"A\" on EUC-JP [source_encoding_name=\"EUC-JP\", destination_encoding_name=\"UTF-8\", error_bytes=\"\\xA4\", readagain_bytes=\"A\", incomplete_input?=false]\n",
+    "euc ss3 short: Encoding::InvalidByteSequenceError: incomplete \"\\x8F\\xA1\" on EUC-JP [source_encoding_name=\"EUC-JP\", destination_encoding_name=\"UTF-8\", error_bytes=\"\\x8F\\xA1\", readagain_bytes=nil, incomplete_input?=true]\n",
+    "euc ss2 bad: Encoding::InvalidByteSequenceError: \"\\x8E\" followed by \"A\" on EUC-JP [source_encoding_name=\"EUC-JP\", destination_encoding_name=\"UTF-8\", error_bytes=\"\\x8E\", readagain_bytes=\"A\", incomplete_input?=false]\n",
+    "utf16 to latin1: Encoding::UndefinedConversionError: U+3042 to ISO-8859-1 in conversion from UTF-16LE to UTF-8 to ISO-8859-1 [source_encoding_name=\"UTF-8\", destination_encoding_name=\"ISO-8859-1\", error_char=\"あ\"]\n",
+    "utf8 to sjis: Encoding::UndefinedConversionError: U+1F600 from UTF-8 to Shift_JIS [source_encoding_name=\"UTF-8\", destination_encoding_name=\"Shift_JIS\", error_char=\"😀\"]\n",
+    "utf8 followed: Encoding::InvalidByteSequenceError: \"\\xE3\" followed by \"A\" on UTF-8 [source_encoding_name=\"UTF-8\", destination_encoding_name=\"UTF-16LE\", error_bytes=\"\\xE3\", readagain_bytes=\"A\", incomplete_input?=false]\n",
+    "binary to latin1: Encoding::UndefinedConversionError: \"\\xFF\" to UTF-8 in conversion from ASCII-8BIT to UTF-8 to ISO-8859-1 [source_encoding_name=\"ASCII-8BIT\", destination_encoding_name=\"UTF-8\", error_char=\"\\xFF\"]\n",
+    "sjis to eucjp: no error\n",
+    "utf8 to iso2022: Encoding::UndefinedConversionError: U+1F600 to EUC-JP in conversion from UTF-8 to EUC-JP to stateless-ISO-2022-JP to ISO-2022-JP [source_encoding_name=\"UTF-8\", destination_encoding_name=\"EUC-JP\", error_char=\"😀\"]\n",
+    "sjis to latin1: Encoding::UndefinedConversionError: U+3042 to ISO-8859-1 in conversion from Shift_JIS to UTF-8 to ISO-8859-1 [source_encoding_name=\"UTF-8\", destination_encoding_name=\"ISO-8859-1\", error_char=\"あ\"]\n",
+    "invalid utf8: Encoding::InvalidByteSequenceError: \"\\xFF\" on UTF-8 [source_encoding_name=\"UTF-8\", destination_encoding_name=\"UTF-16LE\", error_bytes=\"\\xFF\", readagain_bytes=nil, incomplete_input?=false]\n",
+    "incomplete utf8: Encoding::InvalidByteSequenceError: incomplete \"\\xE3\\x81\" on UTF-8 [source_encoding_name=\"UTF-8\", destination_encoding_name=\"UTF-16LE\", error_bytes=\"\\xE3\\x81\", readagain_bytes=nil, incomplete_input?=true]\n",
+    "incomplete sjis: Encoding::InvalidByteSequenceError: incomplete \"\\x82\" on Shift_JIS [source_encoding_name=\"Shift_JIS\", destination_encoding_name=\"UTF-8\", error_bytes=\"\\x82\", readagain_bytes=nil, incomplete_input?=true]\n",
+    "incomplete eucjp: Encoding::InvalidByteSequenceError: incomplete \"\\x8E\" on EUC-JP [source_encoding_name=\"EUC-JP\", destination_encoding_name=\"Shift_JIS\", error_bytes=\"\\x8E\", readagain_bytes=nil, incomplete_input?=true]\n",
+    "binary to utf8: Encoding::UndefinedConversionError: \"\\xFF\" from ASCII-8BIT to UTF-8 [source_encoding_name=\"ASCII-8BIT\", destination_encoding_name=\"UTF-8\", error_char=\"\\xFF\"]\n",
+    "latin1 to ascii: Encoding::UndefinedConversionError: U+00FF to US-ASCII in conversion from ISO-8859-1 to UTF-8 to US-ASCII [source_encoding_name=\"UTF-8\", destination_encoding_name=\"US-ASCII\", error_char=\"ÿ\"]\n",
+);
+
+#[test]
+fn test_encodings_conversion_error_details_execution() {
+    let output = run_example("encodings/conversion_error_details.rb");
+    assert_eq!(output, CONVERSION_ERROR_DETAILS_OUTPUT);
+}
+
+#[test]
+fn test_encodings_conversion_error_details_no_parens_execution() {
+    let output = run_example("encodings/conversion_error_details_no_parens.rb");
+    assert_eq!(output, CONVERSION_ERROR_DETAILS_OUTPUT);
+}
+
+/// The expected output of both `encodings/encoding_names` variants.
+const ENCODING_NAMES_OUTPUT: &str = concat!(
+    "US-ASCII: [\"US-ASCII\", \"ASCII\", \"ANSI_X3.4-1968\", \"646\"]\n",
+    "UTF-8: [\"UTF-8\", \"CP65001\", \"locale\", \"external\", \"filesystem\"]\n",
+    "Shift_JIS: [\"Shift_JIS\"]\n",
+    "ISO-2022-JP: [\"ISO-2022-JP\", \"ISO2022-JP\"]\n",
+    "UTF-7: [\"UTF-7\", \"CP65000\"]\n",
+    "GB2312: [\"GB2312\", \"EUC-CN\", \"eucCN\"]\n",
+    "IBM720: [\"IBM720\", \"CP720\"]\n",
+    "Big5-HKSCS: [\"Big5-HKSCS\", \"Big5-HKSCS:2008\"]\n",
+    "646 -> US-ASCII\n",
+    "eucJP -> EUC-JP\n",
+    "CP932 -> Windows-31J\n",
+    "ebcdic-cp-us -> IBM037\n",
+    "Big5-HKSCS:2008 -> Big5-HKSCS\n",
+    "EUC-CN -> GB2312\n",
+    "cp720 -> IBM720\n",
+    "[\"ASCII-8BIT\", \"UTF-8\", \"US-ASCII\", \"UTF-16BE\", \"UTF-16LE\", \"UTF-32BE\", \"UTF-32LE\", \"UTF-16\", \"UTF-32\", \"UTF8-MAC\", \"EUC-JP\", \"Windows-31J\"]\n",
+    "[\"SJIS-SoftBank\", \"locale\", \"external\", \"filesystem\", \"internal\"]\n",
+    "103\n",
+    "\"US-ASCII\"\n",
+    "#<Encoding:IBM720>\n",
+    "#<Encoding:EUC-JP>\n",
+);
+
+#[test]
+fn test_encodings_encoding_names_execution() {
+    let output = run_example("encodings/encoding_names.rb");
+    assert_eq!(output, ENCODING_NAMES_OUTPUT);
+}
+
+#[test]
+fn test_encodings_encoding_names_no_parens_execution() {
+    let output = run_example("encodings/encoding_names_no_parens.rb");
+    assert_eq!(output, ENCODING_NAMES_OUTPUT);
+}
+
+/// The expected output of both `encodings/symbol_and_regexp_inspect` variants.
+const SYMBOL_AND_REGEXP_INSPECT_OUTPUT: &str = concat!(
+    "binary high: :\"\\xE3\\x81\\x82\" ASCII-8BIT | /\\xE3\\x81\\x82/ ASCII-8BIT | \"\\xE3\\x81\\x82\"\n",
+    "binary ascii: :abc US-ASCII | /abc/ US-ASCII | \"abc\"\n",
+    "sjis: :\"\\x{82A0}\" Shift_JIS | /\\x{82A0}/ Shift_JIS | \"\\x{82A0}\"\n",
+    "eucjp: :\"\\x{A4A2}\" EUC-JP | /\\x{A4A2}/ EUC-JP | \"\\x{A4A2}\"\n",
+    "latin1: :\"caf\\xE9\" ISO-8859-1 | /caf\\xE9/ ISO-8859-1 | \"caf\\xE9\"\n",
+    "utf16le: :\"a\" UTF-16LE | /a\u{0000}/ UTF-16LE | \"a\"\n",
+    "invalid utf8: #<EncodingError: invalid symbol in encoding UTF-8 :\"\\xFF\"> - | #<RegexpError: invalid multibyte character: /\\xFF/> - | -\n",
+    "utf8 multi: :あ UTF-8 | /あ/ UTF-8 | \"あ\"\n",
+    "binary space: :\"a b\" US-ASCII | /a b/ US-ASCII | \"a b\"\n",
+    "sjis ascii: :abc US-ASCII | /abc/ US-ASCII | \"abc\"\n",
+    "\"caf\\xE9\"\n",
+    "1\n",
+    "/ab\\/c/\n",
+);
+
+#[test]
+fn test_encodings_symbol_and_regexp_inspect_execution() {
+    let output = run_example("encodings/symbol_and_regexp_inspect.rb");
+    assert_eq!(output, SYMBOL_AND_REGEXP_INSPECT_OUTPUT);
+}
+
+#[test]
+fn test_encodings_symbol_and_regexp_inspect_no_parens_execution() {
+    let output = run_example("encodings/symbol_and_regexp_inspect_no_parens.rb");
+    assert_eq!(output, SYMBOL_AND_REGEXP_INSPECT_OUTPUT);
+}

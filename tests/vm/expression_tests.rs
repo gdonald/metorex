@@ -68,7 +68,7 @@ fn index_read_on_integer_reads_a_bit() {
 #[test]
 fn index_read_on_bool_error() {
     let err = run_err("true[0]");
-    assert!(err.contains("index") || err.contains("type") || err.contains("Cannot"));
+    assert!(err.contains("undefined method '[]' for true"));
 }
 
 // ── If expression with elsif branch taken ────────────────────────────────────

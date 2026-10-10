@@ -2,9 +2,26 @@
 
 use super::*;
 
+thread_local! {
+    /// A number every change to a method table, a mixin chain or a
+    /// singleton's attachment moves on, so a lookup cached under an earlier
+    /// one is not trusted.
+    static METHOD_STATE: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// Mark every cached method lookup out of date.
+pub(crate) fn method_state_changed() {
+    METHOD_STATE.with(|state| state.set(state.get() + 1));
+}
+
+fn method_state() -> u64 {
+    METHOD_STATE.with(|state| state.get())
+}
+
 impl Class {
     /// Define or replace a method on this class.
     pub fn define_method(&self, name: impl Into<String>, method: Rc<Method>) {
+        method_state_changed();
         self.methods.borrow_mut().insert(name.into(), method);
     }
 
@@ -17,6 +34,7 @@ impl Class {
     /// The module is prepended to the list so the most-recently-included module
     /// is searched first (Ruby's MRO).
     pub fn add_mixin(&self, module: Rc<Class>) {
+        method_state_changed();
         self.mixins.borrow_mut().insert(0, module);
     }
 
@@ -27,6 +45,7 @@ impl Class {
 
     /// Add a prepended module, ahead of the class's own method table.
     pub fn add_prepend(&self, module: Rc<Class>) {
+        method_state_changed();
         self.prepends.borrow_mut().insert(0, module);
     }
 
@@ -116,8 +135,37 @@ impl Class {
         }
     }
 
-    /// Look up a method by walking the inheritance chain (own → mixins → superclass).
+    /// Look up a method by walking the inheritance chain (own → mixins →
+    /// superclass), answering from the cache while no method table or mixin
+    /// chain has changed since the name was last looked up here.
     pub fn find_method(&self, name: &str) -> Option<Rc<Method>> {
+        let state = method_state();
+        if let Some((cached_under, found)) = self.method_cache.borrow().get(name)
+            && *cached_under == state
+        {
+            return found.clone();
+        }
+        *self
+            .method_walks
+            .borrow_mut()
+            .entry(name.to_string())
+            .or_insert(0) += 1;
+        let found = self.walk_for_method(name);
+        // A lookup runs no program code, so the state it started under is the
+        // one the answer holds for.
+        self.method_cache
+            .borrow_mut()
+            .insert(name.to_string(), (state, found.clone()));
+        found
+    }
+
+    /// How many times `find_method` walked the ancestry for `name` rather than
+    /// answering from the cache.
+    pub fn method_lookup_walks(&self, name: &str) -> u64 {
+        self.method_walks.borrow().get(name).copied().unwrap_or(0)
+    }
+
+    fn walk_for_method(&self, name: &str) -> Option<Rc<Method>> {
         for prepended in self.prepends.borrow().iter() {
             if let Some(method) = prepended.find_method(name) {
                 return Some(method);
@@ -210,6 +258,7 @@ impl Class {
     /// Remove a method defined directly on this class.
     /// Returns true if the method was found and removed, false otherwise.
     pub fn remove_method(&self, name: &str) -> bool {
+        method_state_changed();
         self.methods.borrow_mut().remove(name).is_some()
     }
 
@@ -236,6 +285,7 @@ impl Class {
             // method it copies came from a prepended or included module.
             aliased.owner_class = Some(Rc::clone(self));
             aliased.owner = Some(self.ruby_name());
+            method_state_changed();
             self.methods
                 .borrow_mut()
                 .insert(new_name.to_string(), std::rc::Rc::new(aliased));
@@ -255,6 +305,7 @@ impl Class {
                 self.get_class_var("__attached__")
             && let Some(method) = attached.find_method(&format!("__class__{}", old_name))
         {
+            method_state_changed();
             self.methods
                 .borrow_mut()
                 .insert(new_name.to_string(), method);

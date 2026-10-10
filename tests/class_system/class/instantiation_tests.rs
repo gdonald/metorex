@@ -97,7 +97,7 @@ fn test_create_instance_without_initialize() {
 
     // class Simple
     // end
-    // s = Simple()
+    // s = Simple.new
     let program = vec![
         Statement::ClassDef {
             name: "Simple".to_string(),
@@ -112,11 +112,12 @@ fn test_create_instance_without_initialize() {
                 name: "s".to_string(),
                 position: pos(3, 1),
             },
-            value: Expression::Call {
-                callee: Box::new(Expression::Identifier {
+            value: Expression::MethodCall {
+                receiver: Box::new(Expression::Identifier {
                     name: "Simple".to_string(),
                     position: pos(3, 5),
                 }),
+                method: "new".to_string(),
                 arguments: vec![],
                 trailing_block: None,
                 position: pos(3, 5),
@@ -142,7 +143,7 @@ fn test_create_instance_with_initialize() {
     //     @y = y
     //   end
     // end
-    // p = Point(10, 20)
+    // p = Point.new(10, 20)
     let program = vec![
         Statement::ClassDef {
             name: "Point".to_string(),
@@ -190,11 +191,12 @@ fn test_create_instance_with_initialize() {
                 name: "p".to_string(),
                 position: pos(7, 1),
             },
-            value: Expression::Call {
-                callee: Box::new(Expression::Identifier {
+            value: Expression::MethodCall {
+                receiver: Box::new(Expression::Identifier {
                     name: "Point".to_string(),
                     position: pos(7, 5),
                 }),
+                method: "new".to_string(),
                 arguments: vec![
                     Expression::IntLiteral {
                         value: 10,
@@ -231,7 +233,7 @@ fn test_instance_variable_access() {
     //     @count
     //   end
     // end
-    // c = Counter(42)
+    // c = Counter.new(42)
     // result = c.get_count()
     let program = vec![
         Statement::ClassDef {
@@ -280,11 +282,12 @@ fn test_instance_variable_access() {
                 name: "c".to_string(),
                 position: pos(9, 1),
             },
-            value: Expression::Call {
-                callee: Box::new(Expression::Identifier {
+            value: Expression::MethodCall {
+                receiver: Box::new(Expression::Identifier {
                     name: "Counter".to_string(),
                     position: pos(9, 5),
                 }),
+                method: "new".to_string(),
                 arguments: vec![Expression::IntLiteral {
                     value: 42,
                     position: pos(9, 13),
@@ -332,8 +335,8 @@ fn test_class_variable_access() {
     //     @@total
     //   end
     // end
-    // c1 = Counter()
-    // c2 = Counter()
+    // c1 = Counter.new
+    // c2 = Counter.new
     // result = c1.get_total()
     let program = vec![
         Statement::ClassDef {
@@ -401,11 +404,12 @@ fn test_class_variable_access() {
                 name: "c1".to_string(),
                 position: pos(10, 1),
             },
-            value: Expression::Call {
-                callee: Box::new(Expression::Identifier {
+            value: Expression::MethodCall {
+                receiver: Box::new(Expression::Identifier {
                     name: "Counter".to_string(),
                     position: pos(10, 6),
                 }),
+                method: "new".to_string(),
                 arguments: vec![],
                 trailing_block: None,
                 position: pos(10, 6),
@@ -417,11 +421,12 @@ fn test_class_variable_access() {
                 name: "c2".to_string(),
                 position: pos(11, 1),
             },
-            value: Expression::Call {
-                callee: Box::new(Expression::Identifier {
+            value: Expression::MethodCall {
+                receiver: Box::new(Expression::Identifier {
                     name: "Counter".to_string(),
                     position: pos(11, 6),
                 }),
+                method: "new".to_string(),
                 arguments: vec![],
                 trailing_block: None,
                 position: pos(11, 6),
@@ -464,7 +469,7 @@ fn test_class_with_inheritance() {
     // end
     // class Derived < Base
     // end
-    // d = Derived(42)
+    // d = Derived.new(42)
     let program = vec![
         Statement::ClassDef {
             name: "Base".to_string(),
@@ -504,11 +509,12 @@ fn test_class_with_inheritance() {
                 name: "d".to_string(),
                 position: pos(8, 1),
             },
-            value: Expression::Call {
-                callee: Box::new(Expression::Identifier {
+            value: Expression::MethodCall {
+                receiver: Box::new(Expression::Identifier {
                     name: "Derived".to_string(),
                     position: pos(8, 5),
                 }),
+                method: "new".to_string(),
                 arguments: vec![Expression::IntLiteral {
                     value: 42,
                     position: pos(8, 13),
@@ -597,7 +603,7 @@ fn test_error_when_calling_class_with_wrong_argument_count() {
 
     // class Simple
     // end
-    // s = Simple(42)  # ArgumentError: the default initialize takes none
+    // s = Simple.new(42)  # ArgumentError: the default initialize takes none
     let program = vec![
         Statement::ClassDef {
             name: "Simple".to_string(),
@@ -612,11 +618,12 @@ fn test_error_when_calling_class_with_wrong_argument_count() {
                 name: "s".to_string(),
                 position: pos(3, 1),
             },
-            value: Expression::Call {
-                callee: Box::new(Expression::Identifier {
+            value: Expression::MethodCall {
+                receiver: Box::new(Expression::Identifier {
                     name: "Simple".to_string(),
                     position: pos(3, 5),
                 }),
+                method: "new".to_string(),
                 arguments: vec![Expression::IntLiteral {
                     value: 42,
                     position: pos(3, 12),

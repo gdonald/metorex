@@ -225,9 +225,26 @@ pub(crate) fn inflate_counted(bytes: &[u8]) -> Option<(Vec<u8>, usize)> {
 /// The same read, with a preset dictionary standing in front of the output so
 /// a back-reference can reach into it.
 pub(crate) fn inflate_counted_with(bytes: &[u8], dictionary: &[u8]) -> Option<(Vec<u8>, usize)> {
-    let mut reader = BitReader::new(bytes);
     let mut out: Vec<u8> = dictionary.to_vec();
-    let carried = out.len();
+    let used = inflate_into(bytes, &mut out)?;
+    out.drain(..dictionary.len());
+    Some((out, used))
+}
+
+/// What the stream at the front of `bytes` stands for as far as the bytes
+/// reach, whether or not the stream ends within them.
+pub(crate) fn inflate_so_far(bytes: &[u8], dictionary: &[u8]) -> Vec<u8> {
+    let mut out: Vec<u8> = dictionary.to_vec();
+    let _ = inflate_into(bytes, &mut out);
+    out.drain(..dictionary.len());
+    out
+}
+
+/// Read a DEFLATE stream onto the end of `out`, answering how many bytes
+/// the stream took. When the bytes run out first, `out` holds what was read
+/// up to there and the answer is None.
+fn inflate_into(bytes: &[u8], out: &mut Vec<u8>) -> Option<usize> {
+    let mut reader = BitReader::new(bytes);
     loop {
         let last = reader.read_bit()?;
         let kind = reader.read_bits(2)?;
@@ -282,8 +299,7 @@ pub(crate) fn inflate_counted_with(bytes: &[u8], dictionary: &[u8]) -> Option<(V
         }
     }
     reader.align();
-    out.drain(..carried);
-    Some((out, reader.at))
+    Some(reader.at)
 }
 
 /// Whether a zlib header says the stream was written against a dictionary the
@@ -340,7 +356,30 @@ pub(crate) fn zlib_unwrap(bytes: &[u8]) -> Option<Vec<u8>> {
 
 /// What a gzip member stands for, with its header and trailer taken off.
 pub(crate) fn gzip_unwrap(bytes: &[u8]) -> Option<Vec<u8>> {
-    if bytes.len() < 18 || bytes[0] != 0x1f || bytes[1] != 0x8b {
+    if bytes.len() < 18 {
+        return None;
+    }
+    let at = gzip_body_start(bytes)?;
+    let body = bytes.get(at..bytes.len().saturating_sub(8))?;
+    inflate(body)
+}
+
+/// What a gzip stream at the front of `bytes` stands for, and how many bytes
+/// it took, trailer included. None until the whole stream has arrived.
+fn gzip_unwrap_counted(bytes: &[u8]) -> Option<(Vec<u8>, usize)> {
+    let at = gzip_body_start(bytes)?;
+    let (held, used) = inflate_counted_with(bytes.get(at..)?, &[])?;
+    let ends = at + used + 8;
+    if ends > bytes.len() {
+        return None;
+    }
+    Some((held, ends))
+}
+
+/// Where the compressed body of a gzip stream starts, past the header and
+/// the fields its flags name.
+fn gzip_body_start(bytes: &[u8]) -> Option<usize> {
+    if bytes.len() < 10 || bytes[0] != 0x1f || bytes[1] != 0x8b {
         return None;
     }
     let flags = bytes[3];
@@ -360,8 +399,7 @@ pub(crate) fn gzip_unwrap(bytes: &[u8]) -> Option<Vec<u8>> {
     if flags & 0x02 != 0 {
         at += 2;
     }
-    let body = bytes.get(at..bytes.len().saturating_sub(8))?;
-    inflate(body)
+    Some(at)
 }
 
 /// Wrap a DEFLATE stream in the gzip header and trailer.
@@ -481,6 +519,40 @@ impl VirtualMachine {
                     None => Ok(Object::Nil),
                 }
             }
+            // What a stream that has not all arrived stands for so far. The
+            // text names the kind: `zlib`, `raw` or `gzip`.
+            "inflate_so_far" => {
+                let dictionary = match arguments.get(3) {
+                    Some(Object::String(held)) => {
+                        super::pack_format::string_to_bytes(&held.as_str().to_string())
+                    }
+                    _ => Vec::new(),
+                };
+                let kind = arguments
+                    .get(4)
+                    .map(|held| held.to_string())
+                    .unwrap_or_default();
+                let front = match kind.as_str() {
+                    "raw" => Some(0),
+                    "gzip" => gzip_body_start(&bytes),
+                    _ if bytes.len() < 2 => None,
+                    _ if wants_dictionary(&bytes) => Some(6),
+                    _ => Some(2),
+                };
+                let read = match front.and_then(|at| bytes.get(at..)) {
+                    Some(body) => inflate_so_far(body, &dictionary),
+                    None => Vec::new(),
+                };
+                Ok(super::pack_format::bytes_to_string(&read))
+            }
+            // A gzip stream read the way `inflate_part` reads a zlib one.
+            "gzip_part" => match gzip_unwrap_counted(&bytes) {
+                Some((held, used)) => Ok(Object::array(vec![
+                    super::pack_format::bytes_to_string(&held),
+                    super::pack_format::bytes_to_string(&bytes[used..]),
+                ])),
+                None => Ok(Object::Nil),
+            },
             "raw_inflate" => match inflate(&bytes) {
                 Some(held) => Ok(super::pack_format::bytes_to_string(&held)),
                 None => Err(refuse("the text")),

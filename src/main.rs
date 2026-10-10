@@ -148,7 +148,7 @@ fn real_main() {
 fn run_inline(cli: &Cli, code: &str, named: &str) -> ! {
     {
         if cli.check_syntax {
-            check_syntax(code, named);
+            check_syntax(code, named, cli);
         }
         // A magic comment names the encoding the code's literals are
         // written in. Without one, code typed at the terminal is taken to be
@@ -158,19 +158,17 @@ fn run_inline(cli: &Cli, code: &str, named: &str) -> ! {
         let lexer = Lexer::new(code).with_source_encoding(source_encoding.clone());
         let tokens = lexer.tokenize();
         let mut parser = Parser::new(tokens);
-        let program = match parser.parse() {
-            Ok(prog) => prog,
-            Err(errors) => {
-                // Ruby names the class of the failure it reports, which is
-                // what a caller reading the output looks for.
-                for err in errors {
-                    eprintln!("{}: {} (SyntaxError)", named, err);
-                }
-                process::exit(1);
-            }
-        };
+        let parsed = parser.parse();
         let mut vm = VirtualMachine::new();
         apply_cli_flags(&mut vm, cli);
+        let errors = parsed.as_ref().err().cloned().unwrap_or_default();
+        if let Some(messages) = refused_program_messages(&mut vm, code, named, cli, &errors) {
+            for message in messages {
+                eprintln!("{}: {}", named, vm.syntax_error_report(&message, named));
+            }
+            process::exit(vm.run_at_exit_handlers(1, None));
+        }
+        let program = parsed.unwrap_or_default();
         // Code given on the command line is named `-e`, and code read from
         // standard input `-`, which is what a report and `__FILE__` say of it.
         vm.set_current_file(std::path::PathBuf::from(named));
@@ -248,7 +246,10 @@ fn real_main_after_inline(cli: Cli) {
         Err(err) => {
             let reason = err.to_string();
             let reason = reason.split(" (os error").next().unwrap_or(&reason);
-            eprintln!("metorex: {reason} -- {filename} (LoadError)");
+            eprintln!(
+                "{}: {reason} -- {filename} (LoadError)",
+                bin_support::program_name()
+            );
             process::exit(1);
         }
     };
@@ -290,7 +291,7 @@ fn real_main_after_inline(cli: Cli) {
     let source = code.to_string();
 
     if cli.check_syntax {
-        check_syntax(&source, filename);
+        check_syntax(&source, filename, &cli);
     }
 
     if cli.debug {
@@ -314,15 +315,17 @@ fn real_main_after_inline(cli: Cli) {
 
     // Parse
     let mut parser = Parser::new(tokens);
-    let program = match parser.parse() {
-        Ok(prog) => prog,
-        Err(errors) => {
-            for err in errors {
-                eprintln!("{}: {} (SyntaxError)", filename, err);
-            }
-            process::exit(vm.run_at_exit_handlers(1, None));
+    let parsed = parser.parse();
+    let errors = parsed.as_ref().err().cloned().unwrap_or_default();
+    if let Some(messages) = refused_program_messages(&mut vm, &source, filename, &cli, &errors) {
+        for message in messages {
+            let report = vm.syntax_error_report(&message, filename);
+            eprintln!("{}: {}", filename, report);
         }
-    };
+        process::exit(vm.run_at_exit_handlers(1, None));
+    }
+    vm.report_parse_warnings(filename, parser.default_warnings());
+    let program = parsed.unwrap_or_default();
 
     if cli.debug {
         eprintln!("[debug] Statements: {}", program.len());
@@ -354,6 +357,7 @@ fn real_main_after_inline(cli: Cli) {
     }
 
     if let Err(err) = run_program(&mut vm, &program, &line_loop_from(&cli)) {
+        vm.trace_uncaught_error(&err);
         // `abort` and `exit` raise SystemExit: it ends the program with the
         // status it carries, having already reported anything it wanted to.
         if let metorex::error::MetorexError::UncaughtException {
@@ -405,6 +409,7 @@ fn real_main_after_inline(cli: Cli) {
 /// status it carries, a signal nothing caught ends the process the way the
 /// signal itself would, and everything else is reported and leaves with 1.
 fn finish_with_error(vm: &mut VirtualMachine, err: &metorex::error::MetorexError) -> ! {
+    vm.trace_uncaught_error(err);
     if let metorex::error::MetorexError::UncaughtException {
         exception: exception @ metorex::object::Object::Exception(exc),
         ..

@@ -62,13 +62,6 @@ module Kernel
 
   private :select
 
-  # `pretty_inspect` is what `pp` writes for an object, which is its own
-  # `inspect` on a line of its own. `require "pp"` is what defines it in
-  # Ruby, and metorex reports pp as already loaded.
-  def pretty_inspect
-    inspect.to_s + "\n"
-  end
-
   # Ruby calls into the operating system by number here. Metorex does not
   # reach the system call layer at all, which is what Ruby itself reports on
   # a platform that cannot.
@@ -77,12 +70,241 @@ module Kernel
   end
   private :syscall
 
-  # Ruby hands each interpreter event to the block set here. Metorex has no
-  # tracing hook for the evaluator to call, so there is nothing to set.
+  # Hand each interpreter event to `callable` with the event's name, the
+  # file, the line, the method, the binding and the class, until it is set
+  # to nil.
   def set_trace_func(callable)
-    raise NotImplementedError, "set_trace_func() function is unimplemented on this machine"
+    Kernel.instance_variable_get(:@__trace_func_point)&.disable
+    Kernel.instance_variable_set(:@__trace_func_point, nil)
+    return nil if callable.nil?
+    raise TypeError, "trace_func needs to be Proc" unless callable.is_a?(Proc)
+
+    point = TracePoint.new(:line, :call, :return, :c_call, :c_return, :raise, :class, :end) do |traced|
+      callable.call(traced.event.to_s.tr("_", "-"), traced.path, traced.lineno,
+                    traced.method_id, traced.binding, traced.defined_class)
+    end
+    Kernel.instance_variable_set(:@__trace_func_point, point)
+    point.enable
+    callable
   end
   private :set_trace_func
+
+  # The report MRI raises for code `eval` refuses, as prism words and lays
+  # out each error under the source line it sits on: the class to raise and
+  # the message, or nil when prism finds nothing to refuse.
+  def __syntax_error_report__(code, path, start_line, locals)
+    require "prism"
+    result = Prism.parse(code, filepath: path, line: start_line, scopes: [locals.map(&:to_sym)])
+    errors = result.errors
+    return nil if errors.empty?
+
+    highlight = 0
+    if $stderr.respond_to?(:tty?) && $stderr.tty?
+      no_color = ENV["NO_COLOR"]
+      highlight = no_color.nil? || no_color.empty? ? 2 : 1
+    end
+    report = SyntaxReport.new(code, start_line, highlight)
+    argument = errors.find { |error| error.level == :argument }
+    unless argument.nil?
+      message = +"#{path}:#{argument.location.start_line}: #{argument.message}"
+      message << "\n" << report.format([argument], false) if report.valid_utf8?(argument)
+      return ["ArgumentError", message]
+    end
+    message = +"#{path}:#{errors.first.location.start_line}: syntax error#{errors.size > 1 ? "s" : ""} found\n"
+    if errors.all? { |error| report.valid_utf8?(error) }
+      message << report.format(errors, true)
+    else
+      message << errors.map { |error| "#{path}:#{error.location.start_line}: #{error.message}" }.join("\n")
+    end
+    ["SyntaxError", message]
+  end
+  private :__syntax_error_report__
+
+  # The layout of MRI's `pm_parse_errors_format`: each error's line marked
+  # with `>`, up to two lines of the source around it, and a caret run under
+  # the part at fault.
+  class SyntaxReport
+    TRUNCATE = 30
+    GRAY = "\e[2m"
+    BOLD = "\e[1m"
+    RED = "\e[1;31m"
+    RESET = "\e[m"
+
+    def initialize(code, start_line, highlight)
+      @code = code.b
+      @encoding = code.encoding
+      @start_line = start_line
+      @highlight = highlight
+      @offsets = [0]
+      @code.each_byte.with_index { |byte, at| @offsets << at + 1 if byte == 10 }
+    end
+
+    def valid_utf8?(error)
+      first = line_of(error.location.start_offset)
+      last = line_of(error.location.end_offset)
+      from = @offsets[first]
+      to = last + 1 >= @offsets.size ? @code.bytesize : @offsets[last + 1]
+      @code.byteslice(from, to - from).force_encoding(Encoding::UTF_8).valid_encoding?
+    end
+
+    def format(errors, inline_messages)
+      placed = sorted(errors)
+      prefix = prefixes(placed)
+      out = "".b
+      last_line = @start_line - 1
+      last_column_start = 0
+      placed.each_with_index do |(error, line, column_start, column_end), index|
+        if line - last_line > 1
+          if line - last_line > 2
+            out << prefix[:divider] if index != 0 && line - last_line > 3
+            out << "  " << format_line(prefix[:number], line - 2, 0, 0)
+          end
+          out << "  " << format_line(prefix[:number], line - 1, 0, 0)
+        end
+        if index.zero? || line != last_line
+          out << (@highlight > 1 ? "#{RED}> #{RESET}" : @highlight > 0 ? "#{BOLD}> #{RESET}" : "> ")
+          last_column_start = column_start
+          widest = column_end
+          placed[(index + 1)..].each do |next_error|
+            break if next_error[1] != line
+            widest = next_error[3] if next_error[3] > widest
+          end
+          out << format_line(prefix[:number], line, column_start, widest)
+        end
+        start = @offsets[line - @start_line]
+        out << "\n" if start == @code.bytesize
+        out << "  " << prefix[:blank]
+        column = 0
+        if last_column_start >= TRUNCATE
+          out << "    "
+          column = last_column_start
+        end
+        while column < column_start
+          out << " "
+          column += width_at(start + column)
+        end
+        out << RED if @highlight > 1
+        out << BOLD if @highlight == 1
+        out << "^"
+        column += width_at(start + column)
+        while column < column_end
+          out << "~"
+          column += width_at(start + column)
+        end
+        out << RESET if @highlight > 0
+        out << " " << error.message.b if inline_messages
+        out << "\n"
+        last_line = line
+        next_line =
+          if index == placed.size - 1
+            ending = @offsets.size + @start_line
+            ending -= 1 if @offsets.last == @code.bytesize
+            ending
+          else
+            placed[index + 1][1]
+          end
+        2.times do
+          next unless next_line - last_line > 1
+
+          last_line += 1
+          out << "  " << format_line(prefix[:number], last_line, 0, 0)
+        end
+      end
+      out.force_encoding(@encoding)
+    end
+
+    private
+
+    def line_of(offset)
+      (@offsets.bsearch_index { |start| start > offset } || @offsets.size) - 1
+    end
+
+    # Each error with its line and the columns it spans, in the order MRI
+    # sorts them: by line and column, a later one first among equals.
+    def sorted(errors)
+      placed = []
+      errors.each do |error|
+        start_index = line_of(error.location.start_offset)
+        end_index = line_of(error.location.end_offset)
+        line = start_index + @start_line
+        column_start = error.location.start_offset - @offsets[start_index]
+        column_end =
+          if start_index == end_index
+            error.location.end_offset - @offsets[end_index]
+          else
+            @offsets[start_index + 1] - @offsets[start_index] - 1
+          end
+        column_end += 1 if column_start == column_end
+        index = placed.index { |held| held[1] > line || (held[1] == line && held[2] >= column_start) } || placed.size
+        placed.insert(index, [error, line, column_start, column_end])
+      end
+      placed
+    end
+
+    def prefixes(placed)
+      first = placed.first[1]
+      last = placed.last[1]
+      first = -first * 10 if first.negative?
+      last = -last * 10 if last.negative?
+      widest = [first, last].max
+      digits, tildes = if widest < 10 then [1, 5]
+                       elsif widest < 100 then [2, 6]
+                       elsif widest < 1000 then [3, 7]
+                       elsif widest < 10000 then [4, 8]
+                       else [5, 8]
+                       end
+      number = "%#{digits}d | "
+      blank = "#{" " * (digits + 1)}| "
+      divider = "  #{"~" * tildes}"
+      if @highlight > 0
+        { number: "#{GRAY}#{number}#{RESET}", blank: "#{GRAY}#{blank}#{RESET}", divider: "#{GRAY}#{divider}#{RESET}\n" }
+      else
+        { number: number, blank: blank, divider: "#{divider}\n" }
+      end
+    end
+
+    def format_line(number, line, column_start, column_end)
+      index = line - @start_line
+      start = @offsets[index]
+      finish = index >= @offsets.size - 1 ? @code.bytesize : @offsets[index + 1]
+      out = Kernel.format(number, line).b
+      truncate_end = false
+      if column_end != 0 && (finish - (start + column_end)) >= TRUNCATE
+        candidate = start + column_end + TRUNCATE
+        at = start
+        while at < candidate
+          width = width_at(at)
+          if at + width > candidate
+            candidate = at
+            break
+          end
+          at += width
+        end
+        finish = candidate
+        truncate_end = true
+      end
+      if column_start >= TRUNCATE
+        out << "... "
+        start += column_start
+      end
+      out << @code.byteslice(start, finish - start)
+      if truncate_end
+        out << " ...\n"
+      elsif finish == @code.bytesize && !@code.end_with?("\n")
+        out << "\n"
+      end
+      out
+    end
+
+    def width_at(at)
+      piece = @code.byteslice(at, 4)
+      return 1 if piece.nil? || piece.empty?
+
+      character = piece.dup.force_encoding(@encoding).each_char.first
+      character && character.valid_encoding? ? character.bytesize : 1
+    end
+  end
+  private_constant :SyntaxReport
 end
 
 # The stream `gets` reads from when a script is handed filenames: each named
@@ -571,5 +793,18 @@ end
 # What a `require` of a name would load, without loading it.
 def $LOAD_PATH.resolve_feature_path(feature)
   __resolve_feature_path__(feature)
+end
+
+# Pathname is part of the core, read in from MRI's own source the first time
+# a program names it.
+autoload :Pathname, "<internal:pathname_builtin>"
+
+module Kernel
+  # Naming Pathname loads it, and it defines this method over again.
+  def Pathname(path)
+    ::Pathname
+    Pathname(path)
+  end
+  module_function :Pathname
 end
 "##;

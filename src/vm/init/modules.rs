@@ -130,7 +130,7 @@ pub(crate) fn register_builtin_modules(globals: &mut GlobalRegistry, builtins: &
     let process = Class::new_module("Process");
     // `Process::Status` describes how a child ended. The instances come from
     // whatever waits for one, and this is the class they share.
-    let process_status = Class::new("Process::Status", None);
+    let process_status = Class::new("Process::Status", Some(Rc::clone(&builtins.object_class)));
     process.set_class_var("Status", Object::Class(Rc::clone(&process_status)));
     globals.set("Process::Status", Object::Class(Rc::clone(&process_status)));
     globals.set("__Process_Status_class", Object::Class(process_status));
@@ -173,7 +173,7 @@ pub(crate) fn register_builtin_modules(globals: &mut GlobalRegistry, builtins: &
     globals.set("Warning", Object::Module(warning));
 
     // Time / IO — placeholder stubs (used in mspec)
-    let time = Class::new("Time", Some(Class::new("Object", None)));
+    let time = Class::new("Time", Some(Rc::clone(&builtins.object_class)));
     globals.set("Time", Object::Class(time));
     // File already stands under IO, so the global name has to reach that same
     // class rather than a second one wearing the name.
@@ -189,13 +189,13 @@ pub(crate) fn register_builtin_modules(globals: &mut GlobalRegistry, builtins: &
     globals.set("IO", Object::Class(io));
 
     // Thread — stub
-    let thread = Class::new("Thread", Some(Class::new("Object", None)));
+    let thread = Class::new("Thread", Some(Rc::clone(&builtins.object_class)));
     globals.set("Thread", Object::Class(Rc::clone(&thread)));
 
     // Fiber — a block that runs on a stack of its own and suspends part-way
     // through. Its methods are answered natively, since the coroutine behind
     // one lives in the interpreter rather than in the object.
-    let fiber = Class::new("Fiber", Some(Class::new("Object", None)));
+    let fiber = Class::new("Fiber", Some(Rc::clone(&builtins.object_class)));
     globals.set("Fiber", Object::Class(Rc::clone(&fiber)));
     let fiber_error = Class::new("FiberError", Some(Class::new("StandardError", None)));
     globals.set("FiberError", Object::Class(fiber_error));
@@ -204,7 +204,7 @@ pub(crate) fn register_builtin_modules(globals: &mut GlobalRegistry, builtins: &
     // Ruby names each at the top level too. The two names reach the same
     // class.
     // A SizedQueue is a Queue with a limit.
-    let queue = Class::new("Thread::Queue", Some(Class::new("Object", None)));
+    let queue = Class::new("Thread::Queue", Some(Rc::clone(&builtins.object_class)));
     for (short, full, made) in [
         ("Queue", "Thread::Queue", Rc::clone(&queue)),
         (
@@ -215,14 +215,14 @@ pub(crate) fn register_builtin_modules(globals: &mut GlobalRegistry, builtins: &
         (
             "Mutex",
             "Thread::Mutex",
-            Class::new("Thread::Mutex", Some(Class::new("Object", None))),
+            Class::new("Thread::Mutex", Some(Rc::clone(&builtins.object_class))),
         ),
         (
             "ConditionVariable",
             "Thread::ConditionVariable",
             Class::new(
                 "Thread::ConditionVariable",
-                Some(Class::new("Object", None)),
+                Some(Rc::clone(&builtins.object_class)),
             ),
         ),
     ] {

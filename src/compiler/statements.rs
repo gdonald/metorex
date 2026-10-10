@@ -350,7 +350,7 @@ impl Compiler {
                 let line = Self::pos_line(position);
                 if self.loop_stack.is_empty() {
                     return Err(MetorexError::runtime_error(
-                        "continue outside of loop",
+                        "next outside of loop",
                         SourceLocation::new(line, 0, 0),
                     ));
                 }
@@ -369,6 +369,7 @@ impl Compiler {
                 body,
                 position,
                 singleton_class: _,
+                ..
             } => {
                 let line = Self::pos_line(position);
                 let (func, upvalues) = self.compile_function_body(name, parameters, body)?;

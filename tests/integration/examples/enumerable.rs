@@ -149,3 +149,30 @@ fn test_enumerable_lazy_enum_for_dispatch_no_parens_execution() {
     let output = run_example("enumerable/lazy_enum_for_dispatch_no_parens.rb");
     assert_eq!(output, LAZY_ENUM_FOR_DISPATCH_OUTPUT);
 }
+
+/// The expected output of both `enumerable/pairs_through_enumerators` variants.
+const PAIRS_THROUGH_ENUMERATORS: &str = concat!(
+    "[[1, 0], [2, 1]]\n",
+    "[1, 2]\n",
+    "[0, 2]\n",
+    "[[1, 0], [2, 1]]\n",
+    "[[2, 1]]\n",
+    "[1, 0]\n",
+    "[2, 1]\n",
+    "[[1, []], [2, []]]\n",
+    "[[1, 0], [2, 1]]\n",
+    "[[1, 0]]\n",
+    "\"invalid radix 0\"\n",
+);
+
+#[test]
+fn test_enumerable_pairs_through_enumerators_execution() {
+    let output = run_example("enumerable/pairs_through_enumerators.rb");
+    assert_eq!(output, PAIRS_THROUGH_ENUMERATORS);
+}
+
+#[test]
+fn test_enumerable_pairs_through_enumerators_no_parens_execution() {
+    let output = run_example("enumerable/pairs_through_enumerators_no_parens.rb");
+    assert_eq!(output, PAIRS_THROUGH_ENUMERATORS);
+}

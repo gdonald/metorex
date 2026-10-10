@@ -120,7 +120,21 @@ impl VirtualMachine {
         } else if let Some(Object::Class(existing)) = self.environment().get(name) {
             (existing, true, false)
         } else {
-            (new_module(), false, true)
+            // A top-level name registered as an autoload is loaded first,
+            // so the body reopens the module the file defines.
+            let autoloaded = match self.globals().get("Object") {
+                Some(Object::Class(object_class)) => {
+                    self.try_autoload_constant(&object_class, name)?
+                }
+                _ => None,
+            };
+            match autoloaded {
+                Some(Object::Module(existing)) => (existing, false, false),
+                Some(held @ Object::Class(_)) => {
+                    return Err(not_a_module(&full_name, &held, position));
+                }
+                _ => (new_module(), false, true),
+            }
         };
 
         // Set 'self' to the module for instance variable access in module body
@@ -181,12 +195,17 @@ impl VirtualMachine {
         self.environment_mut().push_isolated_scope();
         self.environment_mut()
             .define("self".to_string(), Object::Module(Rc::clone(&module)));
+        // Ruby reserves every local the body assigns before any of it runs,
+        // so one assigned in a branch not taken answers nil.
+        for name in crate::ast::collect_assigned_locals(body) {
+            self.environment_mut().hoist(name);
+        }
 
         // Run the body through a helper so scope cleanup below happens even
         // when a statement raises.
         // A module body opens and closes the same way a class body does.
         self.fire_event("class", position, Vec::new())?;
-        let body_result = self.execute_module_body(&module, body);
+        let body_result = self.execute_module_body(&module, body, position);
         self.fire_event("end", position, Vec::new())?;
 
         self.environment_mut().pop_scope();
@@ -228,13 +247,20 @@ impl VirtualMachine {
         &mut self,
         module: &Rc<Class>,
         body: &[Statement],
+        position: Position,
     ) -> Result<Object, MetorexError> {
         // A class variable written in this body belongs to this module, not
         // to whatever block the body happens to be running inside.
         let held_home = std::mem::take(&mut self.class_var_home);
         // Ruby names a module body by the module alone, without the namespace
         // it was written in, which is what a backtrace entry for it says.
-        self.call_stack_push(crate::vm::CallFrame::boundary(class_body_label(module)));
+        // The body stands where the module was opened, which a backtrace
+        // names as the place in the code around it.
+        self.call_stack_push(
+            crate::vm::CallFrame::boundary(class_body_label(module))
+                .with_location(Some(format!("{}:{}", position.line, position.column)))
+                .with_source_file(self.file_for_frames()),
+        );
         let answer = self.module_body_statements(module, body);
         self.call_stack_pop();
         self.class_var_home = held_home;

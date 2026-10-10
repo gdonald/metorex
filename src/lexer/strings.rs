@@ -20,6 +20,46 @@ impl<'a> Lexer<'a> {
         comment.trim().to_string()
     }
 
+    /// Pass over a `=begin` ... `=end` document at the start of a line, up to
+    /// the end of the `=end` line, and answer whether there was one. One with
+    /// no `=end` is left in place for the parser to refuse.
+    pub(super) fn skip_embedded_document(&mut self) -> bool {
+        let marks = |ahead: &std::iter::Peekable<std::str::Chars>, word: &str| {
+            let mut letters = ahead.clone();
+            word.chars().all(|wanted| letters.next() == Some(wanted))
+                && matches!(letters.next(), None | Some(' ' | '\t' | '\r' | '\n'))
+        };
+        if !marks(&self.chars, "=begin") {
+            return false;
+        }
+        let mut ahead = self.chars.clone();
+        let mut length = 0;
+        loop {
+            // Move to the start of the next line.
+            loop {
+                match ahead.next() {
+                    Some('\n') => {
+                        length += 1;
+                        break;
+                    }
+                    Some(_) => length += 1,
+                    None => return false,
+                }
+            }
+            if marks(&ahead, "=end") {
+                while ahead.peek().is_some_and(|letter| *letter != '\n') {
+                    ahead.next();
+                    length += 1;
+                }
+                break;
+            }
+        }
+        for _ in 0..length {
+            self.advance();
+        }
+        true
+    }
+
     /// Read a string literal (single or double quoted)
     pub(super) fn read_string(&mut self, quote: char) -> Result<TokenKind, String> {
         self.read_quoted(quote, false)

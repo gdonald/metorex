@@ -45,6 +45,20 @@ impl VirtualMachine {
         arguments: &[Object],
         position: Position,
     ) -> Result<Option<Object>, MetorexError> {
+        let receiver = Object::Class(Rc::clone(class_rc));
+        let entered = self.enter_native_frame(Some(&receiver), method_name, position);
+        let answered = self.call_class_methods_body(class_rc, method_name, arguments, position);
+        self.leave_native_call(entered, position, &answered);
+        answered
+    }
+
+    fn call_class_methods_body(
+        &mut self,
+        class_rc: &Rc<Class>,
+        method_name: &str,
+        arguments: &[Object],
+        position: Position,
+    ) -> Result<Option<Object>, MetorexError> {
         for step in STEPS {
             match step(self, class_rc, method_name, arguments, position)? {
                 Answered(result) => return Ok(Some(result)),

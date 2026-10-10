@@ -32,6 +32,9 @@ impl<'a> Lexer<'a> {
                 let comment = self.read_comment();
                 Token::new(TokenKind::Comment(comment), position)
             }
+            '=' if self.column == 1 && self.prepend.is_empty() && self.skip_embedded_document() => {
+                Token::new(TokenKind::Comment(String::new()), position)
+            }
             '0'..='9' => {
                 let kind = self.read_number();
                 Token::new(kind, position)

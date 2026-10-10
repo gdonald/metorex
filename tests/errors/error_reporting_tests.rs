@@ -288,11 +288,12 @@ fn test_nested_method_call_shows_stack_trace() {
                 name: "obj".to_string(),
                 position: pos_at(13, 1),
             },
-            value: Expression::Call {
-                callee: Box::new(Expression::Identifier {
+            value: Expression::MethodCall {
+                receiver: Box::new(Expression::Identifier {
                     name: "TestClass".to_string(),
                     position: pos_at(13, 7),
                 }),
+                method: "new".to_string(),
                 arguments: vec![],
                 trailing_block: None,
                 position: pos_at(13, 7),
@@ -365,7 +366,7 @@ fn test_continue_outside_loop_error_has_location() {
     assert!(result.is_err());
 
     let error = result.unwrap_err();
-    assert!(error.to_string().contains("continue"));
+    assert!(error.to_string().contains("next"));
     assert!(error.to_string().contains("outside"));
     assert!(error.to_string().contains("20:3"));
 }
@@ -442,11 +443,12 @@ fn test_method_argument_count_error_has_location() {
                 name: "calc".to_string(),
                 position: pos(),
             },
-            value: Expression::Call {
-                callee: Box::new(Expression::Identifier {
+            value: Expression::MethodCall {
+                receiver: Box::new(Expression::Identifier {
                     name: "Calculator".to_string(),
                     position: pos(),
                 }),
+                method: "new".to_string(),
                 arguments: vec![],
                 trailing_block: None,
                 position: pos(),
@@ -637,11 +639,12 @@ fn test_error_in_deeply_nested_calls() {
                 name: "obj".to_string(),
                 position: pos(),
             },
-            value: Expression::Call {
-                callee: Box::new(Expression::Identifier {
+            value: Expression::MethodCall {
+                receiver: Box::new(Expression::Identifier {
                     name: "Deep".to_string(),
                     position: pos(),
                 }),
+                method: "new".to_string(),
                 arguments: vec![],
                 trailing_block: None,
                 position: pos(),

@@ -89,8 +89,26 @@ impl VirtualMachine {
         Ok(Object::Nil)
     }
 
-    /// `pp` prints the same inspect form `p` does. Ruby breaks a wide
-    /// structure across lines; metorex writes it on one.
+    /// `pp` loads the pp library the first time it is called and prints
+    /// each value through `PP.pp`, which breaks a wide structure across lines.
+    pub(crate) fn pretty_print_values(
+        &mut self,
+        arguments: Vec<Object>,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        self.require_feature(vec![Object::string("pp")], position)?;
+        let printer = self.globals().get("PP").unwrap_or(Object::Nil);
+        for argument in &arguments {
+            self.send_to_object(printer.clone(), "pp", vec![argument.clone()], position)?;
+        }
+        match arguments.len() {
+            0 => Ok(Object::Nil),
+            1 => Ok(arguments.into_iter().next().unwrap_or(Object::Nil)),
+            _ => Ok(Object::array(arguments)),
+        }
+    }
+
+    /// `p` writes each value's `inspect` on a line of its own.
     pub(crate) fn inspect_values(
         &mut self,
         arguments: Vec<Object>,

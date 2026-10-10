@@ -105,6 +105,124 @@ fn cli_c_flag_fails_on_code_that_does_not_parse() {
     assert!(!stdout.contains("Syntax OK"));
 }
 
+/// The prism report for `cli_flags/refused_program_no_parens.rb`, after the
+/// line naming the file and the count of errors found.
+const REFUSED_PROGRAM_LAYOUT: &str = concat!(
+    "  1 | # A program Ruby's grammar refuses, which is never run.\n",
+    "  2 | puts \"started\"\n",
+    "> 3 | puts 1 2\n",
+    "    |        ^ unexpected integer, expecting end-of-input\n",
+    "\n",
+);
+
+#[test]
+fn cli_c_flag_reports_a_program_the_grammar_refuses() {
+    let output = metorex_cmd()
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .args([
+            "-c",
+            "tests/_examples/cli_flags/refused_program_no_parens.rb",
+        ])
+        .output()
+        .expect("failed to execute");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    let expected = format!(
+        ": tests/_examples/cli_flags/refused_program_no_parens.rb:3: syntax error found (SyntaxError)\n{}",
+        REFUSED_PROGRAM_LAYOUT
+    );
+    assert!(stderr.ends_with(&expected), "stderr: {}", stderr);
+}
+
+#[test]
+fn a_program_the_grammar_refuses_never_runs() {
+    let output = metorex_cmd()
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .arg("tests/_examples/cli_flags/refused_program_no_parens.rb")
+        .output()
+        .expect("failed to execute");
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(String::from_utf8(output.stdout).unwrap(), "");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    let named = "tests/_examples/cli_flags/refused_program_no_parens.rb";
+    let expected = format!(
+        concat!(
+            "{named}: --> {named}\n\n",
+            "unexpected integer, expecting end-of-input\n\n",
+            "> 2  puts \"started\"\n",
+            "> 3  puts 1 2\n\n",
+            "{named}:3: syntax error found (SyntaxError)\n{layout}",
+        ),
+        named = named,
+        layout = REFUSED_PROGRAM_LAYOUT
+    );
+    assert_eq!(stderr, expected);
+}
+
+#[test]
+fn a_program_the_grammar_refuses_with_parentheses_never_runs() {
+    let output = metorex_cmd()
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .arg("tests/_examples/cli_flags/refused_program.rb")
+        .output()
+        .expect("failed to execute");
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(String::from_utf8(output.stdout).unwrap(), "");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains(concat!(
+            "tests/_examples/cli_flags/refused_program.rb:3: syntax errors found (SyntaxError)\n",
+            "  1 | # A program Ruby's grammar refuses, which is never run.\n",
+            "  2 | puts \"started\"\n",
+            "> 3 | puts(1 2)\n",
+            "    |        ^ unexpected integer, expecting end-of-input\n",
+            "    |        ^ unexpected integer; expected a `)` to close the arguments\n",
+            "    |         ^ unexpected ')', ignoring it\n",
+            "    |         ^ unexpected ')', expecting end-of-input\n",
+        )),
+        "stderr: {}",
+        stderr
+    );
+}
+
+#[test]
+fn code_the_grammar_refuses_is_refused_inside_the_line_loop_switches() {
+    let output = metorex_cmd()
+        .args(["-n", "-a", "-l", "-p", "-e", "1 2"])
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("failed to execute");
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8(output.stderr).unwrap(),
+        concat!(
+            "-e: -e:1: syntax error found (SyntaxError)\n",
+            "> 1 | 1 2\n",
+            "    |   ^ unexpected integer, expecting end-of-input\n",
+            "\n",
+        )
+    );
+}
+
+#[test]
+fn inline_code_the_grammar_refuses_reports_where() {
+    let output = metorex_cmd()
+        .args(["-e", "def pair(left, left); end"])
+        .output()
+        .expect("failed to execute");
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert_eq!(
+        stderr,
+        concat!(
+            "-e: -e:1: syntax error found (SyntaxError)\n",
+            "> 1 | def pair(left, left); end\n",
+            "    |                ^~~~ duplicated argument name\n",
+            "\n",
+        )
+    );
+}
+
 // ============================================================================
 // -e flag written more than once
 // ============================================================================

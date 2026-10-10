@@ -26,6 +26,9 @@ impl VirtualMachine {
         arguments: Vec<Object>,
         position: Position,
     ) -> Result<Object, MetorexError> {
+        if let Some(name) = &block.from_symbol {
+            return self.call_symbol_block(name, arguments, position);
+        }
         // `{ |a,| }` destructures a lone array argument across its parameters,
         // discarding any elements it has no parameter for.
         let mut destructured = false;
@@ -88,7 +91,7 @@ impl VirtualMachine {
         .nested_in_a_block(depth)
         .written_in_scope(block.written_in.clone())
         .owned_by(block.defining_owner.clone())
-        .with_source_file(self.current_source_file.clone());
+        .with_source_file(self.file_for_frames());
         // The body runs in the file the block was written in, which is what a
         // backtrace entry for a call made from here has to name.
         let body_source_file = block
@@ -121,6 +124,15 @@ impl VirtualMachine {
         block: &BlockStatement,
         arguments: Vec<Object>,
     ) -> Result<Object, MetorexError> {
+        // A block with nothing in it still lets a limit on its caller pass.
+        if !self.timeout_limits.is_empty() {
+            let opened = crate::lexer::Position::new(
+                block.opened_at.unwrap_or(0),
+                block.opened_column.unwrap_or(0),
+                0,
+            );
+            self.raise_expired_timeout(opened)?;
+        }
         // A block body runs in its own scope seeded from `captured_vars`, not
         // chained to whatever method happens to be invoking it. Ruby's block
         // sees the locals of the scope it was written in, and nothing of its
@@ -182,6 +194,8 @@ impl VirtualMachine {
             // The names the block closed over are read through, not copied.
             self.environment_mut()
                 .attach_captured(std::rc::Rc::clone(&block.captured_vars));
+            self.environment_mut()
+                .attach_reserved(std::rc::Rc::clone(&block.reserved_names));
 
             // A lambda takes its arguments the way a method does, so the
             // count has to match what it declared.
@@ -432,7 +446,7 @@ impl VirtualMachine {
         .nested_in_a_block(depth)
         .written_in_scope(block.written_in.clone())
         .owned_by(block.defining_owner.clone())
-        .with_source_file(self.current_source_file.clone());
+        .with_source_file(self.file_for_frames());
         self.call_stack_push(frame);
         self.environment_mut().push_isolated_scope();
         // The body belongs to the file the block was written in.
@@ -459,6 +473,8 @@ impl VirtualMachine {
                     // The names the block closed over are read through, not copied.
                     self.environment_mut()
                         .attach_captured(std::rc::Rc::clone(&block.captured_vars));
+                    self.environment_mut()
+                        .attach_reserved(std::rc::Rc::clone(&block.reserved_names));
 
                     // Define parameters as regular variables (handles *args/&block prefixes)
                     bind_block_params(
@@ -597,6 +613,33 @@ impl VirtualMachine {
         let fired = self.fire_event("b_return", Position::new(line, 0, 0), extra);
         self.leave_running_code();
         fired
+    }
+
+    /// Call the block `Symbol#to_proc` makes: the first argument is sent the
+    /// name, with the rest as its arguments. Ruby's symbol proc runs without
+    /// a frame of its own, so what it raises names the line that called it.
+    #[inline(never)]
+    fn call_symbol_block(
+        &mut self,
+        name: &str,
+        mut arguments: Vec<Object>,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        if arguments.is_empty() {
+            return Err(crate::vm::errors::simple_exception(
+                "ArgumentError",
+                "no receiver given",
+                position,
+            ));
+        }
+        let receiver = arguments.remove(0);
+        arguments.insert(0, Object::symbol(name.to_string()));
+        self.send_to_object(
+            receiver,
+            crate::vm::native_methods::object_methods::SYMBOL_PROC_SEND,
+            arguments,
+            position,
+        )
     }
 }
 

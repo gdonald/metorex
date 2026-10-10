@@ -200,7 +200,7 @@ fn undefined_method_returns_runtime_error() {
 }
 
 #[test]
-fn string_trim_removes_whitespace() {
+fn string_strip_removes_whitespace() {
     let mut vm = VirtualMachine::new();
 
     let assign = Statement::Assignment {
@@ -210,7 +210,7 @@ fn string_trim_removes_whitespace() {
         },
         value: Expression::MethodCall {
             receiver: Box::new(string_literal("  hello  ", pos(1, 1))),
-            method: "trim".to_string(),
+            method: "strip".to_string(),
             arguments: vec![],
             trailing_block: None,
             position: pos(1, 15),

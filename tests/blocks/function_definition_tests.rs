@@ -24,6 +24,7 @@ fn test_simple_function_definition() {
         }],
         position: pos(1, 1),
         singleton_class: None,
+        end_position: Default::default(),
     };
 
     assert_eq!(stmt.position(), pos(1, 1));
@@ -44,6 +45,7 @@ fn test_function_with_no_parameters() {
         }],
         position: pos(1, 1),
         singleton_class: None,
+        end_position: Default::default(),
     };
 
     assert_eq!(stmt.position(), pos(1, 1));
@@ -74,6 +76,7 @@ fn test_function_with_multiple_parameters() {
         }],
         position: pos(1, 1),
         singleton_class: None,
+        end_position: Default::default(),
     };
 
     assert_eq!(stmt.position(), pos(1, 1));
@@ -130,6 +133,7 @@ fn test_function_with_default_parameters() {
         }],
         position: pos(1, 1),
         singleton_class: None,
+        end_position: Default::default(),
     };
 
     assert_eq!(stmt.position(), pos(1, 1));
@@ -161,6 +165,7 @@ fn test_function_with_multiple_default_parameters() {
         body: vec![],
         position: pos(1, 1),
         singleton_class: None,
+        end_position: Default::default(),
     };
 
     assert_eq!(stmt.position(), pos(1, 1));
@@ -205,6 +210,7 @@ fn test_function_with_variadic_parameter() {
         ],
         position: pos(1, 1),
         singleton_class: None,
+        end_position: Default::default(),
     };
 
     assert_eq!(stmt.position(), pos(1, 1));
@@ -221,6 +227,7 @@ fn test_function_with_regular_and_variadic_parameters() {
         body: vec![],
         position: pos(1, 1),
         singleton_class: None,
+        end_position: Default::default(),
     };
 
     assert_eq!(stmt.position(), pos(1, 1));
@@ -260,6 +267,7 @@ fn test_function_with_keyword_parameter() {
         }],
         position: pos(1, 1),
         singleton_class: None,
+        end_position: Default::default(),
     };
 
     assert_eq!(stmt.position(), pos(1, 1));
@@ -287,6 +295,7 @@ fn test_function_with_all_parameter_types() {
         body: vec![],
         position: pos(1, 1),
         singleton_class: None,
+        end_position: Default::default(),
     };
 
     assert_eq!(stmt.position(), pos(1, 1));
@@ -428,6 +437,7 @@ fn test_function_with_conditional_body() {
         }],
         position: pos(1, 1),
         singleton_class: None,
+        end_position: Default::default(),
     };
 
     assert_eq!(stmt.position(), pos(1, 1));
@@ -515,6 +525,7 @@ fn test_function_with_loop_body() {
         ],
         position: pos(1, 1),
         singleton_class: None,
+        end_position: Default::default(),
     };
 
     assert_eq!(stmt.position(), pos(1, 1));
@@ -560,6 +571,7 @@ fn test_function_with_exception_handling() {
         }],
         position: pos(1, 1),
         singleton_class: None,
+        end_position: Default::default(),
     };
 
     assert_eq!(stmt.position(), pos(1, 1));
@@ -592,9 +604,11 @@ fn test_nested_function_definition() {
             }],
             position: pos(2, 3),
             singleton_class: None,
+            end_position: Default::default(),
         }],
         position: pos(1, 1),
         singleton_class: None,
+        end_position: Default::default(),
     };
 
     assert_eq!(stmt.position(), pos(1, 1));
@@ -660,6 +674,7 @@ fn test_function_with_empty_body() {
         body: vec![],
         position: pos(1, 1),
         singleton_class: None,
+        end_position: Default::default(),
     };
 
     assert_eq!(stmt.position(), pos(1, 1));

@@ -15,7 +15,23 @@ impl VirtualMachine {
     ) -> Result<(), MetorexError> {
         let new_name = new_name.to_string();
         let old_name = old_name.to_string();
-        if !class_rc.alias_method(&new_name, &old_name) {
+        let copied = class_rc.alias_method(&new_name, &old_name);
+        // A copy of a body-less stub standing for a native method dispatches
+        // under the name it was cut from, as an alias made without one does.
+        if copied
+            && let Some(method) = class_rc.find_own_method(&new_name)
+            && method.body.is_empty()
+            && !method.is_undefined
+            && method.native_alias.is_none()
+            && method.c_function.is_none()
+            && method.source_location.is_none()
+        {
+            let mut stub = (*method).clone();
+            stub.native_alias = Some(old_name.clone());
+            stub.original_name.get_or_insert_with(|| old_name.clone());
+            class_rc.define_method(&new_name, Rc::new(stub));
+        }
+        if !copied {
             let mut found = false;
             if let Some(Object::Class(object_class)) = self.globals().get("Object")
                 && let Some(method) = object_class.find_method(&old_name)

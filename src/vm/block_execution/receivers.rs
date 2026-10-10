@@ -21,6 +21,7 @@ impl VirtualMachine {
             crate::lexer::Lexer::with_start_line(source, lineno.max(1) as usize).tokenize();
         let statements = crate::parser::Parser::new(tokens)
             .inside_eval()
+            .with_outer_locals(self.visible_local_names())
             .parse()
             .map_err(|errors| {
                 let reported = errors
@@ -62,6 +63,20 @@ impl VirtualMachine {
                 position.line
             ))
         });
+        // The code is a place of its own in a backtrace, named as the code
+        // that ran it and standing where the call was made, as Kernel#eval's
+        // code is.
+        let caller_file = self.file_for_frames();
+        let written_in = self
+            .call_stack()
+            .last()
+            .cloned()
+            .unwrap_or_else(|| CallFrame::boundary("<main>"));
+        self.call_stack_push(
+            written_in
+                .with_location(Some(format!("{}:{}", position.line, position.column)))
+                .with_source_file(caller_file),
+        );
         if let Some(file) = &named {
             self.current_file = Some(std::path::PathBuf::from(file));
             self.current_source_file = Some(file.clone());
@@ -128,6 +143,12 @@ impl VirtualMachine {
             }
             Ok(())
         })();
+        // An error the code raised natively is traced while its file is
+        // still the one the code was named for.
+        if let Err(error) = &result {
+            self.trace_error_leaving_frame(error);
+        }
+        self.call_stack_pop();
         for _ in 0..opened {
             self.def_scope_stack.pop();
         }
@@ -140,19 +161,12 @@ impl VirtualMachine {
         Ok(last)
     }
 
-    /// Execute a block with a specific `self` receiver (for instance_exec/instance_eval).
-    /// The receiver overrides any captured `self` from the block's closure.
-    pub(crate) fn execute_block_with_receiver(
-        &mut self,
-        block: &BlockStatement,
-        receiver: Object,
-        arguments: Vec<Object>,
-        position: Position,
-    ) -> Result<Object, MetorexError> {
+    /// The frame a block run against another receiver stands in, named as
+    /// the block and sitting where the call that ran it was made.
+    pub(crate) fn block_frame_at(&self, block: &BlockStatement, position: Position) -> CallFrame {
         let frame_name = block.name().to_string();
-        let frame_location = position_to_location(position);
-        let frame_location_string = Some(format!("{}", frame_location));
-        let frame = match block.defining_method.clone() {
+        let frame_location_string = Some(format!("{}", position_to_location(position)));
+        match block.defining_method.clone() {
             Some((callee, defined)) => {
                 CallFrame::method(frame_name.clone(), frame_location_string, callee, defined)
             }
@@ -169,7 +183,19 @@ impl VirtualMachine {
                 .unwrap_or_else(|| self.block_nesting_depth()),
         )
         .written_in_scope(block.written_in.clone())
-        .with_source_file(self.current_source_file.clone());
+        .with_source_file(self.file_for_frames())
+    }
+
+    /// Execute a block with a specific `self` receiver (for instance_exec/instance_eval).
+    /// The receiver overrides any captured `self` from the block's closure.
+    pub(crate) fn execute_block_with_receiver(
+        &mut self,
+        block: &BlockStatement,
+        receiver: Object,
+        arguments: Vec<Object>,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let frame = self.block_frame_at(block, position);
         let body_source_file = block
             .source_file
             .clone()
@@ -278,6 +304,8 @@ impl VirtualMachine {
             let result = (|| -> Result<Object, MetorexError> {
                 vm.environment_mut()
                     .attach_captured(std::rc::Rc::clone(&block.captured_vars));
+                vm.environment_mut()
+                    .attach_reserved(std::rc::Rc::clone(&block.reserved_names));
                 // Override `self` with the instance_exec receiver
                 vm.environment_mut().define("self".to_string(), receiver);
 
@@ -377,7 +405,7 @@ impl VirtualMachine {
                             }
                             ControlFlow::Redo { .. } | ControlFlow::Retry { .. } => continue 'again,
                             ControlFlow::Continue { position, .. } => {
-                                return Err(loop_control_error("continue", position));
+                                return Err(loop_control_error("next", position));
                             }
                         }
                     }
@@ -409,7 +437,10 @@ impl VirtualMachine {
 
         match execution_result {
             Ok(value) => Ok(value),
-            Err(error) => Err(error.with_stack_frame(StackFrame::new(frame_name, frame_location))),
+            Err(error) => Err(error.with_stack_frame(StackFrame::new(
+                block.name().to_string(),
+                position_to_location(position),
+            ))),
         }
     }
 }

@@ -509,7 +509,7 @@ class IO
   # The three streams the program started with, each over the descriptor the
   # operating system opened for it.
   def self.__standard__(number, named)
-    held = __over__ IO.__stream__("adopt", 0, "", number), named, number == 0 ? "r" : "w"
+    held = __over__ IO.__stream__("adopt", 0, "", number), "<#{named.upcase}>", number == 0 ? "r" : "w"
     held.__send__ :__name_standard__, named
     held
   end
@@ -552,6 +552,8 @@ class IO
   def path
     @path
   end
+
+  alias_method :to_path, :path
 
   # A stream not reading from a child process has no process to name.
   def pid

@@ -287,3 +287,46 @@ fn test_threads_thread_class_settings_no_parens_execution() {
     let output = run_example("threads/thread_class_settings_no_parens.rb");
     assert_eq!(output, THREAD_CLASS_SETTINGS_OUTPUT);
 }
+
+/// The expected output of `threads/waiting_backtraces`, where the file
+/// names itself.
+fn waiting_backtraces_output(file: &str) -> String {
+    concat!(
+        "[\"FILE:9:in 'Thread::Mutex#lock'\", \"FILE:9:in 'block in <main>'\"]\n",
+        "[\"FILE:13:in 'Kernel#sleep'\", \"FILE:13:in 'block in <main>'\"]\n",
+        "[\"FILE:18:in 'Thread::Queue#pop'\", \"FILE:18:in 'block in <main>'\"]\n",
+        "[\"FILE:24:in 'Thread::ConditionVariable#wait'\", \"FILE:24:in 'block (2 levels) in <main>'\", \"FILE:24:in 'Thread::Mutex#synchronize'\", \"FILE:24:in 'block in <main>'\"]\n",
+        "[\"FILE:29:in 'block in <main>'\", \"FILE:29:in 'Thread::Mutex#synchronize'\", \"FILE:29:in '<main>'\"]\n",
+    )
+    .replace("FILE", file)
+}
+
+#[test]
+fn test_threads_waiting_backtraces_execution() {
+    let output = run_example("threads/waiting_backtraces.rb");
+    assert_eq!(output, waiting_backtraces_output("waiting_backtraces.rb"));
+}
+
+#[test]
+fn test_threads_waiting_backtraces_no_parens_execution() {
+    let output = run_example("threads/waiting_backtraces_no_parens.rb");
+    assert_eq!(
+        output,
+        waiting_backtraces_output("waiting_backtraces_no_parens.rb")
+    );
+}
+
+/// The expected output of both `threads/killing_a_blocked_reader` variants.
+const THREADS_KILLING_A_BLOCKED_READER: &str = concat!("\"sleep\"\n", "nil\n", "false\n", "nil\n",);
+
+#[test]
+fn test_threads_killing_a_blocked_reader_execution() {
+    let output = run_example("threads/killing_a_blocked_reader.rb");
+    assert_eq!(output, THREADS_KILLING_A_BLOCKED_READER);
+}
+
+#[test]
+fn test_threads_killing_a_blocked_reader_no_parens_execution() {
+    let output = run_example("threads/killing_a_blocked_reader_no_parens.rb");
+    assert_eq!(output, THREADS_KILLING_A_BLOCKED_READER);
+}

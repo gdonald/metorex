@@ -136,6 +136,7 @@ fn test_block_passed_as_argument_with_function() {
             ],
             position: pos(1, 1),
             singleton_class: None,
+            end_position: Default::default(),
         },
         // Create increment block
         Statement::Assignment {
@@ -248,6 +249,7 @@ fn test_block_returned_from_function_standalone() {
             }],
             position: pos(1, 1),
             singleton_class: None,
+            end_position: Default::default(),
         },
         // Call function to get block
         Statement::Assignment {
@@ -598,11 +600,12 @@ fn test_block_returned_from_method() {
                 name: "factory".to_string(),
                 position: pos(7, 1),
             },
-            value: Expression::Call {
-                callee: Box::new(Expression::Identifier {
+            value: Expression::MethodCall {
+                receiver: Box::new(Expression::Identifier {
                     name: "BlockFactory".to_string(),
                     position: pos(7, 11),
                 }),
+                method: "new".to_string(),
                 arguments: vec![],
                 trailing_block: None,
                 position: pos(7, 11),

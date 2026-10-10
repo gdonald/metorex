@@ -858,7 +858,9 @@ class Ripper
           return op(:colon2, start, space_seen)
         end
         following = peek(1)
-        if end? || following.nil? || space?(following) || following == 10 || following == 35
+        # At the end of the input a `:` opens a symbol, as MRI's lexer
+        # reads it, unless a value ends before it.
+        if end? || (following && (space?(following) || following == 10 || following == 35))
           @pos += 1
           @state = BEG
           return op(:":", start, space_seen)
@@ -913,8 +915,11 @@ class Ripper
         4
       end
 
-      # Moves past one backslash escape, as written.
-      def skip_escape
+      # Moves past one backslash escape, as written, reporting a `\x` with
+      # no hex digit and a `\u` MRI's lexer refuses. `term` is the byte
+      # that ends the literal the escape is in.
+      def skip_escape(term = nil)
+        escape_start = @pos
         @pos += 1
         byte = peek
         case byte
@@ -923,14 +928,34 @@ class Ripper
         when 117 # u
           @pos += 1
           if peek == 123
-            @pos += 1 until peek.nil? || peek == 125
-            @pos += 1 unless peek.nil?
+            @pos += 1
+            return :refused unless unicode_codepoints(term)
           else
-            4.times { @pos += 1 if peek && hex?(peek) }
+            digits = 0
+            4.times do
+              break unless peek && hex?(peek)
+
+              @pos += 1
+              digits += 1
+            end
+            if digits < 4
+              scanner_error("invalid Unicode escape", escape_start, @pos)
+              return :refused
+            end
           end
         when 120 # x
           @pos += 1
-          2.times { @pos += 1 if peek && hex?(peek) }
+          digits = 0
+          2.times do
+            break unless peek && hex?(peek)
+
+            @pos += 1
+            digits += 1
+          end
+          if digits.zero?
+            scanner_error("invalid hex escape", escape_start, @pos)
+            return :refused
+          end
         when 48..55
           3.times { @pos += 1 if peek && peek >= 48 && peek <= 55 }
         when 67, 99, 77 # C c M
@@ -952,15 +977,59 @@ class Ripper
 
       def hex?(byte) = digit?(byte) || (byte >= 97 && byte <= 102) || (byte >= 65 && byte <= 70)
 
+      # The code points of a `\u{...}` escape, from just after its `{`: hex
+      # numbers of up to six digits apart by spaces, up to the `}`. False
+      # when MRI's lexer refuses them.
+      def unicode_codepoints(term)
+        loop do
+          @pos += 1 while peek == 32 || peek == 9
+          if peek == 125
+            @pos += 1
+            return true
+          end
+          if peek.nil? || peek == term || peek == 10
+            scanner_error("unterminated Unicode escape", @pos, @pos + 1)
+            return false
+          end
+          unless hex?(peek)
+            scanner_error("invalid Unicode escape", @pos, @pos + 1)
+            scanner_error("unterminated Unicode escape", @pos, @pos + 1)
+            return false
+          end
+          6.times { @pos += 1 if peek && hex?(peek) }
+        end
+      end
+
+      # An error MRI's lexer reports and reads on past, at the bytes from
+      # `from` to `to` on the current line.
+      def scanner_error(message, from, to)
+        @emitter.scanner_error(message, @line, from - @line_start, to - @line_start, @state)
+      end
+
       def number(start, space_seen)
         @state = END_
         @pos += 1 if peek == 43 || peek == 45
         type = :int
         if peek == 48 && [120, 88, 98, 66, 111, 79, 100, 68, 95].include?(peek(1))
+          radix = peek(1) != 95
+          # The digits the prefix allows: hexadecimal after `0x`, binary
+          # after `0b`, decimal after `0d`, and octal after `0o` or `0_`.
+          allowed = case peek(1)
+                    when 120, 88 then ->(byte) { hex?(byte) }
+                    when 98, 66 then ->(byte) { byte == 48 || byte == 49 }
+                    when 100, 68 then ->(byte) { digit?(byte) }
+                    else ->(byte) { byte && byte >= 48 && byte <= 55 }
+                    end
           @pos += 2
-          @pos += 1 while peek && (hex?(peek) || peek == 95)
+          digits_start = @pos
+          @pos += 1 while peek && (allowed.call(peek) || peek == 95)
+          octal = !radix || [111, 79].include?(@src.getbyte(start + 1))
+          return error_token(start, "Invalid octal digit") if octal && (peek == 56 || peek == 57)
+          scanner_error("numeric literal without digits", start, @pos) if radix && @pos == digits_start
         elsif peek == 48 && digit?(peek(1))
-          @pos += 1 while digit?(peek) || peek == 95
+          @pos += 1
+          @pos += 1 while (digit?(peek) && peek < 56) || peek == 95
+          return error_token(start, "Invalid octal digit") if peek == 56 || peek == 57
         else
           @pos += 1 while digit?(peek) || peek == 95
           if peek == 46 && digit?(peek(1))
@@ -979,6 +1048,8 @@ class Ripper
       end
 
       def finish_number(start, space_seen, type, exponent: false)
+        return error_token(start, "trailing '_' in number") if text(start).end_with?("_")
+
         if peek == 114 && !exponent && !ident_char?(peek(1)) || (peek == 114 && peek(1) == 105 && !exponent && !ident_char?(peek(2)))
           @pos += 1
           type = :rational
@@ -1004,8 +1075,13 @@ class Ripper
             event = :on_backref
           end
         elsif byte == 45
-          @pos += 1
-          @pos += 1 if ident_char?(peek)
+          # `$-` names an option only with a letter after it. MRI's lexer
+          # reads a `$` alone as a token it cannot use, and the `-` after.
+          unless ident_char?(peek(1))
+            @state = END_
+            return token(:invalid, :on_CHAR, start, space: space_seen)
+          end
+          @pos += 2
         elsif byte == 48
           @pos += 1
         elsif digit?(byte)
@@ -1035,9 +1111,22 @@ class Ripper
           type = :cvar
           event = :on_cvar
         end
+        kind = type == :ivar ? "an instance" : "a class"
+        # A name cannot start with a digit, and MRI names the whole of one
+        # that does.
+        if digit?(peek)
+          # MRI names the digits in its error and goes on to read them as
+          # a number of their own.
+          sigil_end = @pos
+          @pos += 1 while digit?(peek)
+          scanner_error("'#{text(start)}' is not allowed as #{kind} variable name", start, @pos)
+          @pos = sigil_end
+          @state = END_
+          return token(type, event, start, space: space_seen)
+        end
         unless ident_start?(peek)
           @state = END_
-          return error_token(start, "'#{text(start)}' without identifiers is not allowed as #{type == :ivar ? 'an instance' : 'a class'} variable name")
+          return error_token(start, "'#{text(start)}' without identifiers is not allowed as #{kind} variable name")
         end
         @pos += 1 while ident_char?(peek)
         @state = last_state.anybits?(FNAME) ? ENDFN : END_
@@ -1236,7 +1325,13 @@ class Ripper
 
       def unterminated(mode)
         @modes.pop
-        message = mode.regexp ? "unterminated regexp meets end of file" : "unterminated string meets end of file"
+        message = if mode.regexp
+                    "unterminated regexp meets end of file"
+                  elsif mode.words
+                    "unterminated list meets end of file"
+                  else
+                    "unterminated string meets end of file"
+                  end
         error_token(@pos, message)
       end
 
@@ -1291,7 +1386,8 @@ class Ripper
               next
             end
             if mode.interpolate && !mode.words
-              skip_escape
+              # MRI ends the content at an escape it refuses.
+              break if skip_escape(mode.term) == :refused
             else
               @pos += 1
               @pos += char_width(peek) unless peek.nil?

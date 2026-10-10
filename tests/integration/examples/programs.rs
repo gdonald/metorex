@@ -143,7 +143,7 @@ Honor roll:
 Average grade: 85.16666666666667
 Math students: 3
 Science students: 3
-All students: [Alice, Bob, Charlie, Diana, Eve, Frank]
+All students: ["Alice", "Bob", "Charlie", "Diana", "Eve", "Frank"]
 "#;
     let output = run_example("programs/data_pipeline/data_pipeline.rb");
     assert_eq!(output, expected);
@@ -164,7 +164,7 @@ Honor roll:
 Average grade: 85.16666666666667
 Math students: 3
 Science students: 3
-All students: [Alice, Bob, Charlie, Diana, Eve, Frank]
+All students: ["Alice", "Bob", "Charlie", "Diana", "Eve", "Frank"]
 "#;
     let output = run_example("programs/data_pipeline/data_pipeline_no_parens.rb");
     assert_eq!(output, expected);

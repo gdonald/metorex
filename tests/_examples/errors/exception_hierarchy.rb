@@ -17,9 +17,9 @@ rescue TypeError => e
 end
 
 begin
-  raise ValueError.new("Invalid value")
-rescue ValueError => e
-  puts "Caught ValueError: #{e.message}"
+  raise ArgumentError.new("Invalid value")
+rescue ArgumentError => e
+  puts "Caught ArgumentError: #{e.message}"
 end
 
 # Example 2: Catching base StandardError
@@ -49,7 +49,7 @@ def handle_error(error_type)
     elsif error_type == "type"
       raise TypeError.new("Type issue")
     elsif error_type == "value"
-      raise ValueError.new("Value issue")
+      raise ArgumentError.new("Value issue")
     end
   rescue RuntimeError => e
     puts "Specific handler for RuntimeError: #{e.message}"

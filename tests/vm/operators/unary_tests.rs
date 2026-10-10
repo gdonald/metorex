@@ -51,11 +51,11 @@ fn unary_minus_on_a_string_answers_the_string() {
 #[test]
 fn unary_plus_on_nil_raises() {
     let error = run_err("+nil");
-    assert!(error.contains("Cannot apply unary operator"));
+    assert!(error.contains("undefined method '+@' for nil"));
 }
 
 #[test]
 fn unary_minus_on_true_raises() {
     let error = run_err("-true");
-    assert!(error.contains("Cannot apply unary operator"));
+    assert!(error.contains("undefined method '-@' for true"));
 }

@@ -46,6 +46,8 @@ pub(crate) type FiberOutput = Result<Object, MetorexError>;
 pub(crate) struct FiberContext {
     pub(crate) environment: crate::environment::Environment,
     pub(crate) call_stack: Vec<crate::vm::CallFrame>,
+    pub(crate) native_frames: Vec<crate::vm::NativeFrame>,
+    pub(crate) statement_marks: Vec<crate::vm::native_functions::StatementMark>,
     pub(crate) def_scope_stack: Vec<std::rc::Rc<crate::class::Class>>,
     pub(crate) class_var_home: Vec<std::rc::Rc<crate::class::Class>>,
     pub(crate) class_var_cref_stack: Vec<Option<std::rc::Rc<crate::class::Class>>>,

@@ -220,7 +220,7 @@ fn relative_path_from_gives_the_way_from_one_path_to_another() {
     );
     assert!(
         run_err("require 'pathname'\nPathname.new('a').relative_path_from('..')")
-            .contains("may not contain")
+            .contains("base_directory has ..: \"..\"")
     );
 }
 

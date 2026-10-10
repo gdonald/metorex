@@ -84,7 +84,6 @@ fn test_exception_hierarchy_creation() {
     assert_eq!(builtins.standard_error_class.name(), "StandardError");
     assert_eq!(builtins.runtime_error_class.name(), "RuntimeError");
     assert_eq!(builtins.type_error_class.name(), "TypeError");
-    assert_eq!(builtins.value_error_class.name(), "ValueError");
 }
 
 #[test]
@@ -110,15 +109,6 @@ fn test_type_error_inherits_from_standard_error() {
     let builtins = BuiltinClasses::new();
 
     let superclass = builtins.type_error_class.superclass();
-    assert!(superclass.is_some());
-    assert_eq!(superclass.unwrap().name(), "StandardError");
-}
-
-#[test]
-fn test_value_error_inherits_from_standard_error() {
-    let builtins = BuiltinClasses::new();
-
-    let superclass = builtins.value_error_class.superclass();
     assert!(superclass.is_some());
     assert_eq!(superclass.unwrap().name(), "StandardError");
 }
@@ -289,7 +279,7 @@ fn test_all_classes() {
     let builtins = BuiltinClasses::new();
     let all = builtins.all_classes();
 
-    assert_eq!(all.len(), 26);
+    assert_eq!(all.len(), 25);
     assert!(all.contains_key("Dir"));
     assert!(all.contains_key("Regexp"));
     assert!(all.contains_key("BasicObject"));
@@ -304,7 +294,7 @@ fn test_all_classes() {
     assert!(all.contains_key("StandardError"));
     assert!(all.contains_key("RuntimeError"));
     assert!(all.contains_key("TypeError"));
-    assert!(all.contains_key("ValueError"));
+    assert!(!all.contains_key("ValueError"));
     assert!(all.contains_key("Binding"));
 }
 
@@ -365,9 +355,13 @@ fn test_object_respond_to_parameters() {
     let object_class = Class::new("Object", None);
     init_object_methods(&object_class);
 
+    // The name and whether private methods count, taken as a rest.
     let respond_to = object_class.find_method("respond_to?").unwrap();
-    assert_eq!(respond_to.parameters.len(), 1);
-    assert_eq!(respond_to.parameters[0], metorex::object::UNNAMED_PARAMETER);
+    assert_eq!(respond_to.parameters, vec!["arguments".to_string()]);
+    assert_eq!(
+        respond_to.variadic_param,
+        Some((0, "arguments".to_string()))
+    );
 }
 
 #[test]

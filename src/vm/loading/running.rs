@@ -11,7 +11,7 @@ impl VirtualMachine {
         path: &std::path::Path,
         record: bool,
     ) -> Result<Object, MetorexError> {
-        use crate::file_loader::{find_file_path, load_file_source, parse_file};
+        use crate::file_loader::{find_file_path, load_file_source, parse_file_with_warnings};
 
         // Find the actual file path (with extension auto-detection)
         let actual_path = find_file_path(path)?;
@@ -143,13 +143,16 @@ impl VirtualMachine {
         }
 
         // Parse file with error context
-        let statements = parse_file(&source, &canonical_path.to_string_lossy()).map_err(|e| {
-            crate::vm::errors::syntax_error(
-                format!("Failed to parse file '{}': {}", canonical_path.display(), e),
-                Some(&canonical_path.to_string_lossy()),
-                crate::lexer::Position::new(0, 0, 0),
-            )
-        })?;
+        let (statements, warnings) =
+            parse_file_with_warnings(&source, &canonical_path.to_string_lossy()).map_err(|e| {
+                crate::vm::errors::syntax_error(
+                    format!("Failed to parse file '{}': {}", canonical_path.display(), e),
+                    Some(&canonical_path.to_string_lossy()),
+                    crate::lexer::Position::new(0, 0, 0),
+                )
+            })?;
+
+        self.report_parse_warnings(&named_path.display().to_string(), &warnings);
 
         // A file read while measurement is on is counted from here on, which
         // is why the file that turns measurement on is never in the report.
@@ -210,7 +213,11 @@ impl VirtualMachine {
         if let Some(held) = stand_in {
             self.environment_mut().define("self".to_string(), held);
         }
+        // A file's top level is outside any method, whichever method loaded
+        // it, so `using` there is allowed.
+        let caller_method_nesting = std::mem::take(&mut self.user_def_nesting);
         let result = self.execute_program(&statements);
+        self.user_def_nesting = caller_method_nesting;
         if own_locals {
             self.environment_mut().pop_scope();
         }
@@ -220,9 +227,9 @@ impl VirtualMachine {
         if let Some(saved) = previous_self {
             match saved {
                 Some(receiver) => self.environment_mut().define("self".to_string(), receiver),
-                None => self
-                    .environment_mut()
-                    .define("self".to_string(), Object::Nil),
+                // The scope had no `self` of its own, so it reads `main`
+                // again rather than a nil left behind.
+                None => self.environment_mut().undefine("self"),
             }
         }
         self.current_source_file = previous_source_file;
@@ -302,7 +309,9 @@ impl VirtualMachine {
         let caller_source = self
             .current_source_file
             .replace(crate::vm::stdlib::embedded_library_file(name));
+        let caller_method_nesting = std::mem::take(&mut self.user_def_nesting);
         let result = self.execute_program(&statements);
+        self.user_def_nesting = caller_method_nesting;
         self.current_source_file = caller_source;
         self.loading_embedded_library = caller_library;
         self.method_nesting_stack = caller_nesting;

@@ -16,8 +16,14 @@ impl VirtualMachine {
         if let (Some(new_global), Some(old_global)) =
             (new_name.strip_prefix('$'), old_name.strip_prefix('$'))
         {
-            self.global_aliases
-                .insert(new_global.to_string(), old_global.to_string());
+            // A name that is itself a second name, as `$>` is for
+            // `$stdout`, stands for the global it names.
+            let original = self
+                .global_aliases
+                .get(old_global)
+                .cloned()
+                .unwrap_or_else(|| old_global.to_string());
+            self.global_aliases.insert(new_global.to_string(), original);
             return Ok(ControlFlow::Next);
         }
         if let Some(enclosing) = self.def_scope_stack.last().cloned() {

@@ -77,13 +77,31 @@ impl VirtualMachine {
                             });
                         }
                         None => {
-                            let exc =
-                                Object::exception("ArgumentError", "comparison failed".to_string());
-                            return Err(MetorexError::UncaughtException {
-                                exception: exc,
-                                location: position_to_location(position),
-                                message: "comparison failed".to_string(),
-                            });
+                            // Ruby names the right side by value when it is
+                            // an immediate, and by class otherwise.
+                            let right = match &max {
+                                Object::Int(_)
+                                | Object::Float(_)
+                                | Object::Nil
+                                | Object::Bool(_)
+                                | Object::Symbol(_) => self.inspect_value(&max, position)?,
+                                other => {
+                                    crate::vm::native_methods::define_method::ruby_class_name(other)
+                                        .to_string()
+                                }
+                            };
+                            let left = match &min {
+                                Object::Instance(instance) => instance.borrow().class.ruby_name(),
+                                other => {
+                                    crate::vm::native_methods::define_method::ruby_class_name(other)
+                                        .to_string()
+                                }
+                            };
+                            return Err(crate::vm::errors::simple_exception(
+                                "ArgumentError",
+                                &format!("comparison of {left} with {right} failed"),
+                                position,
+                            ));
                         }
                         _ => {}
                     }

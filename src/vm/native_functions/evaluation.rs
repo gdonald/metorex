@@ -138,30 +138,112 @@ impl VirtualMachine {
                 crate::lexer::named_source_encoding(&code).unwrap_or_else(|| code_encoding.clone()),
             ))
             .tokenize();
-        let mut parser = crate::parser::Parser::new(tokens).inside_eval();
+        // The code is read with the locals of the scope it runs in.
+        let outer_locals = match arguments.get(1) {
+            Some(Object::Binding(held)) => held
+                .keys()
+                .into_iter()
+                .filter(|name| name != "self")
+                .collect(),
+            _ => self.visible_local_names(),
+        };
+        let mut parser = crate::parser::Parser::new(tokens)
+            .inside_eval()
+            .with_outer_locals(outer_locals);
         let parsed = parser.parse();
         let source_warnings = parser.warnings().to_vec();
-        let statements = parsed.map_err(|errors| {
-            // Ruby names the file in front of the message, so
-            // code eval'd on behalf of a template points at the
-            // template rather than at the eval.
-            let reported = errors
+        let default_warnings = parser.default_warnings().to_vec();
+        // Code the interpreter reads but MRI's parser refuses is refused as
+        // MRI refuses it.
+        let parsed = match parsed {
+            Ok(statements)
+                if crate::vm::native_functions::prism_refuses(
+                    &code,
+                    &crate::vm::native_functions::PrismReading {
+                        start_line: named_lineno as i32,
+                        command_line: "",
+                        main_script: false,
+                        partial_script: true,
+                        scopes: Some(&parser.inherited_local_names()),
+                    },
+                ) =>
+            {
+                let named = filename.clone().unwrap_or_else(|| {
+                    format!(
+                        "(eval at {}:{})",
+                        self.file_for_frames().unwrap_or_default(),
+                        position.line
+                    )
+                });
+                match self.prism_syntax_report(&code, &named, named_lineno, &parser, position)? {
+                    Some(error) => return Err(error),
+                    None => Ok(statements),
+                }
+            }
+            other => other,
+        };
+        let statements = match parsed {
+            Ok(statements) => statements,
+            Err(errors) => {
+                // MRI words what it refuses as prism does, under the name
+                // the code runs as, and only code prism accepts as well
+                // keeps the interpreter's own wording.
+                let named = filename.clone().unwrap_or_else(|| {
+                    format!(
+                        "(eval at {}:{})",
+                        self.file_for_frames().unwrap_or_default(),
+                        position.line
+                    )
+                });
+                if let Some(error) =
+                    self.prism_syntax_report(&code, &named, named_lineno, &parser, position)?
+                {
+                    return Err(error);
+                }
+                return Err({
+                    // Ruby names the file in front of the message, so
+                    // code eval'd on behalf of a template points at the
+                    // template rather than at the eval.
+                    let reported = errors
+                        .iter()
+                        .map(|e| e.to_string())
+                        .collect::<Vec<_>>()
+                        .join("; ");
+                    let at = errors
+                        .first()
+                        .and_then(|held| held.location())
+                        .map_or(0, |held| held.line.max(1).saturating_sub(lineno))
+                        as i64
+                        + named_lineno;
+                    let message = match &filename {
+                        Some(named) => format!("{named}:{at}: {reported}"),
+                        None => format!("eval: parse error: {reported}"),
+                    };
+                    crate::vm::errors::syntax_error(message, filename.as_deref(), position)
+                });
+            }
+        };
+        // What reading the code found to warn about whatever the
+        // verbosity, under the name the code runs as.
+        if !default_warnings.is_empty() {
+            let named = filename.clone().unwrap_or_else(|| {
+                format!(
+                    "(eval at {}:{})",
+                    self.file_for_frames().unwrap_or_default(),
+                    position.line
+                )
+            });
+            let counted: Vec<_> = default_warnings
                 .iter()
-                .map(|e| e.to_string())
-                .collect::<Vec<_>>()
-                .join("; ");
-            let at = errors
-                .first()
-                .and_then(|held| held.location())
-                .map_or(0, |held| held.line.max(1).saturating_sub(lineno))
-                as i64
-                + named_lineno;
-            let message = match &filename {
-                Some(named) => format!("{named}:{at}: {reported}"),
-                None => format!("eval: parse error: {reported}"),
-            };
-            crate::vm::errors::syntax_error(message, filename.as_deref(), position)
-        })?;
+                .map(|(at, warning)| {
+                    let mut shifted = *at;
+                    shifted.line =
+                        ((at.line as i64) - (lineno as i64) + named_lineno).max(0) as usize;
+                    (shifted, warning.clone())
+                })
+                .collect();
+            self.report_parse_warnings(&named, &counted);
+        }
         // What reading the code found to warn about, which a verbose run
         // reports under the name the code runs as.
         if matches!(self.globals().get("VERBOSE"), Some(Object::Bool(true))) {
@@ -314,7 +396,10 @@ impl VirtualMachine {
         self.refinement_scopes.push(carried_refinements);
         let prev_file = self.current_file.clone();
         match &filename {
-            Some(f) => self.current_file = Some(std::path::PathBuf::from(f)),
+            Some(f) => {
+                self.eval_named_files.insert(f.clone());
+                self.current_file = Some(std::path::PathBuf::from(f));
+            }
             // Ruby names the eval'd code after the place it was
             // written, which is what `__FILE__` reports inside it.
             // Code run through a binding is named for the eval that
@@ -376,7 +461,11 @@ impl VirtualMachine {
         self.call_stack_push(
             written_in
                 .with_location(Some(format!("{}:{}", position.line, position.column)))
-                .with_source_file(prev_source_file.clone()),
+                .with_source_file(
+                    prev_source_file
+                        .clone()
+                        .or_else(|| prev_file.as_ref().map(|file| file.display().to_string())),
+                ),
         );
         // Code run through a binding runs where the binding was
         // taken, so `__method__` names the method it was taken in.
@@ -406,6 +495,11 @@ impl VirtualMachine {
         // eval was written in rather than ending the eval, so it
         // carries on out rather than being answered here.
         let result = self.run_eval_statements(&statements);
+        // An error the code raised natively is traced here, while the file
+        // it was written in is still the one the eval named.
+        if let Err(error) = &result {
+            self.trace_error_leaving_frame(error);
+        }
         if let Some(held) = saved_lexical_home {
             self.lexical_home_frame = held;
         }
@@ -554,5 +648,56 @@ impl VirtualMachine {
         self.user_def_nesting = saved_nesting;
         result?;
         Ok(Object::Bool(true))
+    }
+}
+
+impl VirtualMachine {
+    /// The error MRI raises for code `eval` refuses, worded and laid out by
+    /// the prelude over prism, or None when prism accepts the code.
+    fn prism_syntax_report(
+        &mut self,
+        code: &str,
+        named: &str,
+        start_line: i64,
+        parser: &crate::parser::Parser,
+        position: Position,
+    ) -> Result<Option<MetorexError>, MetorexError> {
+        let locals = parser
+            .inherited_local_names()
+            .into_iter()
+            .map(Object::string)
+            .collect();
+        let main = self.globals().get("__main__").unwrap_or(Object::Nil);
+        let report = self.send_to_object(
+            main,
+            "__syntax_error_report__",
+            vec![
+                Object::string(code.to_string()),
+                Object::string(named.to_string()),
+                Object::Int(start_line),
+                Object::array(locals),
+            ],
+            position,
+        )?;
+        let Object::Array(pair) = report else {
+            return Ok(None);
+        };
+        let pair = pair.borrow().clone();
+        let [Object::String(class), Object::String(message)] = pair.as_slice() else {
+            return Ok(None);
+        };
+        let message = message.as_str().to_string();
+        if &*class.as_str() == "SyntaxError" {
+            return Ok(Some(crate::vm::errors::syntax_error(
+                message,
+                Some(named),
+                position,
+            )));
+        }
+        Ok(Some(crate::vm::errors::simple_exception(
+            &class.as_str(),
+            &message,
+            position,
+        )))
     }
 }

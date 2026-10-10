@@ -950,3 +950,213 @@ fn test_ruby_vm_syntax_tree_of_no_parens_execution() {
     let output = run_example("ruby_vm/syntax_tree_of_no_parens.rb");
     assert_eq!(output, SYNTAX_TREE_OF_OUTPUT);
 }
+
+/// The expected output of both `ruby_vm/syntax_tree_locations` variants.
+const SYNTAX_TREE_LOCATIONS_OUTPUT: &str = concat!(
+    "\"alias foo bar\"\n",
+    "  ALIAS 1:0-1:13 1:0-1:5\n",
+    "\"alias $new $old\"\n",
+    "  VALIAS 1:0-1:15 1:0-1:5\n",
+    "\"a && b and c\"\n",
+    "  AND 1:0-1:12 1:2-1:4\n",
+    "\"a || b or c\"\n",
+    "  OR 1:0-1:11 1:2-1:4\n",
+    "\"foo(*rest, &block)\"\n",
+    "  BLOCK_PASS 1:4-1:17 1:11-1:12\n",
+    "  SPLAT 1:4-1:9 1:4-1:5\n",
+    "\"loop { break 1; next 2; redo }\"\n",
+    "  BREAK 1:7-1:14 1:7-1:12\n",
+    "  NEXT 1:16-1:22 1:16-1:20\n",
+    "  REDO 1:24-1:28 1:24-1:28\n",
+    "\"def m; return 1; end\"\n",
+    "  RETURN 1:7-1:15 1:7-1:13\n",
+    "\"case a\\nwhen 1 then :one\\nwhen 2\\n  :two\\nend\"\n",
+    "  CASE 1:0-5:3 1:0-1:4 5:0-5:3\n",
+    "  WHEN 2:0-4:6 2:0-2:4 2:7-2:11\n",
+    "  WHEN 3:0-4:6 3:0-3:4 3:6-3:6\n",
+    "\"case a\\nin [x] then x\\nin Integer => n if n > 0\\n  n\\nend\"\n",
+    "  CASE3 1:0-5:3 1:0-1:4 5:0-5:3\n",
+    "  IN 2:0-4:3 2:0-2:2 2:7-2:11 nil\n",
+    "  IN 3:0-4:3 3:0-3:2 3:24-3:24 nil\n",
+    "  IF 3:3-3:24 3:16-3:18 nil nil\n",
+    "\"case\\nwhen a then 1\\nend\"\n",
+    "  CASE2 1:0-3:3 1:0-1:4 3:0-3:3\n",
+    "  WHEN 2:0-2:13 2:0-2:4 2:7-2:11\n",
+    "\"value in [1]\"\n",
+    "  CASE3 1:0-1:12 nil nil\n",
+    "  IN 1:9-1:12 1:6-1:8 nil nil\n",
+    "\"value => {name:}\"\n",
+    "  CASE3 1:0-1:16 nil nil\n",
+    "  IN 1:9-1:16 nil nil 1:6-1:8\n",
+    "\"class Foo < Bar\\nend\"\n",
+    "  CLASS 1:0-2:3 1:0-1:5 1:10-1:11 2:0-2:3\n",
+    "  COLON2 1:6-1:9 nil 1:6-1:9\n",
+    "\"class Foo::Bar; end\"\n",
+    "  CLASS 1:0-1:19 1:0-1:5 nil 1:16-1:19\n",
+    "  COLON2 1:6-1:14 1:9-1:11 1:11-1:14\n",
+    "\"class << self; end\"\n",
+    "  SCLASS 1:0-1:18 1:0-1:5 1:6-1:8 1:15-1:18\n",
+    "\"module Outer::Inner\\nend\"\n",
+    "  MODULE 1:0-2:3 1:0-1:6 2:0-2:3\n",
+    "  COLON2 1:7-1:19 1:12-1:14 1:14-1:19\n",
+    "\"Outer::Inner\"\n",
+    "  COLON2 1:0-1:12 1:5-1:7 1:7-1:12\n",
+    "\"::Top\"\n",
+    "  COLON3 1:0-1:5 1:0-1:2 1:2-1:5\n",
+    "\"defined? x\"\n",
+    "  DEFINED 1:0-1:10 1:0-1:8\n",
+    "\"1..2\"\n",
+    "  DOT2 1:0-1:4 1:1-1:3\n",
+    "\"1...2\"\n",
+    "  DOT3 1:0-1:5 1:1-1:4\n",
+    "\"if a..b then end\"\n",
+    "  IF 1:0-1:16 1:0-1:2 1:8-1:12 1:13-1:16\n",
+    "  FLIP2 1:3-1:7 1:4-1:6\n",
+    "\"\\\"a\\#{b}c\\\"\"\n",
+    "  EVSTR 1:2-1:6 1:2-1:4 1:5-1:6\n",
+    "\"for item in list do item end\"\n",
+    "  FOR 1:0-1:28 1:0-1:3 1:9-1:11 1:17-1:19 1:25-1:28\n",
+    "\"for item in list\\n  item\\nend\"\n",
+    "  FOR 1:0-3:3 1:0-1:3 1:9-1:11 nil 3:0-3:3\n",
+    "\"-> (x) { x }\"\n",
+    "  LAMBDA 1:0-1:12 1:0-1:2 1:7-1:8 1:11-1:12\n",
+    "\"-> x do x end\"\n",
+    "  LAMBDA 1:0-1:13 1:0-1:2 1:5-1:7 1:10-1:13\n",
+    "\"if a then b elsif c then d else e end\"\n",
+    "  IF 1:0-1:37 1:0-1:2 1:5-1:9 1:34-1:37\n",
+    "  IF 1:12-1:33 1:12-1:17 1:20-1:24 1:34-1:37\n",
+    "\"if a # note\\n  b\\nend\"\n",
+    "  IF 1:0-3:3 1:0-1:2 1:12-1:12 3:0-3:3\n",
+    "\"if a\\nthen b\\nend\"\n",
+    "  IF 1:0-3:3 1:0-1:2 1:4-2:4 3:0-3:3\n",
+    "\"x if a\"\n",
+    "  IF 1:0-1:6 1:2-1:4 nil nil\n",
+    "\"a ? b : c\"\n",
+    "  IF 1:0-1:9 nil 1:6-1:7 nil\n",
+    "\"unless a; b; end\"\n",
+    "  UNLESS 1:0-1:16 1:0-1:6 1:8-1:9 1:13-1:16\n",
+    "\"list[0] += 1\"\n",
+    "  OP_ASGN1 1:0-1:12 nil 1:4-1:5 1:6-1:7 1:8-1:10\n",
+    "\"point.x ||= 0\"\n",
+    "  OP_ASGN2 1:0-1:13 1:5-1:6 1:6-1:7 1:8-1:11\n",
+    "\"END { puts 1 }\"\n",
+    "  POSTEXE 1:0-1:14 1:0-1:3 1:4-1:5 1:13-1:14\n",
+    "\"/abc/\"\n",
+    "  REGX 1:0-1:5 1:0-1:1 1:1-1:4 1:4-1:5\n",
+    "\"//\"\n",
+    "  REGX 1:0-1:2 1:0-1:1 1:1-1:1 1:1-1:2\n",
+    "\"[*items]\"\n",
+    "  SPLAT 1:0-1:8 1:1-1:2\n",
+    "\"def m(*) = other(*)\"\n",
+    "  SPLAT 1:17-1:18 1:17-1:18\n",
+    "\"def m; super(1); super 2; yield(3); yield 4; end\"\n",
+    "  SUPER 1:7-1:15 1:7-1:12 1:12-1:13 1:14-1:15\n",
+    "  SUPER 1:17-1:24 1:17-1:22 nil nil\n",
+    "  YIELD 1:26-1:34 1:26-1:31 1:31-1:32 1:33-1:34\n",
+    "  YIELD 1:36-1:43 1:36-1:41 nil nil\n",
+    "\"undef foo, bar\"\n",
+    "  UNDEF 1:0-1:14 1:0-1:5\n",
+    "\"while a do b end\"\n",
+    "  WHILE 1:0-1:16 1:0-1:5 1:13-1:16\n",
+    "\"begin; b; end while a\"\n",
+    "  WHILE 1:0-1:21 1:14-1:19 nil\n",
+    "\"until a\\n  b\\nend\"\n",
+    "  UNTIL 1:0-3:3 1:0-1:5 3:0-3:3\n",
+    "\"x until a\"\n",
+    "  UNTIL 1:0-1:9 1:2-1:7 nil\n",
+    "#<RubyVM::AbstractSyntaxTree::Location:@1:0-1:15>\n",
+    "[1, 0, 1, 15]\n",
+    "1\n",
+);
+
+#[test]
+fn test_ruby_vm_syntax_tree_locations_execution() {
+    let output = run_example("ruby_vm/syntax_tree_locations.rb");
+    assert_eq!(output, SYNTAX_TREE_LOCATIONS_OUTPUT);
+}
+
+#[test]
+fn test_ruby_vm_syntax_tree_locations_no_parens_execution() {
+    let output = run_example("ruby_vm/syntax_tree_locations_no_parens.rb");
+    assert_eq!(output, SYNTAX_TREE_LOCATIONS_OUTPUT);
+}
+
+/// The expected output of both `ruby_vm/syntax_error_messages` variants.
+const SYNTAX_ERROR_MESSAGES_OUTPUT: &str = concat!(
+    "\"`a` `b`\": syntax error, unexpected backtick literal, expecting end-of-input\n",
+    "\"case a; in @b; end\": syntax error, unexpected instance variable\n",
+    "\"foo 1 { }\": syntax error, unexpected '{', expecting end-of-input\n",
+    "\"1 +\": syntax error, unexpected end-of-input\n",
+    "\"def f(; end\": syntax error, unexpected ';', expecting ')'\n",
+    "\"x = = 1\": syntax error, unexpected '='\n",
+    "\"[1, 2\": syntax error, unexpected end-of-input, expecting ']'\n",
+    "\"p(1 2)\": syntax error, unexpected integer literal, expecting ')'\n",
+    "\"class Foo < ; end\": syntax error, unexpected ';'\n",
+    "\"foo(a: 1, 2)\": syntax error, unexpected ')', expecting =>\n",
+    "\"{a: 1 b: 2}\": syntax error, unexpected local variable or method, expecting '}'\n",
+    "\"1 2\": syntax error, unexpected integer literal, expecting end-of-input\n",
+    "\"a ? b\": syntax error, unexpected end-of-input, expecting ':'\n",
+    "\"def f a, b c; end\": syntax error, unexpected local variable or method, expecting '\\n' or ';'\n",
+    "\"-> (x { x }\": syntax error, unexpected '{', expecting ')'\n",
+    "\"module 1; end\": syntax error, unexpected ';', expecting '.' or &. or :: or '['\n",
+    "\"class foo; end\": class/module name must be CONSTANT\n",
+    "\":\": syntax error, unexpected end-of-input, expecting literal content or terminator or '#{' or tSTRING_DVAR\n",
+    "\"1..2..3\": syntax error, unexpected ..\n",
+    "\"x.y z w\": read\n",
+    "\"begin; rescue => 1; end\": syntax error, unexpected ';', expecting '.' or &. or :: or '['\n",
+    "\"case 1 when 2 then 3 else 4 else 5 end\": syntax error, unexpected 'else', expecting 'end' or dummy end\n",
+    "\"for in [1]; end\": syntax error, unexpected 'in'\n",
+    "\"%w(a b\": unterminated list meets end of file\n",
+    "\"\\\"abc\": unterminated string meets end of file\n",
+    "\"[1,,2]\": syntax error, unexpected ',', expecting ']'\n",
+    "\"{1 => }\": syntax error, unexpected '}'\n",
+    "\"a::B::\": syntax error, unexpected end-of-input, expecting '('\n",
+    "\"-> { } ()\": syntax error, unexpected '(', expecting end-of-input\n",
+    "\"a ||| b\": syntax error, unexpected '|'\n",
+    "\"BEGIN 1\": syntax error, unexpected integer literal, expecting '{'\n",
+    "\"def self.; end\": syntax error, unexpected ';'\n",
+    "\"0x\": numeric literal without digits\n",
+    "\"1_\": trailing '_' in number\n",
+    "\"def f(*a, *b); end\": syntax error, unexpected *\n",
+    "\"def f(**a, b); end\": syntax error, unexpected local variable or method, expecting & or '&'\n",
+    "\"x = <<~EOS\": can't find string \"EOS\" anywhere before EOF\n",
+    "\"when 1\": syntax error, unexpected 'when'\n",
+    "\"=>\": syntax error, unexpected =>\n",
+    "\"::\": syntax error, unexpected end-of-input, expecting constant\n",
+    "\";;;)\": syntax error, unexpected ')'\n",
+);
+
+#[test]
+fn test_ruby_vm_syntax_error_messages_execution() {
+    let output = run_example("ruby_vm/syntax_error_messages.rb");
+    assert_eq!(output, SYNTAX_ERROR_MESSAGES_OUTPUT);
+}
+
+#[test]
+fn test_ruby_vm_syntax_error_messages_no_parens_execution() {
+    let output = run_example("ruby_vm/syntax_error_messages_no_parens.rb");
+    assert_eq!(output, SYNTAX_ERROR_MESSAGES_OUTPUT);
+}
+
+/// The expected output of both `ruby_vm/syntax_tree_of_backtrace` variants.
+const SYNTAX_TREE_OF_BACKTRACE: &str = concat!(
+    "[\"Object#calls_missing\", :CALL, 3, 20]\n",
+    "[\"block (2 levels) in <main>\", :VCALL, 6, 13]\n",
+    "[\"Array#each\", :CALL, 6, 2]\n",
+    "[\"block in <main>\", :CALL, 6, 2]\n",
+    "[\"Array#each\", :CALL, 5, 0]\n",
+    "[\"<main>\", :CALL, 5, 0]\n",
+    "[:OPCALL, 21, 31]\n",
+);
+
+#[test]
+fn test_ruby_vm_syntax_tree_of_backtrace_execution() {
+    let output = run_example("ruby_vm/syntax_tree_of_backtrace.rb");
+    assert_eq!(output, SYNTAX_TREE_OF_BACKTRACE);
+}
+
+#[test]
+fn test_ruby_vm_syntax_tree_of_backtrace_no_parens_execution() {
+    let output = run_example("ruby_vm/syntax_tree_of_backtrace_no_parens.rb");
+    assert_eq!(output, SYNTAX_TREE_OF_BACKTRACE);
+}

@@ -348,7 +348,7 @@ impl VirtualMachine {
         }
         let message = format!(
             "no implicit conversion of {} into Integer",
-            self.builtins().class_of(value).name()
+            crate::vm::errors::conversion_subject(value)
         );
         Err(crate::vm::errors::simple_exception(
             "TypeError",
@@ -409,7 +409,7 @@ impl VirtualMachine {
         }
         let message = format!(
             "no implicit conversion of {} into String",
-            self.builtins().class_of(value).name()
+            crate::vm::errors::conversion_subject(value)
         );
         Err(crate::vm::errors::simple_exception(
             "TypeError",

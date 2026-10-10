@@ -15,10 +15,11 @@ p(RbConfig::LIMITS["FIXNUM_MAX"] > 0)
 p([RbConfig::LIMITS["SHRT_MIN"], RbConfig::LIMITS["SHRT_MAX"]])
 
 # A name and an address, read out of a hosts file.
-hosts = Resolv::Hosts.new("/etc/hosts")
+hosts = Resolv::Hosts.new(File.join(__dir__, "hosts_fixture"))
 resolver = Resolv.new([hosts])
 p(resolver.getaddress("localhost"))
 p(resolver.getnames("127.0.0.1").include?("localhost"))
+p(resolver.getaddresses("billing"))
 begin
   Resolv.new([]).getaddress("nothing.answers.to.this.")
 rescue Resolv::ResolvError => problem

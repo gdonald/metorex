@@ -441,3 +441,27 @@ fn test_functions_keywords_or_a_hash_no_parens_execution() {
     let output = run_example("functions/keywords_or_a_hash_no_parens.rb");
     assert_eq!(output, KEYWORDS_OR_A_HASH_OUTPUT);
 }
+
+const SYMBOL_BLOCKS_OUTPUT: &str = concat!(
+    "[\"1\", \"2\"]\n",
+    "[4, 5]\n",
+    "3\n",
+    "\"no receiver given\"\n",
+    "\"no receiver given\"\n",
+    "\"line 21:in '<main>'\"\n",
+    "[\"line 28:in '<main>'\"]\n",
+    "true\n",
+    "2\n",
+);
+
+#[test]
+fn test_procs_symbol_blocks_execution() {
+    let output = run_example("procs/symbol_blocks.rb");
+    assert_eq!(output, SYMBOL_BLOCKS_OUTPUT);
+}
+
+#[test]
+fn test_procs_symbol_blocks_no_parens_execution() {
+    let output = run_example("procs/symbol_blocks_no_parens.rb");
+    assert_eq!(output, SYMBOL_BLOCKS_OUTPUT);
+}

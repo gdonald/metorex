@@ -122,10 +122,47 @@ impl VirtualMachine {
                 }
                 Ok(copy)
             }
+            // BasicObject's negation, which every object answers.
+            "!" if arguments.is_empty() => Ok(Some(Object::Bool(!receiver.is_truthy()))),
+            // Only a String, a Regexp, a Symbol and nil answer `=~`; Ruby no
+            // longer gives every object one.
+            "=~" if !matches!(
+                receiver,
+                Object::String(_) | Object::Regex(_, _) | Object::Symbol(_) | Object::Nil
+            ) =>
+            {
+                Ok(None)
+            }
             "=~" => {
                 // Regex match: string =~ regex or regex =~ string
                 if arguments.len() != 1 {
                     return Err(method_argument_error("=~", 1, arguments.len(), position));
+                }
+                // A Symbol matches as its name, and text against text is no
+                // match at all.
+                let reads_as_text = |value: &Object| {
+                    matches!(value, Object::String(_) | Object::Symbol(_))
+                        || crate::vm::native_methods::string_subclass_value(value).is_some()
+                };
+                if reads_as_text(receiver) && reads_as_text(&arguments[0]) {
+                    return Err(crate::vm::errors::simple_exception(
+                        "TypeError",
+                        "type mismatch: String given",
+                        position,
+                    ));
+                }
+                // Text matched against anything but a pattern asks that
+                // object, with the text, the way `String#=~` does.
+                if let Object::String(_) | Object::Symbol(_) = receiver
+                    && !matches!(&arguments[0], Object::Regex(_, _))
+                {
+                    let text = match receiver {
+                        Object::Symbol(name) => Object::string(name.as_str().to_string()),
+                        held => held.clone(),
+                    };
+                    return self
+                        .send_to_object(arguments[0].clone(), "=~", vec![text], position)
+                        .map(Some);
                 }
                 // A Symbol matches on the characters it is named with, so
                 // `/_pri\z/ =~ :ds_pri` finds a match the way Ruby's does.

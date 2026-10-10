@@ -35,8 +35,8 @@ fn bitwise_and_bool_int() {
 }
 
 #[test]
-fn bitwise_and_int_bool() {
-    assert_eq!(run("1 & true"), Some(Object::Bool(true)));
+fn bitwise_and_int_bool_refuses_to_coerce_the_boolean() {
+    assert!(run_err("1 & true").contains("true can't be coerced into Integer"));
 }
 
 #[test]
@@ -73,8 +73,8 @@ fn bitwise_or_bool_int() {
 }
 
 #[test]
-fn bitwise_or_int_bool() {
-    assert_eq!(run("0 | false"), Some(Object::Bool(true)));
+fn bitwise_or_int_bool_refuses_to_coerce_the_boolean() {
+    assert!(run_err("0 | false").contains("false can't be coerced into Integer"));
 }
 
 #[test]
@@ -121,8 +121,10 @@ fn xor_bool_with_truthy() {
 }
 
 #[test]
-fn xor_non_bool_left() {
-    assert_eq!(run(r#""hello" ^ true"#), Some(Object::Bool(false)));
+fn xor_on_a_string_is_undefined() {
+    assert!(
+        run_err(r#""hello" ^ true"#).contains("undefined method '^' for an instance of String")
+    );
 }
 
 #[test]
@@ -146,8 +148,8 @@ fn xor_bool_truthy_other() {
 }
 
 #[test]
-fn xor_other_bool() {
-    assert_eq!(run("0 ^ true"), Some(Object::Bool(false)));
+fn xor_int_true_refuses_to_coerce_the_boolean() {
+    assert!(run_err("0 ^ true").contains("true can't be coerced into Integer"));
 }
 
 #[test]
@@ -156,8 +158,8 @@ fn xor_bool_int() {
 }
 
 #[test]
-fn xor_int_bool() {
-    assert_eq!(run("1 ^ false"), Some(Object::Bool(true)));
+fn xor_int_false_refuses_to_coerce_the_boolean() {
+    assert!(run_err("1 ^ false").contains("false can't be coerced into Integer"));
 }
 
 #[test]

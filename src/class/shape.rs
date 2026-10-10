@@ -2,6 +2,9 @@
 
 use super::*;
 
+/// A method lookup's answer, with the method state it was found under.
+pub(crate) type CachedLookup = (u64, Option<Rc<Method>>);
+
 /// Runtime class definition with method table and inheritance.
 pub struct Class {
     pub(crate) name: String,
@@ -79,6 +82,12 @@ pub struct Class {
     /// `class Foo; class Bar; end; end`, etc. Returned by
     /// `Module#const_source_location` once the constant is bound.
     pub(crate) const_locations: RefCell<HashMap<String, (String, i64)>>,
+    /// What `find_method` found for each name, with the method state it was
+    /// found under. An entry from an earlier state is looked up again.
+    pub(crate) method_cache: RefCell<HashMap<String, CachedLookup>>,
+    /// How many times `find_method` walked the ancestry for each name rather
+    /// than answering from the cache.
+    pub(crate) method_walks: RefCell<HashMap<String, u64>>,
 }
 
 /// A class is written out by name alone. Following what it holds would go on

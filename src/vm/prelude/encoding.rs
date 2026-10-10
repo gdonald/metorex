@@ -18,10 +18,13 @@ class Encoding
     end
   end
 
-  # Every name an encoding answers to, its own and the aliases pointing at it.
+  # Every name an encoding answers to, its own and the aliases pointing at
+  # it, in the order Ruby registered them, then the names that follow the
+  # settings.
   def self.name_list
-    named = list.map { |held| held.name }
+    named = __name_list__
     aliases.each_key { |held| named.push(held) unless named.include?(held) }
+    named.push("internal")
     named
   end
 

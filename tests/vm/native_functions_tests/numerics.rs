@@ -70,7 +70,7 @@ fn sprintf_raises_type_error_for_a_format_it_cannot_convert() {
 #[test]
 fn a_numeric_modulo_by_a_string_raises() {
     let error = run_err(r#"42 % "not a format""#);
-    assert!(error.contains("Cannot apply operator 'Modulo' to types 'Int' and 'String'"));
+    assert!(error.contains("String can't be coerced into Integer"));
 }
 
 #[test]

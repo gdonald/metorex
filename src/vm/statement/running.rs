@@ -18,6 +18,9 @@ impl VirtualMachine {
             self.turn_started = std::time::Instant::now();
             self.share_the_turn(position)?;
         }
+        if !self.timeout_limits.is_empty() {
+            self.raise_expired_timeout(position)?;
+        }
         Ok(())
     }
 
@@ -53,8 +56,9 @@ impl VirtualMachine {
         statement: &Statement,
     ) -> Result<ControlFlow, MetorexError> {
         // Every statement is a `:line` event for whatever is tracing, which
-        // costs a check on an empty list when nothing is.
-        if !self.tracepoints.is_empty() {
+        // costs a check on an empty list when nothing is. A `begin` is not
+        // one: the statements inside it are.
+        if !self.tracepoints.is_empty() && !matches!(statement, Statement::Begin { .. }) {
             self.fire_line_event(statement.position())?;
         }
         self.deliver_pending_signals(statement.position())?;
@@ -95,7 +99,11 @@ impl VirtualMachine {
                 if let crate::ast::Expression::Identifier { name, .. } = target {
                     self.environment_mut().unhoist(name);
                 }
-                let evaluated = self.evaluate_assignment(target, value)?;
+                let assigned = self.evaluate_assignment(target, value);
+                if assigned.is_err() {
+                    self.note_assignment_spot(&assigned, target);
+                }
+                let evaluated = assigned?;
                 // An assignment answers the value it assigned, so a block or
                 // an `if` branch ending in one has that as its value.
                 Ok(ControlFlow::Value(evaluated))
@@ -322,22 +330,29 @@ impl VirtualMachine {
                 body,
                 position,
                 singleton_class,
+                end_position,
             } => self.execute_function_def(
                 name,
                 parameters,
                 body,
                 *position,
                 singleton_class.as_deref(),
+                end_position.line,
             ),
-            Statement::AttrReader { position, .. }
-            | Statement::AttrWriter { position, .. }
-            | Statement::AttrAccessor { position, .. } => {
-                // These are only processed during class definition, not as standalone statements
-                Err(MetorexError::runtime_error(
-                    "attr_reader, attr_writer, and attr_accessor can only be used inside a class definition",
-                    position_to_location(*position),
-                ))
-            }
+            // Outside a class body, as in a block a class body runs, the
+            // statement is the call to the method of that name on `self`.
+            Statement::AttrReader {
+                attributes,
+                position,
+            } => self.call_attribute_method("attr_reader", attributes, *position),
+            Statement::AttrWriter {
+                attributes,
+                position,
+            } => self.call_attribute_method("attr_writer", attributes, *position),
+            Statement::AttrAccessor {
+                attributes,
+                position,
+            } => self.call_attribute_method("attr_accessor", attributes, *position),
             Statement::ModuleDef {
                 name,
                 namespace,
@@ -416,16 +431,39 @@ impl VirtualMachine {
         &mut self,
         statements: &[Statement],
     ) -> Result<ControlFlow, MetorexError> {
-        let mut last = ControlFlow::Next;
-        for statement in statements {
-            match self.execute_statement(statement)? {
-                ControlFlow::Next => last = ControlFlow::Next,
-                // A statement that produced a value does not end the run; the
-                // last one to produce one is what the group answers.
-                ControlFlow::Value(value) => last = ControlFlow::Value(value),
-                flow => return Ok(flow),
+        self.run_restartable(|vm, start| {
+            let mut last = ControlFlow::Next;
+            for (index, statement) in statements.iter().enumerate().skip(start) {
+                vm.mark_statement(index);
+                match vm.execute_statement(statement)? {
+                    ControlFlow::Next => last = ControlFlow::Next,
+                    // A statement that produced a value does not end the run;
+                    // the last one to produce one is what the group answers.
+                    ControlFlow::Value(value) => last = ControlFlow::Value(value),
+                    flow => return Ok(flow),
+                }
             }
+            Ok(last)
+        })
+    }
+}
+
+impl VirtualMachine {
+    /// `attr_accessor name` and its siblings written where no class body
+    /// reads them, sent to `self` the way any private call is.
+    #[inline(never)]
+    fn call_attribute_method(
+        &mut self,
+        method: &str,
+        attributes: &[Expression],
+        position: crate::lexer::Position,
+    ) -> Result<ControlFlow, MetorexError> {
+        let mut arguments = vec![Object::symbol(method.to_string())];
+        for attribute in attributes {
+            arguments.push(self.evaluate_expression(attribute)?);
         }
-        Ok(last)
+        let receiver = self.environment().get("self").unwrap_or(Object::Nil);
+        let answer = self.send_to_object(receiver, "__send__", arguments, position)?;
+        Ok(ControlFlow::Value(answer))
     }
 }

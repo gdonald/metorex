@@ -52,6 +52,16 @@ pub(crate) const BASIC_OBJECT_PRIVATE_METHODS: &[&str] = &[
 ];
 
 pub(crate) const KERNEL_PRIVATE_FUNCTIONS: &[&str] = &[
+    "Array",
+    "Complex",
+    "Float",
+    "Hash",
+    "Integer",
+    "Rational",
+    "String",
+    "__callee__",
+    "__dir__",
+    "__method__",
     "`",
     "abort",
     "caller",
@@ -80,6 +90,8 @@ pub(crate) const KERNEL_PRIVATE_FUNCTIONS: &[&str] = &[
     "initialize_clone",
     "initialize_copy",
     "initialize_dup",
+    "instance_variables_to_inspect",
+    "iterator?",
     "lambda",
     "local_variables",
     "loop",

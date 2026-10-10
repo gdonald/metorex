@@ -33,3 +33,14 @@ p(taking { next 42 })
 
 held = [1, 2, 3].map { |number| next number * 2 if number.odd?; number }
 p(held)
+
+def order(left, right)
+  case left <=> right
+  when -1 then "before"
+  when 0 then "same"
+  when +1 then "after"
+  end
+end
+p(order(1, 2))
+p(order(2, 2))
+p(order(3, 2))

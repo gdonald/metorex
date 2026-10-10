@@ -153,135 +153,137 @@ impl VirtualMachine {
                 block.call(self, block_arguments, position).map(Some)
             }
             "instance_exec" | "instance_eval" => {
-                let block = self.pending_block.take().or_else(|| {
-                    if !arguments.is_empty()
-                        && let Object::Block(_) = &arguments[0]
-                    {
-                        Some(arguments[0].clone())
-                    } else {
-                        None
-                    }
-                });
-                let positional: Vec<Object> = arguments
-                    .iter()
-                    .filter(|argument| !matches!(argument, Object::Block(_)))
-                    .cloned()
-                    .collect();
-                if let Some(Object::Block(body)) = block {
-                    // Ruby refuses a singleton method on an immediate, and a
-                    // `def` in the body would be exactly that.
-                    if matches!(
-                        receiver,
-                        Object::Int(_) | Object::BigInt(_) | Object::Float(_) | Object::Symbol(_)
-                    ) && body_defines_a_method(&body.body)
-                    {
-                        let message = "can't define singleton".to_string();
-                        return Err(MetorexError::UncaughtException {
-                            exception: Object::exception("TypeError", message.clone()),
-                            location: position_to_location(position),
-                            message,
-                        });
-                    }
-                    // `instance_eval` yields the receiver and takes no other
-                    // arguments; `instance_exec` passes its own along.
-                    if method_name == "instance_eval" {
-                        if !positional.is_empty() {
-                            return Err(crate::vm::errors::argument_count_error(
-                                crate::vm::errors::Arity::Exact(0),
-                                positional.len(),
-                                position,
-                            ));
-                        }
-                        let result = self.execute_block_with_receiver(
-                            &body,
-                            receiver.clone(),
-                            vec![receiver.clone()],
-                            position,
-                        )?;
-                        return Ok(Some(result));
-                    }
-                    // The block runs inside a method of BasicObject's, which
-                    // is the name a backtrace gives the place it was called
-                    // from. The frame carries no method of its own, so
-                    // `__method__` in the body still names the one around it.
-                    self.call_stack_push(
-                        crate::vm::CallFrame::new(
-                            format!("BasicObject#{}", method_name),
-                            Some(format!("{}:{}", position.line, position.column)),
-                        )
-                        .nested_in_a_block(0)
-                        .with_source_file(self.current_source_file.clone()),
-                    );
-                    let result = self.execute_block_with_receiver(
-                        &body,
-                        receiver.clone(),
-                        positional,
-                        position,
-                    );
-                    self.call_stack_pop();
-                    return result.map(Some);
-                }
-                // The String form runs source in the receiver's context. A
-                // second argument names the file the code is counted as being
-                // written in, which `__FILE__` answers and which a
-                // `require_relative` written there resolves against.
-                if method_name == "instance_eval" {
-                    if positional.is_empty() || positional.len() > 3 {
-                        return Err(crate::vm::errors::argument_count_error(
-                            crate::vm::errors::Arity::Range(1, 3),
-                            positional.len(),
-                            position,
-                        ));
-                    }
-                    let source = self.coerce_name_argument(&positional[0], position)?;
-                    // The file and the line are taken the way any other
-                    // String and Integer argument is.
-                    let named = match positional.get(1) {
-                        None | Some(Object::Nil) => None,
-                        Some(Object::String(text)) => Some(text.as_str().to_string()),
-                        Some(held) => {
-                            if !self.responds_to(held, "to_str") {
-                                let message = format!(
-                                    "no implicit conversion of {} into String",
-                                    self.conversion_name(held)
-                                );
-                                return Err(crate::vm::errors::simple_exception(
-                                    "TypeError",
-                                    &message,
-                                    position,
-                                ));
-                            }
-                            Some(self.coerce_name_argument(held, position)?)
-                        }
-                    };
-                    let lineno: i64 = match positional.get(2) {
-                        None | Some(Object::Nil) => 1,
-                        Some(Object::Int(held)) => *held,
-                        Some(held) => {
-                            let counted = self.coerce_integer_argument(held, position)?;
-                            counted.try_into().unwrap_or(1)
-                        }
-                    };
-                    return self
-                        .evaluate_source_named_with_receiver(
-                            &source,
-                            receiver.clone(),
-                            named,
-                            lineno,
-                            position,
-                        )
-                        .map(Some);
-                }
-                // `instance_exec` yields, so without a block Ruby reports the
-                // same LocalJumpError any bare `yield` would.
-                let message = "no block given (yield)".to_string();
-                Err(MetorexError::UncaughtException {
-                    exception: Object::exception("LocalJumpError", message.clone()),
-                    location: position_to_location(position),
-                    message,
-                })
+                // The code runs inside a method of BasicObject's, which is
+                // the name a backtrace gives the place it was called from,
+                // whichever way the call reached here.
+                let entered = self.enter_native_frame(Some(receiver), method_name, position);
+                let answered =
+                    self.run_instance_evaluation(receiver, method_name, arguments, position);
+                self.leave_native_call(entered, position, &answered);
+                answered
             }
             _ => Ok(None),
         }
+    }
+
+    /// Run the block or the source `instance_eval` or `instance_exec` was
+    /// handed with `receiver` as self.
+    fn run_instance_evaluation(
+        &mut self,
+        receiver: &Object,
+        method_name: &str,
+        arguments: &[Object],
+        position: Position,
+    ) -> Result<Option<Object>, MetorexError> {
+        let block = self.pending_block.take().or_else(|| {
+            if !arguments.is_empty()
+                && let Object::Block(_) = &arguments[0]
+            {
+                Some(arguments[0].clone())
+            } else {
+                None
+            }
+        });
+        let positional: Vec<Object> = arguments
+            .iter()
+            .filter(|argument| !matches!(argument, Object::Block(_)))
+            .cloned()
+            .collect();
+        if let Some(Object::Block(body)) = block {
+            // Ruby refuses a singleton method on an immediate, and a
+            // `def` in the body would be exactly that.
+            if matches!(
+                receiver,
+                Object::Int(_) | Object::BigInt(_) | Object::Float(_) | Object::Symbol(_)
+            ) && body_defines_a_method(&body.body)
+            {
+                let message = "can't define singleton".to_string();
+                return Err(MetorexError::UncaughtException {
+                    exception: Object::exception("TypeError", message.clone()),
+                    location: position_to_location(position),
+                    message,
+                });
+            }
+            // `instance_eval` yields the receiver and takes no other
+            // arguments; `instance_exec` passes its own along.
+            if method_name == "instance_eval" {
+                if !positional.is_empty() {
+                    return Err(crate::vm::errors::argument_count_error(
+                        crate::vm::errors::Arity::Exact(0),
+                        positional.len(),
+                        position,
+                    ));
+                }
+                let result = self.execute_block_with_receiver(
+                    &body,
+                    receiver.clone(),
+                    vec![receiver.clone()],
+                    position,
+                )?;
+                return Ok(Some(result));
+            }
+            return self
+                .execute_block_with_receiver(&body, receiver.clone(), positional, position)
+                .map(Some);
+        }
+        // The String form runs source in the receiver's context. A
+        // second argument names the file the code is counted as being
+        // written in, which `__FILE__` answers and which a
+        // `require_relative` written there resolves against.
+        if method_name == "instance_eval" {
+            if positional.is_empty() || positional.len() > 3 {
+                return Err(crate::vm::errors::argument_count_error(
+                    crate::vm::errors::Arity::Range(1, 3),
+                    positional.len(),
+                    position,
+                ));
+            }
+            let source = self.coerce_name_argument(&positional[0], position)?;
+            // The file and the line are taken the way any other
+            // String and Integer argument is.
+            let named = match positional.get(1) {
+                None | Some(Object::Nil) => None,
+                Some(Object::String(text)) => Some(text.as_str().to_string()),
+                Some(held) => {
+                    if !self.responds_to(held, "to_str") {
+                        let message = format!(
+                            "no implicit conversion of {} into String",
+                            self.conversion_name(held)
+                        );
+                        return Err(crate::vm::errors::simple_exception(
+                            "TypeError",
+                            &message,
+                            position,
+                        ));
+                    }
+                    Some(self.coerce_name_argument(held, position)?)
+                }
+            };
+            let lineno: i64 = match positional.get(2) {
+                None | Some(Object::Nil) => 1,
+                Some(Object::Int(held)) => *held,
+                Some(held) => {
+                    let counted = self.coerce_integer_argument(held, position)?;
+                    counted.try_into().unwrap_or(1)
+                }
+            };
+            return self
+                .evaluate_source_named_with_receiver(
+                    &source,
+                    receiver.clone(),
+                    named,
+                    lineno,
+                    position,
+                )
+                .map(Some);
+        }
+        // `instance_exec` yields, so without a block Ruby reports the
+        // same LocalJumpError any bare `yield` would.
+        let message = "no block given (yield)".to_string();
+        Err(MetorexError::UncaughtException {
+            exception: Object::exception("LocalJumpError", message.clone()),
+            location: position_to_location(position),
+            message,
+        })
     }
 }

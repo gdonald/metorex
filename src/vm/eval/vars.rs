@@ -61,7 +61,13 @@ impl VirtualMachine {
             // Immediates (Int/Float/Symbol/Bool/Nil/etc.) and other non-instance
             // selves: ivar reads return nil — matching Ruby, where ivars on
             // immediates default to nil even if no writer ever ran.
-            Some(_) => Ok(Object::Nil),
+            // A collection or a String keeps its instance variables aside,
+            // where `instance_variable_set` puts them too.
+            Some(other) => Ok(Self::collection_address(&other)
+                .and_then(|address| self.collection_variables.get(&address))
+                .and_then(|held| held.get(name))
+                .cloned()
+                .unwrap_or(Object::Nil)),
             None => Err(MetorexError::runtime_error(
                 format!(
                     "Instance variable @{} can only be used within a method",

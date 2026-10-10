@@ -6,7 +6,7 @@ puts(s.downcase)
 puts(s.reverse)
 
 puts("  hello  ".strip)
-puts("  hello  ".trim)
+puts("  hello  ".strip)
 
 parts = s.split(" ")
 puts(parts.length)

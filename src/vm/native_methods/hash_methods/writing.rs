@@ -127,7 +127,7 @@ impl VirtualMachine {
                     other => {
                         let message = format!(
                             "no implicit conversion of {} into Hash",
-                            self.builtins().class_of(other).ruby_name()
+                            crate::vm::errors::conversion_subject(other)
                         );
                         return Err(crate::vm::errors::simple_exception(
                             "TypeError",

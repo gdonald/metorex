@@ -39,6 +39,7 @@ mod hashes;
 mod integers;
 mod io;
 mod loading;
+pub(crate) use loading::static_extension;
 mod methods;
 mod modules;
 mod mutexes;

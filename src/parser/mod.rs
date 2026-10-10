@@ -81,15 +81,20 @@ pub struct Parser {
     /// body or a block. A `next` written straight in a method body, with
     /// none of those around it, has nothing to jump to.
     pub(crate) jump_target_depth: usize,
-    /// Where a `redo` was written with no loop or block around it yet. A
+    /// Where a `redo`, or a `break` or `next` in a method body, was written
+    /// with no loop or block around it yet, with the refusal each earns. A
     /// `while` or `until` modifier after `begin ... end` makes that body a
     /// loop, so the refusal waits for the statement to end.
-    pub(crate) unlooped_redos: Vec<Position>,
-    /// Names the file binds: assignment targets, method parameters, block
-    /// parameters and pattern variables, each with the tokens that bind it.
+    pub(crate) unlooped_jumps: Vec<(Position, &'static str)>,
+    /// Names the walk has declared locals: assignment targets, method,
+    /// block and lambda parameters, rescue and loop variables, named
+    /// captures and pattern variables, each with the tokens that bind it.
     /// `foo [1]` indexes a name bound before it and passes an array to any
     /// other, which is the rule Ruby applies.
     pub(crate) bound_name_tokens: std::collections::HashMap<String, Vec<usize>>,
+    /// The locals of the code around this parser's tokens, such as those
+    /// in scope where a `#{}` is written, which its code reads as locals.
+    pub(crate) inherited_locals: std::collections::HashSet<String>,
     /// The lexical scope chain: where each `def`, `class` and `module` the
     /// walk is inside opened, innermost last. A scope of one of those sees
     /// no local bound before it opened.
@@ -116,6 +121,9 @@ pub struct Parser {
     /// Warnings the source earns as it is read, with where each was
     /// written, which a verbose run reports.
     pub(crate) warnings: Vec<(Position, String)>,
+    /// The warnings given whatever the verbosity, which `default_warnings`
+    /// answers.
+    pub(crate) default_warnings: Vec<(Position, String)>,
 
     /// The token range of every block body read so far. A bare `it` inside
     /// one of these belongs to that block, not to the block enclosing it.
@@ -175,138 +183,6 @@ pub(crate) struct AnonymousBlockParams {
     pub(crate) block: bool,
 }
 
-/// Every name the token stream binds, with the index of each token that
-/// binds it. A name is a variable from its binding on, and a call before it,
-/// which is how Ruby's parser reads one.
-fn collect_bound_names(tokens: &[Token]) -> std::collections::HashMap<String, Vec<usize>> {
-    use crate::lexer::TokenKind;
-    let mut names: std::collections::HashMap<String, Vec<usize>> = std::collections::HashMap::new();
-    let mut in_parameters = false;
-    let mut in_block_parameters = false;
-    // The name a `def` is defining, and any receiver written before it, name
-    // a method rather than a variable, so they are stepped over before the
-    // parameter list starts.
-    let mut naming_a_method = false;
-    // How many parentheses deep the walk is inside the parameters of a
-    // `->` lambda, which end at the closing parenthesis or, written without
-    // any, at the body's opening.
-    let mut lambda_parameters: Option<usize> = None;
-    for (index, token) in tokens.iter().enumerate() {
-        if let Some(depth) = lambda_parameters {
-            lambda_parameters = match token.kind {
-                TokenKind::LParen => Some(depth + 1),
-                TokenKind::RParen if depth <= 1 => None,
-                TokenKind::RParen => Some(depth - 1),
-                TokenKind::LBrace | TokenKind::Do if depth == 0 => None,
-                _ => Some(depth),
-            };
-        }
-        match &token.kind {
-            TokenKind::Arrow => lambda_parameters = Some(0),
-            TokenKind::Def => {
-                naming_a_method = true;
-                in_parameters = false;
-            }
-            TokenKind::Newline | TokenKind::Semicolon => {
-                naming_a_method = false;
-                in_parameters = false;
-                in_block_parameters = false;
-            }
-            TokenKind::Dot | TokenKind::ColonColon if naming_a_method => {}
-            TokenKind::Pipe => in_block_parameters = !in_block_parameters,
-            TokenKind::Ident(name) if naming_a_method => {
-                // A name followed by `.` is the receiver, so the name after
-                // it is the one being defined.
-                if !matches!(
-                    tokens.get(index + 1).map(|next| &next.kind),
-                    Some(TokenKind::Dot | TokenKind::ColonColon)
-                ) {
-                    naming_a_method = false;
-                    in_parameters = true;
-                }
-                let _ = name;
-            }
-            // `:name=` is a Symbol naming a writer, which the lexer hands
-            // over as a colon, the name, and the `=`.
-            TokenKind::Ident(_)
-                if index > 0
-                    && matches!(tokens[index - 1].kind, TokenKind::Colon)
-                    && !token.had_leading_space => {}
-            TokenKind::Ident(name) => {
-                let assigned = matches!(
-                    tokens.get(index + 1).map(|next| &next.kind),
-                    Some(
-                        TokenKind::Equal
-                            | TokenKind::PlusEqual
-                            | TokenKind::MinusEqual
-                            | TokenKind::StarEqual
-                            | TokenKind::SlashEqual
-                            | TokenKind::PercentEqual
-                            | TokenKind::StarStarEqual
-                            | TokenKind::PipeEqual
-                            | TokenKind::AmpersandEqual
-                            | TokenKind::CaretEqual
-                            | TokenKind::ShovelEqual
-                            | TokenKind::RightShiftEqual
-                            | TokenKind::LogicalOrAssign
-                            | TokenKind::LogicalAndAssign
-                    )
-                );
-                let after_fat_arrow = index > 0
-                    && matches!(tokens[index - 1].kind, TokenKind::FatArrow | TokenKind::In);
-                if assigned
-                    || after_fat_arrow
-                    || in_parameters
-                    || in_block_parameters
-                    || lambda_parameters.is_some()
-                {
-                    names.entry(name.clone()).or_default().push(index);
-                }
-            }
-            // A regexp literal matched with `=~` binds a local for each group
-            // it names.
-            TokenKind::Regex(pattern, _)
-                if matches!(
-                    tokens.get(index + 1).map(|next| &next.kind),
-                    Some(TokenKind::Match)
-                ) =>
-            {
-                for name in named_groups(pattern) {
-                    names.entry(name).or_default().push(index);
-                }
-            }
-            // `lambda` is a method rather than syntax, so a program may name
-            // a local after it. The lexer gives it a token of its own, so the
-            // name is collected here rather than among the identifiers.
-            TokenKind::Lambda
-                if in_parameters
-                    || in_block_parameters
-                    || matches!(
-                        tokens.get(index + 1).map(|next| &next.kind),
-                        Some(TokenKind::Equal)
-                    ) =>
-            {
-                names.entry("lambda".to_string()).or_default().push(index);
-            }
-            _ => {
-                // An operator name (`def <=>`) is not an Ident, and the
-                // parameter list starts right after it. A receiver such as
-                // `self` or `@held` is followed by a `.`, and the name being
-                // defined comes after that.
-                let names_a_receiver = matches!(
-                    tokens.get(index + 1).map(|next| &next.kind),
-                    Some(TokenKind::Dot | TokenKind::ColonColon)
-                );
-                if naming_a_method && !names_a_receiver {
-                    naming_a_method = false;
-                    in_parameters = true;
-                }
-            }
-        }
-    }
-    names
-}
-
 /// The names a block's parameter list binds, with the `*`, `**` and `&`
 /// markers and any default value left out.
 fn parameter_names(parameters: &[String]) -> Vec<String> {
@@ -324,7 +200,7 @@ fn parameter_names(parameters: &[String]) -> Vec<String> {
 
 /// The names a regexp gives its groups with `(?<name>...)` that can be
 /// local variables.
-fn named_groups(pattern: &str) -> Vec<String> {
+pub(crate) fn named_groups(pattern: &str) -> Vec<String> {
     pattern
         .split("(?<")
         .skip(1)
@@ -346,12 +222,21 @@ impl Parser {
     /// pattern already, or bound before this point anywhere but inside a
     /// block that has closed since.
     pub(crate) fn names_a_local(&self, name: &str) -> bool {
-        self.names_a_local_at(name, self.stream.current_position())
+        // `_1` to `_9` are reserved for numbered parameters, so none of
+        // them names a method.
+        let numbered = name.len() == 2
+            && name.starts_with('_')
+            && name.as_bytes()[1].is_ascii_digit()
+            && name != "_0";
+        numbered || self.names_a_local_at(name, self.stream.current_position())
     }
 
     /// Whether `name` is a local variable at the token `here`.
-    fn names_a_local_at(&self, name: &str, here: usize) -> bool {
+    pub(crate) fn names_a_local_at(&self, name: &str, here: usize) -> bool {
         let scope_opened_at = self.method_scope_starts.last().copied().unwrap_or(0);
+        if self.method_scope_starts.is_empty() && self.inherited_locals.contains(name) {
+            return true;
+        }
         self.bound_name_tokens.get(name).is_some_and(|bindings| {
             bindings.iter().any(|bound_at| {
                 *bound_at < here
@@ -424,18 +309,20 @@ impl Parser {
             .find(|opened| **opened <= here)
             .copied()
             .unwrap_or(0);
-        // Only a name already read as a local is asked about, so the scan
-        // recorded where it is bound.
-        self.bound_name_tokens[name]
-            .iter()
-            .filter(|bound_at| {
-                **bound_at >= scope_opened_at
-                    && !self.closed_method_spans.iter().any(|(from, to)| {
-                        *from > scope_opened_at && (*from..*to).contains(*bound_at)
-                    })
-            })
-            .count()
-            > 1
+        // A local of the code around this parser's tokens is bound where
+        // this parser does not see.
+        self.bound_name_tokens.get(name).is_some_and(|bindings| {
+            bindings
+                .iter()
+                .filter(|bound_at| {
+                    **bound_at >= scope_opened_at
+                        && !self.closed_method_spans.iter().any(|(from, to)| {
+                            *from > scope_opened_at && (*from..*to).contains(*bound_at)
+                        })
+                })
+                .count()
+                > 1
+        })
     }
 
     /// Close a block whose tokens run from `opened_at` to here, noting the
@@ -473,11 +360,22 @@ impl Parser {
     /// Note that a pattern binds `name` at the token just read, so the scope
     /// it is in reads it as a local from here on.
     pub(crate) fn note_pattern_binding(&mut self, name: &str) {
+        self.declare_local(name);
+    }
+
+    /// Declare `name` a local of the scope the walk is in, bound at the
+    /// token just read, so the scope reads it as a local from here on.
+    pub(crate) fn declare_local(&mut self, name: &str) {
         let bound_at = self.stream.current_position().saturating_sub(1);
-        self.bound_name_tokens
-            .entry(name.to_string())
-            .or_default()
-            .push(bound_at);
+        self.declare_local_at(name, bound_at);
+    }
+
+    /// Declare `name` a local bound at the token at `bound_at`.
+    pub(crate) fn declare_local_at(&mut self, name: &str, bound_at: usize) {
+        let bindings = self.bound_name_tokens.entry(name.to_string()).or_default();
+        if !bindings.contains(&bound_at) {
+            bindings.push(bound_at);
+        }
     }
 
     /// Create a new parser from a vector of tokens
@@ -490,17 +388,37 @@ impl Parser {
         self
     }
 
+    /// A parser for code that runs where `names` are locals, such as code
+    /// given to `eval`, which reads each of them as a local.
+    /// The locals of the code around this one that it was given.
+    pub fn inherited_local_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self.inherited_locals.iter().cloned().collect();
+        names.sort();
+        names
+    }
+
+    pub fn with_outer_locals(mut self, names: impl IntoIterator<Item = String>) -> Self {
+        self.inherited_locals.extend(names);
+        self
+    }
+
     /// A parser for code written inside this one, such as an interpolated
     /// `#{}`, which reads in the method and blocks this one is inside.
     pub(crate) fn nested_parser(&self, tokens: Vec<Token>) -> Parser {
         let mut nested = Parser::new(tokens);
+        nested.inherited_locals = self
+            .bound_name_tokens
+            .keys()
+            .chain(&self.inherited_locals)
+            .filter(|name| self.names_a_local(name))
+            .cloned()
+            .collect();
         nested.method_anonymous_block = self.method_anonymous_block.clone();
         nested.block_anonymous_params = self.block_anonymous_params.clone();
         nested
     }
 
     pub fn new(tokens: Vec<Token>) -> Self {
-        let tokens_for_names = tokens.clone();
         Self {
             stream: TokenStream::new(tokens),
             error_handler: ErrorHandler::new(),
@@ -520,8 +438,9 @@ impl Parser {
             refuse_pattern_test: 0,
             pattern_names: std::collections::HashSet::new(),
             jump_target_depth: 0,
-            unlooped_redos: Vec::new(),
-            bound_name_tokens: collect_bound_names(&tokens_for_names),
+            unlooped_jumps: Vec::new(),
+            bound_name_tokens: std::collections::HashMap::new(),
+            inherited_locals: std::collections::HashSet::new(),
             method_scope_starts: Vec::new(),
             closed_scope_spans: Vec::new(),
             block_parameter_spans: Vec::new(),
@@ -529,6 +448,7 @@ impl Parser {
             block_anonymous_params: Vec::new(),
             method_anonymous_block: Vec::new(),
             warnings: Vec::new(),
+            default_warnings: Vec::new(),
             block_body_ranges: Vec::new(),
             lambda_default_depth: 0,
             seeded_primary: None,
@@ -699,6 +619,12 @@ impl Parser {
 
     /// Parse a complete program (list of statements)
     /// The warnings the source earned as it was read.
+    /// The warnings Ruby gives while reading a program whatever its
+    /// verbosity, such as a regexp literal written as a condition.
+    pub fn default_warnings(&self) -> &[(Position, String)] {
+        &self.default_warnings
+    }
+
     pub fn warnings(&self) -> &[(Position, String)] {
         &self.warnings
     }
@@ -750,7 +676,7 @@ impl Parser {
 
             let statement_start = self.peek().position.offset;
             match self.parse_statement().and_then(|stmt| {
-                self.refuse_unlooped_redos_after(statement_start)
+                self.refuse_unlooped_jumps_after(statement_start)
                     .map(|_| stmt)
             }) {
                 Ok(stmt) => statements.push(stmt),

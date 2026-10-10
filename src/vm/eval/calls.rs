@@ -51,6 +51,46 @@ impl VirtualMachine {
             }
         }
 
+        // A call written with parentheses names a method, so a local of the
+        // same name that holds no callable does not stand in the way of
+        // `foobar()` reaching `foobar`, or raising NoMethodError without one.
+        if let Expression::Identifier { name, .. } = callee
+            && let Some(held) = self.environment().get(name)
+            && !matches!(
+                held,
+                Object::Method(_)
+                    | Object::Block(_)
+                    | Object::NativeFunction(_)
+                    | Object::CompiledFunction(_)
+            )
+        {
+            let receiver_defines = self.eval_self(position).ok().is_some_and(|receiver| {
+                self.lookup_method(&receiver, name)
+                    .is_some_and(|(_, found)| !found.is_undefined)
+            });
+            if !receiver_defines
+                && let Some(Object::NativeFunction(native)) = self.globals().get(name)
+            {
+                let evaluated_args = self.evaluate_arguments(arguments)?;
+                let has_block = trailing_block.is_some();
+                if let Some(block_expr) = trailing_block {
+                    self.pending_block = Some(self.attach_trailing_block(block_expr)?);
+                    self.pending_block_from_ampersand = false;
+                }
+                return match self.call_native_function(&native, evaluated_args, position) {
+                    Err(MetorexError::BlockBreak { value, .. }) if has_block => Ok(value),
+                    other => other,
+                };
+            }
+            return self.evaluate_method_call(
+                &Expression::SelfExpr { position },
+                name,
+                arguments,
+                trailing_block,
+                position,
+            );
+        }
+
         // If callee is a bare identifier and it's not a local variable,
         // dispatch as a method call with the supplied arguments.
         // Also prefer self-method dispatch when the env binding is a global
@@ -83,25 +123,6 @@ impl VirtualMachine {
                 // arguments names that method, so it dispatches rather than
                 // calling whatever the bare name would answer.
                 Some(held) if self.name_is_a_definition(name, held) => true,
-                // A call written with parentheses names a method, so a local
-                // holding something that is not callable does not stand in
-                // the way of `foobar()` reaching `foobar`.
-                Some(held)
-                    if !matches!(
-                        held,
-                        Object::Method(_)
-                            | Object::Block(_)
-                            | Object::NativeFunction(_)
-                            | Object::CompiledFunction(_)
-                    ) =>
-                {
-                    matches!(
-                        self.environment()
-                            .get("self")
-                            .and_then(|receiver| self.lookup_method(&receiver, name)),
-                        Some((_, found)) if !found.is_undefined
-                    )
-                }
                 _ => false,
             };
             if dispatch_to_self {
@@ -287,7 +308,9 @@ impl VirtualMachine {
             && crate::vm::native_methods::kernel_conversion::is_kernel_conversion(name)
         {
             let evaluated_args = self.evaluate_arguments(arguments)?;
-            if let Some(result) = self.call_kernel_conversion(name, &evaluated_args, position)? {
+            if let Some(result) =
+                self.call_bare_kernel_conversion(name, &evaluated_args, position)?
+            {
                 return Ok(result);
             }
         }

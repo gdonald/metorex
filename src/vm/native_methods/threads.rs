@@ -345,7 +345,7 @@ impl VirtualMachine {
                             "TypeError",
                             &format!(
                                 "no implicit conversion of {} into String",
-                                self.builtins().class_of(&other).name()
+                                crate::vm::errors::conversion_subject(&other)
                             ),
                             position,
                         ));
@@ -396,24 +396,7 @@ impl VirtualMachine {
                 if inst.borrow().get_var("__thread_value").is_some() {
                     return Ok(Some(Object::Nil));
                 }
-                let mut places = self.caller_location_objects(position);
-                // The innermost place is the call to `backtrace_locations`
-                // itself, which sits where the caller's own innermost place
-                // does and is named for the method rather than the caller.
-                if let Some(Object::Instance(innermost)) = places.first() {
-                    let here = crate::object::Instance::new(self.backtrace_location_class());
-                    for named in ["lineno", "path", "absolute_path"] {
-                        let held = innermost.borrow().get_var(named).cloned();
-                        if let Some(value) = held {
-                            here.borrow_mut().set_var(named.to_string(), value);
-                        }
-                    }
-                    here.borrow_mut().set_var(
-                        "label".to_string(),
-                        Object::string("Thread#backtrace_locations"),
-                    );
-                    places.insert(0, Object::Instance(here));
-                }
+                let places = self.caller_location_objects(position);
                 let Some((skip, length)) = self.caller_slice_bounds(arguments, places.len(), 0)
                 else {
                     return Ok(Some(Object::Nil));
@@ -467,7 +450,7 @@ impl VirtualMachine {
                     let mut details = details.borrow_mut();
                     details.backtrace = None;
                     details.backtrace_sites = None;
-                    details.raise_column = None;
+                    details.site_columns = Vec::new();
                     details.backtrace_array = None;
                     details.backtrace_locations_array = None;
                 }

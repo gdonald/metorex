@@ -506,3 +506,26 @@ fn test_strings_string_subclass_initialize_no_parens_execution() {
     let output = run_example("strings/string_subclass_initialize_no_parens.rb");
     assert_eq!(output, STRING_SUBCLASS_INITIALIZE);
 }
+
+const GETBYTE_POSITIONS_OUTPUT: &str = concat!(
+    "[114, 101, nil, nil]\n",
+    "[195, 169, 169, nil]\n",
+    "[7, 200, 255, nil, nil]\n",
+    "[97, 172, 32, nil]\n",
+    "[195, 169, 195]\n",
+    "[1, 0, 2]\n",
+    "[0, [200], 3, 9]\n",
+    "[3, \"b\"]\n",
+);
+
+#[test]
+fn test_strings_getbyte_positions_execution() {
+    let output = run_example("strings/getbyte_positions.rb");
+    assert_eq!(output, GETBYTE_POSITIONS_OUTPUT);
+}
+
+#[test]
+fn test_strings_getbyte_positions_no_parens_execution() {
+    let output = run_example("strings/getbyte_positions_no_parens.rb");
+    assert_eq!(output, GETBYTE_POSITIONS_OUTPUT);
+}

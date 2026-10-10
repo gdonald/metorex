@@ -53,6 +53,9 @@ pub struct Method {
     pub origin_class: Option<Rc<crate::class::Class>>,
     /// Source location where the method is defined
     pub source_location: Option<SourceLocation>,
+    /// The line the definition's `end` sits on, which a `return` event
+    /// names when the body runs to its end.
+    pub end_line: Option<usize>,
     /// Captured closure variables (from define_method blocks)
     pub captured_vars: Option<indexmap::IndexMap<String, Rc<RefCell<Object>>>>,
     /// True if this method was undefined via undef_method (calling it raises an error)
@@ -111,6 +114,7 @@ impl Method {
             owner_class: None,
             origin_class: None,
             source_location: None,
+            end_line: None,
             captured_vars: None,
             is_undefined: false,
             lambda_body: false,
@@ -149,6 +153,7 @@ impl Method {
             owner_class: None,
             origin_class: None,
             source_location: None,
+            end_line: None,
             captured_vars: None,
             is_undefined: false,
             lambda_body: false,
@@ -187,6 +192,7 @@ impl Method {
             owner_class: None,
             origin_class: None,
             source_location: Some(source_location),
+            end_line: None,
             captured_vars: None,
             is_undefined: false,
             lambda_body: false,
@@ -226,6 +232,7 @@ impl Method {
             owner_class: None,
             origin_class: None,
             source_location: Some(source_location),
+            end_line: None,
             captured_vars: None,
             is_undefined: false,
             lambda_body: false,
@@ -259,6 +266,7 @@ impl Method {
             owner_class: None,
             origin_class: None,
             source_location: None,
+            end_line: None,
             captured_vars: None,
             is_undefined: true,
             lambda_body: false,
@@ -292,6 +300,7 @@ impl Method {
             owner_class: self.owner_class.clone(),
             origin_class: self.origin_class.clone(),
             source_location: self.source_location.clone(),
+            end_line: None,
             captured_vars: self.captured_vars.clone(),
             is_undefined: self.is_undefined,
             lambda_body: self.lambda_body,

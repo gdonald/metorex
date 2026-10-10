@@ -42,6 +42,25 @@ impl VirtualMachine {
                 // `def self.foo`) and mixins resolve, not just the class's
                 // own method table.
                 let public_only = method_name == "public_method";
+                // `public_method` refuses a method the receiver keeps to
+                // itself, saying how it keeps it.
+                if public_only && self.method_is_restricted(receiver, &name_str) {
+                    let kept = match self.visibility_owner(receiver, &name_str) {
+                        Some(owner) if owner.is_method_protected(&name_str) => "protected",
+                        _ => "private",
+                    };
+                    let message = format!(
+                        "method '{}' for class '{}' is {}",
+                        name_str,
+                        self.builtins().class_of(receiver).ruby_name(),
+                        kept
+                    );
+                    return Err(crate::vm::errors::simple_exception(
+                        "NameError",
+                        &message,
+                        position,
+                    ));
+                }
                 // A method the receiver's class supplies natively is that
                 // class's own, even when Enumerable declares the same name.
                 let shadowed_by_enumerable = self.enumerable_stands_in(receiver, &name_str);
@@ -57,23 +76,34 @@ impl VirtualMachine {
                     bound.owner_class = Some(owner);
                     return Ok(Some(Object::Method(std::rc::Rc::new(bound))));
                 }
+                // nil, true and false share Object's class record, so a method
+                // their own class defines is found by that class's name.
+                if let Some(named) = crate::builtin_classes::value_class_name(receiver)
+                    && crate::vm::native_methods::object_methods::nearest_core_owner(
+                        &[named.to_string()],
+                        &name_str,
+                    )
+                    .is_some()
+                    && self
+                        .lookup_method(receiver, &name_str)
+                        .is_none_or(|(_, found)| found.body.is_empty())
+                    && let Some(Object::Class(owner)) = self.globals().get(named)
+                {
+                    let mut stub = crate::object::Method::new(
+                        name_str.clone(),
+                        vec!["args".to_string()],
+                        vec![],
+                    );
+                    stub.receiver = Some(Box::new(receiver.clone()));
+                    stub.owner = Some(owner.ruby_name());
+                    stub.original_name = Some(name_str.clone());
+                    stub.owner_class = Some(owner);
+                    return Ok(Some(Object::Method(std::rc::Rc::new(stub))));
+                }
                 if let Some((resolved_class, method)) = self
                     .lookup_method(receiver, &name_str)
                     .filter(|_| !shadowed_by_enumerable)
                 {
-                    if public_only && self.method_is_restricted(receiver, &name_str) {
-                        let msg = format!(
-                            "undefined method '{}' for class '{}'",
-                            name_str,
-                            self.builtins().class_of(receiver).name()
-                        );
-                        let exc = Object::exception("NameError", msg.clone());
-                        return Err(MetorexError::UncaughtException {
-                            exception: exc,
-                            location: position_to_location(position),
-                            message: msg,
-                        });
-                    }
                     let mut bound = (*method).clone();
                     bound.receiver = Some(Box::new(receiver.clone()));
                     // Two names that are the same native method answer the
@@ -128,9 +158,20 @@ impl VirtualMachine {
                     stub.receiver = Some(Box::new(receiver.clone()));
                     return Ok(Some(Object::Method(std::rc::Rc::new(stub))));
                 }
-                // The Kernel methods every object carries are native too.
-                if let Some(mut stub) =
-                    crate::vm::native_methods::class_methods::native_kernel_method_stub(&name_str)
+                // The Kernel methods every object carries are native too,
+                // unless a class nearer the receiver defines the name, as
+                // Symbol defines its own `inspect`.
+                let receiver_class = Object::Class(self.builtins().class_of(receiver));
+                let owners = self.ancestor_names(receiver_class, position)?;
+                let kernel_owns_it = crate::vm::native_methods::object_methods::nearest_core_owner(
+                    &owners, &name_str,
+                )
+                .is_none_or(|owner| matches!(owner, "Kernel" | "Object" | "BasicObject"));
+                if kernel_owns_it
+                    && let Some(mut stub) =
+                        crate::vm::native_methods::class_methods::native_kernel_method_stub(
+                            &name_str,
+                        )
                 {
                     stub.receiver = Some(Box::new(receiver.clone()));
                     return Ok(Some(Object::Method(std::rc::Rc::new(stub))));

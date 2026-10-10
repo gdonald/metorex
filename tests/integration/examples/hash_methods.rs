@@ -80,3 +80,72 @@ fn test_hash_methods_key_changing_its_hash_no_parens_execution() {
     let output = run_example("hash_methods/key_changing_its_hash_no_parens.rb");
     assert_eq!(output, KEY_CHANGING_ITS_HASH_OUTPUT);
 }
+
+/// The expected output of both `hash_methods/text_and_value_keys` variants.
+const TEXT_AND_VALUE_KEYS_OUTPUT: &str = concat!(
+    "{\"646\" => 1, 646 => 2, \"true\" => 3, true => 4, \"nil\" => 5, nil => 6, \"1.5\" => 7, 1.5 => 8}\n",
+    "[\"646\", 646, \"true\", true, \"nil\", nil, \"1.5\", 1.5]\n",
+    "[1, 2, true, false]\n",
+    "[646, 2]\n",
+    "{\"10\" => :text, 10 => :number}\n",
+    "{\"1\" => 2, 1 => 3}\n",
+    "{\"1\" => 1, 1 => 2}\n",
+    "{1 => 1}\n",
+);
+
+#[test]
+fn test_hash_methods_text_and_value_keys_execution() {
+    let output = run_example("hash_methods/text_and_value_keys.rb");
+    assert_eq!(output, TEXT_AND_VALUE_KEYS_OUTPUT);
+}
+
+#[test]
+fn test_hash_methods_text_and_value_keys_no_parens_execution() {
+    let output = run_example("hash_methods/text_and_value_keys_no_parens.rb");
+    assert_eq!(output, TEXT_AND_VALUE_KEYS_OUTPUT);
+}
+
+/// The expected output of both `hash_methods/string_keys_in_copies` variants.
+const STRING_KEYS_IN_COPIES: &str = concat!(
+    "[\"alpha\", \"gamma\"]\n",
+    "[\"alpha\", \"beta\"]\n",
+    "[\"alpha\", \"gamma\", \"delta\"]\n",
+    "[true, true]\n",
+    "[1000, 999, true]\n",
+);
+
+#[test]
+fn test_hash_methods_string_keys_in_copies_execution() {
+    let output = run_example("hash_methods/string_keys_in_copies.rb");
+    assert_eq!(output, STRING_KEYS_IN_COPIES);
+}
+
+#[test]
+fn test_hash_methods_string_keys_in_copies_no_parens_execution() {
+    let output = run_example("hash_methods/string_keys_in_copies_no_parens.rb");
+    assert_eq!(output, STRING_KEYS_IN_COPIES);
+}
+
+/// The expected output of both `hash_methods/misses_compare_within_a_hash`
+/// variants.
+const MISSES_COMPARE_WITHIN_A_HASH: &str = concat!(
+    "nil\n",
+    "true\n",
+    "7\n",
+    "true\n",
+    "400\n",
+    "0\n",
+    "[398, 399, 1]\n",
+);
+
+#[test]
+fn test_hash_methods_misses_compare_within_a_hash_execution() {
+    let output = run_example("hash_methods/misses_compare_within_a_hash.rb");
+    assert_eq!(output, MISSES_COMPARE_WITHIN_A_HASH);
+}
+
+#[test]
+fn test_hash_methods_misses_compare_within_a_hash_no_parens_execution() {
+    let output = run_example("hash_methods/misses_compare_within_a_hash_no_parens.rb");
+    assert_eq!(output, MISSES_COMPARE_WITHIN_A_HASH);
+}

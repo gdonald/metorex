@@ -423,3 +423,41 @@ fn hash_each_basic() {
     );
     assert_eq!(result, Some(Object::Int(3)));
 }
+
+// ── lookups that miss ───────────────────────────────────────────────────────
+
+/// Keys whose `eql?` counts its calls, 400 of them spread over four hashes.
+const COUNTED_KEYS: &str = "
+class Tagged
+  @@compared = 0
+  def self.compared = @@compared
+  attr_reader :id
+  def initialize(id) = @id = id
+  def hash = @id % 4
+  def eql?(other)
+    @@compared += 1
+    other.is_a?(Tagged) && other.id == id
+  end
+end
+held = {}
+400.times { |step| held[[Tagged.new(step)]] = step }
+";
+
+#[test]
+fn a_miss_compares_only_against_keys_sharing_its_hash() {
+    let result = run(&format!(
+        "{COUNTED_KEYS}sharing = held.keys.count {{ |key| key.hash == [Tagged.new(-1)].hash }}\nbefore = Tagged.compared\nheld[[Tagged.new(-1)]]\n[Tagged.compared - before, sharing]\n"
+    ));
+    assert_eq!(
+        result.map(|held| held.to_string()),
+        Some("[100, 100]".to_string())
+    );
+}
+
+#[test]
+fn a_hash_built_by_rendering_still_finds_a_key_that_is_eql_to_one_it_holds() {
+    let result = run(&format!(
+        "{COUNTED_KEYS}rebuilt = held.select {{ |_, value| value < 3 }}\nrebuilt[[Tagged.new(2)]]\n"
+    ));
+    assert_eq!(result, Some(Object::Int(2)));
+}

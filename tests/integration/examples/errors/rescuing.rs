@@ -157,3 +157,45 @@ fn test_errors_script_errors_past_bare_rescue_no_parens_execution() {
     let output = run_example("errors/script_errors_past_bare_rescue_no_parens.rb");
     assert_eq!(output, SCRIPT_ERRORS_PAST_BARE_RESCUE);
 }
+
+/// The expected output of both `errors/raising_an_exception_again` variants.
+const RAISING_AN_EXCEPTION_AGAIN: &str = concat!(
+    "\"second (first)\"\n",
+    "5:in 'Object#fail_deep'\n",
+    "9:in 'Object#wrap'\n",
+    "15:in '<main>'\n",
+    "[\"written with parentheses\", \"written without\"]\n",
+);
+
+#[test]
+fn test_errors_raising_an_exception_again_execution() {
+    let output = run_example("errors/raising_an_exception_again.rb");
+    assert_eq!(output, RAISING_AN_EXCEPTION_AGAIN);
+}
+
+#[test]
+fn test_errors_raising_an_exception_again_no_parens_execution() {
+    let output = run_example("errors/raising_an_exception_again_no_parens.rb");
+    assert_eq!(output, RAISING_AN_EXCEPTION_AGAIN);
+}
+
+/// The expected output of both `errors/rescue_lists_of_expressions` variants.
+const RESCUE_LISTS_OF_EXPRESSIONS: &str = concat!(
+    "caught IOError\n",
+    "caught KeyError\n",
+    "held in a local\n",
+    "bare rescue\n",
+    "rescued on one line\n",
+);
+
+#[test]
+fn test_errors_rescue_lists_of_expressions_execution() {
+    let output = run_example("errors/rescue_lists_of_expressions.rb");
+    assert_eq!(output, RESCUE_LISTS_OF_EXPRESSIONS);
+}
+
+#[test]
+fn test_errors_rescue_lists_of_expressions_no_parens_execution() {
+    let output = run_example("errors/rescue_lists_of_expressions_no_parens.rb");
+    assert_eq!(output, RESCUE_LISTS_OF_EXPRESSIONS);
+}

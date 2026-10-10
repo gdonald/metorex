@@ -52,13 +52,13 @@ def level_3
     level_2()
   rescue TypeError => e
     puts "Level 3 caught: #{e.message}"
-    raise ValueError.new("Value error in level 3")
+    raise ArgumentError.new("Value error in level 3")
   end
 end
 
 begin
   level_3()
-rescue ValueError => e
+rescue ArgumentError => e
   puts "Top level caught: #{e.message}"
 end
 

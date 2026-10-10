@@ -225,6 +225,42 @@ pub(crate) fn register_native_functions(globals: &mut GlobalRegistry) {
         "__timeout_open__",
         Object::NativeFunction("__timeout_open__".to_string()),
     );
+    // What `callcc` reads to run its statement again for a continuation
+    // called after the block returned.
+    for name in [
+        "__continuation_site__",
+        "__continuation_resumed__",
+        "__continuation_resume__",
+    ] {
+        globals.set(name, Object::NativeFunction(name.to_string()));
+    }
+    // Whether a value was given a singleton class, which decides the class
+    // `Numeric#coerce` compares.
+    globals.set(
+        "__singleton_given__",
+        Object::NativeFunction("__singleton_given__".to_string()),
+    );
+    for name in ["iterator?", "instance_variables_to_inspect"] {
+        globals.set(name, Object::NativeFunction(name.to_string()));
+    }
+    for name in [
+        "__console_mode_get__",
+        "__console_mode_set__",
+        "__console_mode_change__",
+        "__console_mode_query__",
+        "__console_winsize__",
+        "__console_set_winsize__",
+        "__console_flush__",
+        "__console_beep__",
+        "__console_ttyname__",
+        "__prism_version__",
+        "__prism_serialize__",
+        "__prism_serialize_stream__",
+        "__prism_parse_success__",
+        "__prism_string_query__",
+    ] {
+        globals.set(name, Object::NativeFunction(name.to_string()));
+    }
     globals.set(
         "__embedded_library_names__",
         Object::NativeFunction("__embedded_library_names__".to_string()),

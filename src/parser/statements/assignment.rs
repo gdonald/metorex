@@ -174,12 +174,13 @@ impl Parser {
             let position = self.advance().position;
             self.skip_whitespace();
             let value = self.parse_assignment_rhs()?;
+            let reading = or_assign_reading(&operation, expr.clone());
             return Ok(crate::ast::Expression::BinaryOp {
                 op: crate::ast::BinaryOp::Assign,
-                left: Box::new(expr.clone()),
+                left: Box::new(expr),
                 right: Box::new(crate::ast::Expression::BinaryOp {
                     op: operation,
-                    left: Box::new(expr),
+                    left: Box::new(reading),
                     right: Box::new(value),
                     position,
                 }),
@@ -234,8 +235,10 @@ impl Parser {
         definition: Statement,
         position: crate::lexer::Position,
     ) -> Result<Statement, MetorexError> {
+        // `class Name; end if condition` opens the class only when the
+        // condition holds.
         if !self.check(&[TokenKind::Dot, TokenKind::SafeDot]) {
-            return Ok(definition);
+            return self.wrap_with_modifier(definition);
         }
         self.seeded_primary = Some(Expression::BeginRescue {
             body: vec![definition],
@@ -334,4 +337,35 @@ pub(crate) fn names_a_numbered_parameter(name: &str) -> bool {
             .chars()
             .next()
             .is_some_and(|held| held.is_ascii_digit() && held != '0')
+}
+
+/// What `target ||= value` reads the target as. A class variable or a
+/// constant that is not set yet reads as nil there rather than raising, which
+/// is what `defined?(target) && target` answers.
+pub(crate) fn or_assign_reading(
+    operation: &BinaryOp,
+    target: crate::ast::Expression,
+) -> crate::ast::Expression {
+    use crate::ast::Expression;
+    let guarded = matches!(operation, BinaryOp::Or)
+        && match &target {
+            // `Scope::Name ||= value` evaluates its scope once, which a
+            // guard reading the name twice would not.
+            Expression::ClassVariable { .. } | Expression::TopLevelConstant { .. } => true,
+            Expression::Identifier { name, .. } => name.starts_with(char::is_uppercase),
+            _ => false,
+        };
+    if !guarded {
+        return target;
+    }
+    let position = target.position();
+    Expression::BinaryOp {
+        op: BinaryOp::And,
+        left: Box::new(Expression::Defined {
+            expression: Box::new(target.clone()),
+            position,
+        }),
+        right: Box::new(target),
+        position,
+    }
 }

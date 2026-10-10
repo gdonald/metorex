@@ -7,15 +7,24 @@ use metorex::object::Object;
 use metorex::parser::Parser;
 use metorex::vm::VirtualMachine;
 
+/// Loading Marshal nests deeper than the stack a test thread is given, so
+/// each program runs on a thread sized like the one the binary itself uses.
 fn inspected(code: &str) -> String {
     let source = format!("({code}).inspect");
-    let tokens = Lexer::new(&source).tokenize();
-    let statements = Parser::new(tokens).parse().expect("parse failed");
-    let mut vm = VirtualMachine::new();
-    match vm.execute_program(&statements).expect("execution failed") {
-        Some(Object::String(text)) => text.as_str().to_string(),
-        other => panic!("expected an inspection, got {other:?}"),
-    }
+    std::thread::Builder::new()
+        .stack_size(64 * 1024 * 1024)
+        .spawn(move || {
+            let tokens = Lexer::new(&source).tokenize();
+            let statements = Parser::new(tokens).parse().expect("parse failed");
+            let mut vm = VirtualMachine::new();
+            match vm.execute_program(&statements).expect("execution failed") {
+                Some(Object::String(text)) => text.as_str().to_string(),
+                other => panic!("expected an inspection, got {other:?}"),
+            }
+        })
+        .expect("thread failed")
+        .join()
+        .expect("thread panicked")
 }
 
 #[test]

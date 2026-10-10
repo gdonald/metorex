@@ -25,6 +25,9 @@ mod initializing;
 mod inspecting;
 mod instance_variables;
 mod method_lists;
+pub(crate) use method_lists::{
+    CoreVisibility, nearest_core_owner, nearest_core_visibility, written_by_program,
+};
 mod method_lookup;
 mod method_names;
 mod object_identity;

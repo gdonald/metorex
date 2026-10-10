@@ -38,13 +38,8 @@ impl VirtualMachine {
                         self.send_to_object(other, "to_int", vec![], position)?
                     }
                     other => {
-                        return Err(crate::vm::errors::simple_exception(
-                            "TypeError",
-                            &format!(
-                                "no implicit conversion of {} into Integer",
-                                self.builtins().class_of(&other).name()
-                            ),
-                            position,
+                        return Err(crate::vm::errors::integer_conversion_error(
+                            &other, position,
                         ));
                     }
                 };

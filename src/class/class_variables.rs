@@ -18,6 +18,11 @@ impl Class {
         if key.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
             self.unrealized_autoloads.borrow_mut().remove(&key);
         }
+        // A singleton class answers for the class it is attached to, which
+        // is part of what a method lookup through it finds.
+        if key == "__attached__" || key == "__singleton__" {
+            super::methods::method_state_changed();
+        }
         self.class_variables.borrow_mut().insert(key, value);
     }
 
@@ -143,6 +148,8 @@ impl Class {
             deprecated_constants: RefCell::new(source.deprecated_constants.borrow().clone()),
             autoload_locations: RefCell::new(source.autoload_locations.borrow().clone()),
             const_locations: RefCell::new(source.const_locations.borrow().clone()),
+            method_cache: RefCell::new(HashMap::new()),
+            method_walks: RefCell::new(HashMap::new()),
         };
         if let Some(src_sc) = source.singleton_class.borrow().as_ref() {
             let sc_copy = Rc::new(Class {
@@ -179,6 +186,8 @@ impl Class {
                 deprecated_constants: RefCell::new(src_sc.deprecated_constants.borrow().clone()),
                 autoload_locations: RefCell::new(src_sc.autoload_locations.borrow().clone()),
                 const_locations: RefCell::new(src_sc.const_locations.borrow().clone()),
+                method_cache: RefCell::new(HashMap::new()),
+                method_walks: RefCell::new(HashMap::new()),
             });
             *copy.singleton_class.borrow_mut() = Some(sc_copy);
         }
@@ -212,6 +221,8 @@ impl Clone for Class {
             deprecated_constants: RefCell::new(self.deprecated_constants.borrow().clone()),
             autoload_locations: RefCell::new(self.autoload_locations.borrow().clone()),
             const_locations: RefCell::new(self.const_locations.borrow().clone()),
+            method_cache: RefCell::new(HashMap::new()),
+            method_walks: RefCell::new(HashMap::new()),
         }
     }
 }

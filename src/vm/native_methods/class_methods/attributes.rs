@@ -194,6 +194,31 @@ impl VirtualMachine {
                         "method_defined?" | "public_method_defined?"
                     ))));
                 }
+                // A method Ruby's core defines natively is reported with the
+                // visibility the nearest class or module defining it gives it.
+                if found.is_none() {
+                    let owners = if include_super {
+                        let named = if class_rc.is_module() {
+                            Object::Module(Rc::clone(class_rc))
+                        } else {
+                            Object::Class(Rc::clone(class_rc))
+                        };
+                        self.ancestor_names(named, position)?
+                    } else {
+                        vec![class_rc.ruby_name()]
+                    };
+                    use crate::vm::native_methods::object_methods::{
+                        CoreVisibility, nearest_core_visibility,
+                    };
+                    if let Some(visibility) = nearest_core_visibility(&owners, &name) {
+                        return Ok(Answered(Object::Bool(match method_name {
+                            "public_method_defined?" => visibility == CoreVisibility::Public,
+                            "private_method_defined?" => visibility == CoreVisibility::Private,
+                            "protected_method_defined?" => visibility == CoreVisibility::Protected,
+                            _ => visibility != CoreVisibility::Private,
+                        })));
+                    }
+                }
                 // The methods core classes answer natively are public ones.
                 if found.is_none()
                     && (crate::vm::native_methods::class_answers_natively(

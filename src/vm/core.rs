@@ -39,9 +39,35 @@ pub(crate) enum Definee {
     SingletonOf(Object),
 }
 
+/// A native method or function running, which a backtrace lists between
+/// the frames of the Ruby code around it. `depth` is how many frames the
+/// call stack held when it was called.
+#[derive(Clone)]
+pub(crate) struct NativeFrame {
+    pub(crate) receiver: Option<Object>,
+    pub(crate) name: String,
+    pub(crate) line: usize,
+    pub(crate) column: usize,
+    pub(crate) file: Option<String>,
+    pub(crate) depth: usize,
+}
+
 pub struct VirtualMachine {
     pub(crate) environment: Environment,
     pub(crate) call_stack: Vec<CallFrame>,
+    /// The native methods and functions running, innermost last.
+    pub(crate) native_frames: Vec<NativeFrame>,
+    /// The statement lists running, innermost last, each with the statement
+    /// it is on, which a continuation called after its `callcc` returned
+    /// runs again from.
+    pub(crate) statement_marks: Vec<crate::vm::native_functions::StatementMark>,
+    pub(crate) next_statement_serial: u64,
+    /// The value `callcc` answers when the statement it was written in runs
+    /// again, keyed by the list and the statement.
+    pub(crate) continuation_resumes: std::collections::HashMap<(u64, usize), Object>,
+    /// For each class body running, the method frame a `return` in it goes
+    /// back to when the body is a block, as `class_eval` runs one.
+    pub(crate) body_block_homes: Vec<Option<Option<u64>>>,
     pub(crate) globals: GlobalRegistry,
     /// The second names globals have been given, each pointing at the one
     /// it stands for. `alias $ERROR_INFO $!` records one here.
@@ -156,6 +182,9 @@ pub struct VirtualMachine {
     /// The file whose code is running right now, which differs from
     /// `current_file` inside a method defined in another file.
     pub(crate) current_source_file: Option<String>,
+    /// The file names `eval` was handed for the code it ran, which name
+    /// code that has no file of its own to read back.
+    pub(crate) eval_named_files: std::collections::HashSet<String>,
     /// The encoding the source running now is written in, which is what
     /// `__ENCODING__` answers. A file names it in a magic comment, and an
     /// eval takes it from the string it was handed.
@@ -320,9 +349,6 @@ pub struct VirtualMachine {
     /// stands over it, so the locals it names are whatever that scope holds
     /// when it is asked.
     pub(crate) main_script_scope: Option<Rc<std::cell::RefCell<crate::scope::Scope>>>,
-    /// The places a pattern was written on its own as a condition. Ruby says
-    /// so about each of them once.
-    pub(crate) regexp_conditions: HashSet<(String, usize, usize, usize)>,
     /// The value a `case` is matching, with what it answered when it was
     /// asked for its elements. One `case` asks its own subject once, and
     /// every clause in it reads that; a value nested inside a pattern is
@@ -521,12 +547,20 @@ impl VirtualMachine {
                 ("-w", "VERBOSE"),
                 ("-d", "DEBUG"),
                 ("-I", ":"),
+                // `$>` is where a program writes without naming a stream,
+                // which is `$stdout` under another name.
+                (">", "stdout"),
             ]
             .into_iter()
             .map(|(alias, original)| (alias.to_string(), original.to_string()))
             .collect(),
             environment,
             call_stack: Vec::new(),
+            native_frames: Vec::new(),
+            statement_marks: Vec::new(),
+            next_statement_serial: 0,
+            continuation_resumes: std::collections::HashMap::new(),
+            body_block_homes: Vec::new(),
             globals,
             heap: Rc::new(RefCell::new(Heap::default())),
             builtins,
@@ -563,6 +597,7 @@ impl VirtualMachine {
             open_sockets: Default::default(),
             open_streams: Default::default(),
             current_source_file: None,
+            eval_named_files: Default::default(),
             current_source_encoding: None,
             file_encodings: HashMap::new(),
             reported_files: std::collections::HashMap::new(),
@@ -606,7 +641,6 @@ impl VirtualMachine {
             rendering_frozen_error: false,
             lexical_home_frame: None,
             main_script_scope: None,
-            regexp_conditions: HashSet::new(),
             deconstructed_values: Vec::new(),
             pattern_failure: None,
             kernel_function_receiver: None,
@@ -737,12 +771,7 @@ impl VirtualMachine {
                 let named = location
                     .filename
                     .clone()
-                    .or_else(|| self.current_source_file.clone())
-                    .or_else(|| {
-                        self.current_file
-                            .as_ref()
-                            .map(|file| file.display().to_string())
-                    })
+                    .or_else(|| self.file_for_frames())
                     .unwrap_or_else(|| "script".to_string());
                 held.location = Some(crate::object::SourceLocation::new(
                     named,
@@ -998,12 +1027,150 @@ impl VirtualMachine {
     pub fn with_call_frame<F, R>(&mut self, mut frame: CallFrame, action: F) -> R
     where
         F: FnOnce(&mut Self) -> R,
+        R: 'static,
     {
         frame.entered_from(self.environment.current_scope());
         self.call_stack.push(frame);
         let result = action(self);
+        if let Some(Err(error)) = (&result as &dyn std::any::Any)
+            .downcast_ref::<Result<Object, crate::error::MetorexError>>()
+        {
+            self.trace_error_leaving_frame(error);
+        }
         self.call_stack.pop();
         result
+    }
+
+    /// Give an error the interpreter raised its backtrace as it leaves the
+    /// frame it was raised in, while that frame and the ones below it still
+    /// stand. Built later, where it is rescued, it would name only the frames
+    /// left by then.
+    #[inline(never)]
+    /// Give an error that ended the program the backtrace of the place it was
+    /// raised, when nothing has given it one yet.
+    pub fn trace_uncaught_error(&mut self, error: &crate::error::MetorexError) {
+        self.trace_error_leaving_frame(error);
+    }
+
+    pub(crate) fn trace_error_leaving_frame(&mut self, error: &crate::error::MetorexError) {
+        let crate::error::MetorexError::UncaughtException {
+            exception: exception @ Object::Exception(details),
+            location,
+            ..
+        } = error
+        else {
+            return;
+        };
+        if details.borrow().backtrace.is_some() || location.line == 0 {
+            return;
+        }
+        self.note_exception_location(exception, location);
+        self.add_stack_trace_to_exception(
+            exception.clone(),
+            crate::lexer::Position::new(location.line, location.column, location.offset),
+        );
+    }
+
+    /// Record a native method or function as running, for a backtrace to
+    /// list. A name the program cannot call, `raise` and `send`, which MRI
+    /// lists no frame for, and a second dispatch of the call already recorded
+    /// are left out. Answers whether a frame was recorded.
+    pub(crate) fn enter_native_frame(
+        &mut self,
+        receiver: Option<&Object>,
+        name: &str,
+        position: crate::lexer::Position,
+    ) -> bool {
+        if name.starts_with("__") || matches!(name, "raise" | "fail" | "send") || position.line == 0
+        {
+            return false;
+        }
+        // MRI runs a Proc without a frame for the call that ran it.
+        if matches!(receiver, Some(Object::Block(_)))
+            && matches!(name, "call" | "()" | "[]" | "yield" | "===")
+        {
+            return false;
+        }
+        let depth = self.call_stack.len();
+        if let Some(top) = self.native_frames.last()
+            && top.depth == depth
+            && top.line == position.line
+            && top.column == position.column
+            && top.name == name
+        {
+            return false;
+        }
+        self.native_frames.push(NativeFrame {
+            receiver: receiver.cloned(),
+            name: name.to_string(),
+            line: position.line,
+            column: position.column,
+            file: self.file_for_frames(),
+            depth,
+        });
+        true
+    }
+
+    /// Give an error a native method raised the backtrace it has with the
+    /// method listed as its first frame.
+    pub(crate) fn trace_native_error(
+        &mut self,
+        receiver: &Object,
+        name: &str,
+        position: crate::lexer::Position,
+        error: &crate::error::MetorexError,
+    ) {
+        let entered = self.enter_native_frame(Some(receiver), name, position);
+        self.leave_native_frame(entered, &Err::<(), _>(error.clone()));
+    }
+
+    /// End the native frame `enter_native_frame` recorded, giving an error
+    /// leaving it the backtrace it has while the frame is still listed.
+    pub(crate) fn leave_native_frame<T>(
+        &mut self,
+        entered: bool,
+        answered: &Result<T, crate::error::MetorexError>,
+    ) {
+        if !entered {
+            return;
+        }
+        self.leave_native_frame_traced(answered);
+    }
+
+    /// End a native call: one that recorded a frame gives an error leaving
+    /// it the backtrace it has while the frame is listed, and an internal
+    /// one the core library written in Ruby made gives it the backtrace
+    /// from the place it was called, which stands where that code's caller
+    /// does.
+    pub(crate) fn leave_native_call<T>(
+        &mut self,
+        entered: bool,
+        position: crate::lexer::Position,
+        answered: &Result<T, crate::error::MetorexError>,
+    ) {
+        if entered {
+            self.leave_native_frame_traced(answered);
+            return;
+        }
+        if position.prelude
+            && let Err(crate::error::MetorexError::UncaughtException {
+                exception: exception @ Object::Exception(details),
+                location,
+                ..
+            }) = answered
+            && details.borrow().backtrace.is_none()
+            && location.line != 0
+        {
+            self.note_exception_location(exception, location);
+            self.add_stack_trace_to_exception(exception.clone(), position);
+        }
+    }
+
+    fn leave_native_frame_traced<T>(&mut self, answered: &Result<T, crate::error::MetorexError>) {
+        if let Err(error) = answered {
+            self.trace_error_leaving_frame(error);
+        }
+        self.native_frames.pop();
     }
 
     /// Push a frame that stays until it is popped, for scopes whose body is

@@ -151,7 +151,10 @@ fn errno_class(problem: &std::io::Error) -> &'static str {
         Some(libc::EEXIST) => "Errno::EEXIST",
         Some(libc::ELOOP) => "Errno::ELOOP",
         Some(libc::ENAMETOOLONG) => "Errno::ENAMETOOLONG",
-        _ => "IOError",
+        // Any other number the platform names, such as EIO from a terminal
+        // whose other end has closed, raises its own Errno class.
+        Some(number) => crate::vm::init::errno_class_name(number).unwrap_or("IOError"),
+        None => "IOError",
     }
 }
 
@@ -160,6 +163,48 @@ fn errno_class(problem: &std::io::Error) -> &'static str {
 fn stream_error(problem: &std::io::Error, what: &str, position: Position) -> MetorexError {
     let named = errno_class(problem);
     crate::vm::errors::simple_exception(named, &format!("{what}: {problem}"), position)
+}
+
+/// The names of the entries in the directory `number` names, read through a
+/// copy of the descriptor so the one given is left where it stands.
+fn directory_names_of(number: libc::c_int) -> std::io::Result<Vec<Vec<u8>>> {
+    // SAFETY: `held` is a stat buffer `fstat` fills, and the number is only
+    // read.
+    let mut held: libc::stat = unsafe { std::mem::zeroed() };
+    if unsafe { libc::fstat(number, &mut held) } < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    if held.st_mode & libc::S_IFMT != libc::S_IFDIR {
+        return Err(std::io::Error::from_raw_os_error(libc::ENOTDIR));
+    }
+    // SAFETY: `number` names an open directory, and the copy `dup` answers
+    // is handed to `fdopendir`, which `closedir` closes.
+    let copy = unsafe { libc::dup(number) };
+    if copy < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let directory = unsafe { libc::fdopendir(copy) };
+    if directory.is_null() {
+        let problem = std::io::Error::last_os_error();
+        unsafe { libc::close(copy) };
+        return Err(problem);
+    }
+    let mut names = Vec::new();
+    // SAFETY: `directory` is open until `closedir`, and each entry `readdir`
+    // answers holds a terminated name.
+    unsafe {
+        libc::rewinddir(directory);
+        loop {
+            let entry = libc::readdir(directory);
+            if entry.is_null() {
+                break;
+            }
+            let name = std::ffi::CStr::from_ptr((*entry).d_name.as_ptr());
+            names.push(name.to_bytes().to_vec());
+        }
+        libc::closedir(directory);
+    }
+    Ok(names)
 }
 
 /// Wait for a descriptor to have something to read, or to reach its end,
@@ -216,6 +261,7 @@ impl VirtualMachine {
             }
             if self.other_threads_are_waiting() {
                 self.wait_for_other_threads(position);
+                self.raise_if_thread_killed(position)?;
                 if self.open_streams.number_of(handle).is_none() {
                     return Err(closed_in_another_thread(position));
                 }
@@ -522,6 +568,7 @@ impl VirtualMachine {
                     if trouble.raw_os_error() == Some(libc::EAGAIN) && count != 0 {
                         if self.other_threads_are_waiting() {
                             self.wait_for_other_threads(position);
+                            self.raise_if_thread_killed(position)?;
                             if self.open_streams.number_of(handle).is_none() {
                                 return Err(closed_in_another_thread(position));
                             }
@@ -561,6 +608,7 @@ impl VirtualMachine {
                         && !descriptor_is_ready(number)
                     {
                         self.wait_for_other_threads(position);
+                        self.raise_if_thread_killed(position)?;
                         if self.open_streams.number_of(handle).is_none() {
                             return Err(crate::vm::errors::simple_exception(
                                 "IOError",
@@ -594,6 +642,7 @@ impl VirtualMachine {
                     }
                     if self.other_threads_are_waiting() {
                         self.wait_for_other_threads(position);
+                        self.raise_if_thread_killed(position)?;
                         if self.open_streams.number_of(handle).is_none() {
                             return Err(crate::vm::errors::simple_exception(
                                 "IOError",
@@ -694,6 +743,22 @@ impl VirtualMachine {
                 let wanted = if count != 0 {
                     Readiness::Writing
                 } else {
+                    // A descriptor the operating system holds for writing
+                    // alone is refused a read, which is what a read without
+                    // waiting, named by the text, reports.
+                    // SAFETY: `number` is a descriptor this program holds open.
+                    let flags = unsafe { libc::fcntl(number, libc::F_GETFL) };
+                    if &*text == "nonblock"
+                        && flags >= 0
+                        && flags & libc::O_ACCMODE == libc::O_WRONLY
+                    {
+                        let problem = std::io::Error::from_raw_os_error(libc::EBADF);
+                        return Err(crate::vm::errors::simple_exception(
+                            errno_class(&problem),
+                            &format!("{} - read", strerror_text(&problem)),
+                            position,
+                        ));
+                    }
                     Readiness::Reading
                 };
                 Ok(Object::Bool(descriptor_ready(number, wanted, 0)))
@@ -830,6 +895,7 @@ impl VirtualMachine {
                             // gets its turn.
                             if self.other_threads_are_waiting() {
                                 self.wait_for_other_threads(position);
+                                self.raise_if_thread_killed(position)?;
                                 if self.open_streams.number_of(handle).is_none() {
                                     break;
                                 }
@@ -974,6 +1040,27 @@ impl VirtualMachine {
                 }
                 Ok(Object::Int(0))
             }
+            // The names in the directory a descriptor names, read from its
+            // first entry without moving the descriptor the program holds.
+            "fdopendir" => {
+                let failed = |problem: std::io::Error| {
+                    crate::vm::errors::simple_exception(
+                        errno_class(&problem),
+                        &format!("{} - fdopendir", strerror_text(&problem)),
+                        position,
+                    )
+                };
+                let names = directory_names_of(count as libc::c_int).map_err(failed)?;
+                Ok(Object::array(
+                    names
+                        .into_iter()
+                        .map(|name| match String::from_utf8(name) {
+                            Ok(text) => Object::string(text),
+                            Err(raw) => super::pack_format::bytes_to_string(raw.as_bytes()),
+                        })
+                        .collect(),
+                ))
+            }
             // Where the descriptor stands. The count is the offset and the
             // text says what it is measured from.
             "seek" => {
@@ -1084,11 +1171,6 @@ impl VirtualMachine {
             // again warn that it was already set.
             if let Some(Object::Class(object_class)) = self.globals().get("Object") {
                 object_class.set_class_var(constant, stream.clone());
-            }
-            // `$>` is where a program writes without naming a stream, which
-            // is standard output under the name Ruby's punctuation gives it.
-            if named == "stdout" {
-                self.globals_mut().set_variable(">", stream);
             }
         }
     }

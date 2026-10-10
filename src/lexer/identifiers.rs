@@ -168,7 +168,7 @@ impl<'a> Lexer<'a> {
             "ensure" => TokenKind::Ensure,
             "raise" => TokenKind::Raise,
             "break" => TokenKind::Break,
-            "continue" | "next" => TokenKind::Continue,
+            "next" => TokenKind::Continue,
             "redo" => TokenKind::Redo,
             "retry" => TokenKind::Retry,
             "return" => TokenKind::Return,

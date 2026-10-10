@@ -7,24 +7,7 @@ impl VirtualMachine {
     /// A sleep inside `Timeout.timeout` that would run past the limit
     /// is the one thing it reports on, since that is what the block
     /// was given a limit for.
-    /// `sleep`, run in a frame of its own so what interrupts the wait, such
-    /// as an exception another thread hands over, names it the way Ruby does.
     pub(crate) fn sleep_for(
-        &mut self,
-        arguments: Vec<Object>,
-        position: Position,
-    ) -> Result<Object, MetorexError> {
-        let frame = crate::vm::CallFrame::method(
-            "Kernel#sleep".to_string(),
-            Some(format!("{}:{}", position.line, position.column)),
-            "sleep".to_string(),
-            "sleep".to_string(),
-        )
-        .with_source_file(self.current_source_file.clone());
-        self.with_call_frame(frame, |vm| vm.sleep_waiting(arguments, position))
-    }
-
-    fn sleep_waiting(
         &mut self,
         arguments: Vec<Object>,
         position: Position,
@@ -137,6 +120,27 @@ impl VirtualMachine {
 
     /// `Timeout.timeout` opens a limit around the block it runs, and
     /// closes it however the block ends.
+    /// Raise the error of the open `Timeout.timeout` limit whose time has
+    /// passed, the one that passed first, wherever the program stands. A
+    /// limit raises once, however long its block takes to unwind.
+    pub(crate) fn raise_expired_timeout(&mut self, position: Position) -> Result<(), MetorexError> {
+        let now = std::time::Instant::now();
+        let expired = self
+            .timeout_limits
+            .iter()
+            .enumerate()
+            .filter(|(_, (deadline, _, _))| *deadline <= now)
+            .min_by_key(|(_, (deadline, _, _))| *deadline)
+            .map(|(index, _)| index);
+        let Some(index) = expired else {
+            return Ok(());
+        };
+        let (_, class, message) = self.timeout_limits[index].clone();
+        self.timeout_limits[index].0 = now + RAISED_LIMIT_WAIT;
+        self.call_native_function("raise", vec![class, message], position)
+            .map(|_| ())
+    }
+
     pub(crate) fn open_timeout(
         &mut self,
         arguments: Vec<Object>,
@@ -150,3 +154,7 @@ impl VirtualMachine {
         Ok(Object::Nil)
     }
 }
+
+/// How far off a limit that has raised is put, so it does not raise again
+/// while its block unwinds.
+const RAISED_LIMIT_WAIT: std::time::Duration = std::time::Duration::from_secs(60 * 60 * 24 * 365);

@@ -15,6 +15,19 @@ impl VirtualMachine {
             return self.evaluate_module_comparison(op, left, right, position);
         }
 
+        // Two Symbols order by their names, as Symbol's Comparable does.
+        if let (Object::Symbol(a), Object::Symbol(b)) = (&left, &right) {
+            let (a, b) = (a.as_str().to_string(), b.as_str().to_string());
+            let result = match op {
+                BinaryOp::Less => a < b,
+                BinaryOp::Greater => a > b,
+                BinaryOp::LessEqual => a <= b,
+                BinaryOp::GreaterEqual => a >= b,
+                _ => unreachable!("caller restricts op to the comparison set"),
+            };
+            return Ok(Object::Bool(result));
+        }
+
         // Two exact integers compare exactly, without the rounding a Float
         // conversion would introduce at large magnitudes.
         if matches!(left, Object::Int(_) | Object::BigInt(_))
@@ -164,19 +177,39 @@ impl VirtualMachine {
             });
         }
 
+        // A value whose class orders nothing has no such operator at all.
+        let orders_values = matches!(
+            left,
+            Object::Int(_)
+                | Object::BigInt(_)
+                | Object::Float(_)
+                | Object::String(_)
+                | Object::Symbol(_)
+        ) || (matches!(left, Object::Instance(_)) && self.is_comparable(&left));
+        if !orders_values && let Some(operator) = comparison_operator_name(op) {
+            return Err(crate::vm::errors::undefined_method_error(
+                operator,
+                &left,
+                std::slice::from_ref(&right),
+                position,
+            ));
+        }
         // Comparison type mismatch is ArgumentError in Ruby, not TypeError.
-        // Ruby's format: "comparison of <LeftClass> with <right_value> failed"
+        // Ruby's format: "comparison of <LeftClass> with <right_value> failed",
+        // where nil, true, false, a Symbol and a number are written as
+        // themselves and anything else by its class.
         let right_repr = match &right {
             Object::Int(n) => n.to_string(),
             Object::Float(f) => f.to_string(),
             Object::Nil => "nil".to_string(),
             Object::Bool(true) => "true".to_string(),
             Object::Bool(false) => "false".to_string(),
-            _ => right.type_name().to_string(),
+            Object::Symbol(name) => format!(":{name}"),
+            _ => named_class_of(&right),
         };
         let msg = format!(
             "comparison of {} with {} failed",
-            left.type_name(),
+            named_class_of(&left),
             right_repr
         );
         Err(MetorexError::UncaughtException {
@@ -591,5 +624,13 @@ impl VirtualMachine {
             }
             other => self.class_name_for_comparison(other, position),
         }
+    }
+}
+
+/// The name of the class a value is an instance of, as an error names it.
+fn named_class_of(value: &Object) -> String {
+    match value {
+        Object::Instance(held) => held.borrow().class.ruby_name(),
+        other => crate::vm::native_methods::define_method::ruby_class_name(other).to_string(),
     }
 }

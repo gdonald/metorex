@@ -234,6 +234,19 @@ class Range
 end
 
 class Array
+  # The last element the block answers true for, read from the end, or what
+  # `if_none` answers when none does.
+  def rfind(if_none = nil)
+    return to_enum(:rfind) unless block_given?
+    index = size - 1
+    while index >= 0
+      held = self[index]
+      return held if yield(held)
+      index = [index, size].min - 1
+    end
+    if_none&.call
+  end
+
   # The array an object stands for, or nil where it stands for none. Only an
   # object answering `to_ary` is asked.
   def self.try_convert(held)

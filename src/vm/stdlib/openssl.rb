@@ -222,6 +222,16 @@ module OpenSSL
   end
 
   module SSL
+    class SSLError < OpenSSL::OpenSSLError; end
+
+    class SSLErrorWaitReadable < SSLError
+      include IO::WaitReadable
+    end
+
+    class SSLErrorWaitWritable < SSLError
+      include IO::WaitWritable
+    end
+
     # The settings a TLS connection is made under. Metorex carries the
     # settings themselves, and has no TLS transport to hand them to.
     class SSLContext

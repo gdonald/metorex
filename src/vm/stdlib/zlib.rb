@@ -197,10 +197,12 @@ module Zlib
 
     # What the stream has read so far. A block is handed the text a piece
     # at a time, in the 16 KiB chunks Ruby's inflater hands out.
-    def inflate(text, &block)
+    def inflate(text, buffer: nil, &block)
       self << text
       return take_read(&block) if block
-      take_read
+      held = take_read
+      return held if buffer.nil?
+      buffer.replace held
     end
 
     # A nil argument says the compressed stream is over. Everything written
@@ -250,11 +252,33 @@ module Zlib
     # stream it names is passed through rather than read.
     def read_what_is_there
       return if @done || @input.empty?
-      action = @window_bits.to_i < 0 ? "raw_inflate_part" : "inflate_part"
+      # A window of 16 or more names a gzip stream, and one of 32 or more
+      # either kind, told apart by the gzip magic number.
+      bits = @window_bits.to_i
+      gzipped = bits >= 16 && (bits < 32 || @input.b.start_with?("\x1F\x8B".b))
+      action = if gzipped
+                 "gzip_part"
+               elsif bits < 0
+                 "raw_inflate_part"
+               else
+                 "inflate_part"
+               end
       read = Zlib.__stream__ action, @input, 0, @dictionary.to_s
       raise NeedDict, "need dictionary" if read == :need_dictionary
-      return if read.nil?
-      @pending = @pending + read[0] + read[1]
+      @handed_on ||= 0
+      if read.nil?
+        # What the part that arrived stands for is handed on now, as zlib
+        # does, and the rest once more arrives.
+        kind = gzipped ? "gzip" : (bits < 0 ? "raw" : "zlib")
+        so_far = Zlib.__stream__ "inflate_so_far", @input, 0, @dictionary.to_s, kind
+        fresh = so_far.byteslice(@handed_on, so_far.bytesize - @handed_on).to_s
+        @pending = @pending + fresh
+        @handed_on = so_far.bytesize
+        return
+      end
+      whole = read[0]
+      @pending = @pending + whole.byteslice(@handed_on, whole.bytesize - @handed_on).to_s + read[1]
+      @handed_on = 0
       @input = ""
       @done = true
     end

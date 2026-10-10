@@ -36,6 +36,10 @@ impl VirtualMachine {
             "tcp_open" => self.socket_tcp_open(text, position),
             "udp_fresh" => self.socket_udp_fresh(text, position),
             "numeric_addrinfo" => self.socket_numeric_addrinfo(text, port, position),
+            "addrinfo_list" => Ok(super::fresh_sockets::socket_addrinfo_list(
+                &text,
+                arguments.get(3),
+            )),
             "bind_on" => self.socket_bind_on(handle, text, port, position),
             "connect_on" => self.socket_connect_on(handle, text, port, position),
             "connect_now" => self.socket_connect_now(handle, text, port, position),

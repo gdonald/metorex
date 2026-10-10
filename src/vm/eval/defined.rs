@@ -60,10 +60,17 @@ impl VirtualMachine {
             Expression::TopLevelConstant { name, .. } => {
                 let private = matches!(self.globals().get("Object"),
                     Some(Object::Class(object_class)) if object_class.is_private_constant(name));
+                let autoloaded = match self.globals().get("Object") {
+                    Some(Object::Class(object_class)) => {
+                        self.effective_autoload(&object_class, name).is_some()
+                    }
+                    _ => false,
+                };
                 (!private
                     && (self.object_constant(name).is_some()
-                        || self.globals().constant(name).is_some()))
-                .then_some("constant")
+                        || self.globals().constant(name).is_some()
+                        || autoloaded))
+                    .then_some("constant")
             }
             Expression::ScopeResolution {
                 namespace, name, ..
@@ -189,10 +196,13 @@ impl VirtualMachine {
         self.self_answers(name).then_some("method")
     }
 
-    /// Whether an enclosing class or module registered an autoload for the
-    /// name, which `defined?` reports without running it.
+    /// Whether an enclosing class or module, or the top level, registered an
+    /// autoload for the name, which `defined?` reports without running it.
     fn lexically_autoloaded(&mut self, name: &str) -> bool {
-        let scopes: Vec<_> = self.def_scope_stack.iter().rev().cloned().collect();
+        let mut scopes: Vec<_> = self.def_scope_stack.iter().rev().cloned().collect();
+        if let Some(Object::Class(object_class)) = self.globals().get("Object") {
+            scopes.push(object_class);
+        }
         scopes
             .iter()
             .any(|enclosing| self.effective_autoload(enclosing, name).is_some())

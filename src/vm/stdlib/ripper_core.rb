@@ -234,7 +234,43 @@ class Ripper
         @ripper.__send__(:compile_error, message)
       end
 
+      # An error the grammar found in a program it can still read, through
+      # the event MRI's parser reports it with: `parse_error`, or one of
+      # `assign_error`, `alias_error` and `class_name_error`, which are also
+      # handed the token the error names.
+      def error_event(event, message, token)
+        return compile_error(message) if event == :compile_error
+
+        @ripper.instance_variable_set(:@__ripper_error, true)
+        return @ripper.__send__(:on_parse_error, message) if event == :parse_error
+
+        @ripper.__send__(:"on_#{event}", message, token&.value)
+      end
+
       def local?(name) = @grammar ? @grammar.local?(name) : false
+
+      # An error the scanner reports and reads on past, at a place on a
+      # line rather than at a token.
+      def scanner_error(message, line, from, to, state)
+        @ripper.instance_variable_set(:@__ripper_lineno, line)
+        @ripper.instance_variable_set(:@__ripper_column, from)
+        @ripper.instance_variable_set(:@__ripper_state, state)
+        return @grammar.report_scanned_error(message, line, from, to) if @grammar
+
+        error_event(Grammar.error_event_for(message), message, nil)
+      end
+
+      # A warning MRI's parser gives while reading, at the token it names.
+      def warn(message, token = nil)
+        if token
+          @ripper.instance_variable_set(:@__ripper_lineno, token.line)
+          @ripper.instance_variable_set(:@__ripper_column, token.column)
+        end
+        @ripper.__send__(:warn, message)
+      end
+
+      # The file name errors give, which a Ripper is made with.
+      def filename = @ripper.filename
 
       def magic_comment(comment)
         body = comment.sub(/\A#\s*/, "").chomp

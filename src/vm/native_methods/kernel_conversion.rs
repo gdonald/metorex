@@ -75,6 +75,20 @@ fn type_error(message: String, position: Position) -> MetorexError {
 }
 
 impl VirtualMachine {
+    /// Run a Kernel conversion function called by its bare name, listed in
+    /// a backtrace as the Kernel method it is.
+    pub(crate) fn call_bare_kernel_conversion(
+        &mut self,
+        name: &str,
+        arguments: &[Object],
+        position: Position,
+    ) -> Result<Option<Object>, MetorexError> {
+        let entered = self.enter_native_frame(None, name, position);
+        let answered = self.call_kernel_conversion(name, arguments, position);
+        self.leave_native_call(entered, position, &answered);
+        answered
+    }
+
     /// Run one of the Kernel conversion functions, or answer None when `name`
     /// is not one of them.
     pub(crate) fn call_kernel_conversion(
@@ -533,9 +547,19 @@ impl VirtualMachine {
     /// true, false, and nil name TrueClass, FalseClass, and NilClass rather
     /// than Object.
     fn conversion_class_name(&mut self, value: &Object, position: Position) -> String {
-        match self.call_object_method(value, "class", &[], position) {
-            Ok(Some(Object::Class(class))) => class.ruby_name(),
-            _ => self.builtins().class_of(value).ruby_name(),
+        let class = match self.call_object_method(value, "class", &[], position) {
+            Ok(Some(Object::Class(class))) => class,
+            _ => self.builtins().class_of(value),
+        };
+        let named = class.ruby_name();
+        if !named.is_empty() {
+            return named;
+        }
+        // A class with no name is named by its inspection, as
+        // `#<Class:0x...>`.
+        match self.send_to_object(Object::Class(class), "inspect", vec![], position) {
+            Ok(Object::String(text)) => text.as_str().to_string(),
+            _ => named,
         }
     }
 

@@ -31,7 +31,7 @@ impl VirtualMachine {
                 Ok(Object::array(intersection))
             }
             // nil & x always returns false (Ruby semantics)
-            (Object::Nil, _) | (_, Object::Nil) => Ok(Object::Bool(false)),
+            (Object::Nil, _) => Ok(Object::Bool(false)),
             (Object::Bool(a), Object::Bool(b)) => Ok(Object::Bool(a & b)),
             (
                 ref left @ (Object::Int(_) | Object::BigInt(_)),
@@ -41,7 +41,6 @@ impl VirtualMachine {
                     & right.as_big_integer().expect("integer-kinded"),
             )),
             (Object::Bool(a), other) => Ok(Object::Bool(a & other.is_truthy())),
-            (other, Object::Bool(b)) => Ok(Object::Bool(other.is_truthy() & b)),
             (lhs, rhs) => Err(binary_type_error(BitwiseAnd, &lhs, &rhs, position)),
         }
     }
@@ -80,7 +79,6 @@ impl VirtualMachine {
                     | right.as_big_integer().expect("integer-kinded"),
             )),
             (Object::Bool(a), other) => Ok(Object::Bool(a | other.is_truthy())),
-            (other, Object::Bool(b)) => Ok(Object::Bool(other.is_truthy() | b)),
             (lhs, rhs) => Err(binary_type_error(BitwiseOr, &lhs, &rhs, position)),
         }
     }
@@ -105,7 +103,6 @@ impl VirtualMachine {
                     ^ right.as_big_integer().expect("integer-kinded"),
             )),
             (Object::Bool(a), other) => Ok(Object::Bool(a ^ other.is_truthy())),
-            (other, Object::Bool(b)) => Ok(Object::Bool(other.is_truthy() ^ b)),
             (lhs, rhs) => Err(binary_type_error(Xor, &lhs, &rhs, position)),
         }
     }

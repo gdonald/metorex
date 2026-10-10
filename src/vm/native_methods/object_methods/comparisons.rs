@@ -48,6 +48,9 @@ impl VirtualMachine {
                     Ok(Some(a.cmp(&b) as i64))
                 }
                 (Object::String(a), Object::String(b)) => Ok(Some((**a).cmp(b) as i64)),
+                (Object::Symbol(a), Object::Symbol(b)) => {
+                    Ok(Some(a.as_str().cmp(&b.as_str()) as i64))
+                }
                 // Integers and Floats compare against each other, so a Range
                 // with one of each answers `include?` for either.
                 (Object::Float(_) | Object::Int(_), Object::Float(_) | Object::Int(_)) => {

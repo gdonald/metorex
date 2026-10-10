@@ -18,11 +18,164 @@ class Ripper
     # A syntax error, raised at the token that cannot continue the parse.
     class SyntaxFailure < StandardError
       attr_accessor :token
+
+      # Whether the scanner raised it, which Ripper reports through
+      # `compile_error` rather than `parse_error`.
+      attr_accessor :scanned
     end
 
     # One method's or block's local variables, the anonymous parameters a
     # method declared, and how a block refers to its arguments.
     Scope = Struct.new(:names, :block, :parent, :anonymous, :ordinary_parameters, :numbered, :it_used)
+
+    # MRI's parser run over a list of tokens without building anything,
+    # which finds where it would refuse them and how it would say so.
+    module MriParse
+      # The scanner's names for the tokens MRI's parser calls by another.
+      RENAMED = {
+        ident: "tIDENTIFIER", const: "tCONSTANT", fid: "tFID", gvar: "tGVAR", ivar: "tIVAR",
+        cvar: "tCVAR", label: "tLABEL", label_end: "tLABEL_END", int: "tINTEGER", float: "tFLOAT",
+        rational: "tRATIONAL", imaginary: "tIMAGINARY", char: "tCHAR", string_beg: "tSTRING_BEG",
+        string_end: "tSTRING_END", string_content: "tSTRING_CONTENT", string_dbeg: "tSTRING_DBEG",
+        string_dend: "tSTRING_DEND", string_dvar: "tSTRING_DVAR", xstring_beg: "tXSTRING_BEG",
+        regexp_beg: "tREGEXP_BEG", regexp_end: "tREGEXP_END", words_beg: "tWORDS_BEG",
+        qwords_beg: "tQWORDS_BEG", symbols_beg: "tSYMBOLS_BEG", qsymbols_beg: "tQSYMBOLS_BEG",
+        words_sep: "' '", symbeg: "tSYMBEG", colon2: "tCOLON2", colon3: "tCOLON3", dot2: "tDOT2",
+        dot3: "tDOT3", bdot2: "tBDOT2", bdot3: "tBDOT3", star: "tSTAR", dstar: "tDSTAR",
+        amper: "tAMPER", lambda: "tLAMBDA", lambeg: "tLAMBEG", lbrace: "tLBRACE",
+        lbrace_arg: "tLBRACE_ARG", lbrack: "tLBRACK", lparen: "tLPAREN", lparen_arg: "tLPAREN_ARG",
+        op_asgn: "tOP_ASGN", pow: "tPOW", uminus: "tUMINUS", uminus_num: "tUMINUS_NUM",
+        uplus: "tUPLUS", aref: "tAREF", aset: "tASET", nl: "'\\n'", eof: "YYEOF", invalid: "YYUNDEF",
+        "!=": "tNEQ", "!~": "tNMATCH", "&&": "tANDOP", "||": "tOROP", "<<": "tLSHFT",
+        ">>": "tRSHFT", "==": "tEQ", "===": "tEQQ", "<=>": "tCMP", ">=": "tGEQ", "<=": "tLEQ",
+        "=>": "tASSOC", "=~": "tMATCH", "&.": "tANDDOT", k_do_lambda: "keyword_do_LAMBDA",
+        "k_defined?": "keyword_defined"
+      }.freeze
+
+      # The number MRI's parser gives the token, or nil for one it has no
+      # number for.
+      def self.number(token)
+        tables = ParserTables
+        type = token.type
+        name = RENAMED[type]
+        name ||= if type == :backref
+                   token.text.match?(/\A\$\d+\z/) ? "tNTH_REF" : "tBACK_REF"
+                 elsif type.to_s.start_with?("k_") && type.to_s.end_with?("_mod")
+                   "modifier_#{type.to_s[2...-4]}"
+                 elsif type.to_s.start_with?("k_")
+                   "keyword_#{type.to_s[2..]}"
+                 elsif type.to_s.length == 1
+                   "'#{type}'"
+                 end
+        tables::NUMBERS[name]
+      end
+
+      WORD_LISTS = %i[words_beg qwords_beg symbols_beg qsymbols_beg].freeze
+
+      # The numbers MRI's parser reads for `tokens`, with the index of the
+      # token each came from. Its lexer gives a word list a separator right
+      # after the list opens and another before it closes, where the
+      # scanner gives one only for the spaces written there. Nil when a
+      # token has no number.
+      def self.symbols(tokens)
+        separator = ParserTables::NUMBERS["' '"]
+        numbers = []
+        origins = []
+        open = []
+        tokens.each_with_index do |token, index|
+          if token.type == :string_end && open.last == :list && numbers.last != separator
+            numbers << separator
+            origins << index
+          end
+          held = number(token)
+          return nil if held.nil?
+
+          numbers << held
+          origins << index
+          case token.type
+          when *WORD_LISTS
+            open << :list
+            next_token = tokens[index + 1]
+            unless next_token&.type == :words_sep
+              numbers << separator
+              origins << index + 1
+            end
+          when :string_dbeg then open << :interpolation
+          when :string_dend then open.pop if open.last == :interpolation
+          when :string_end then open.pop if open.last == :list
+          end
+        end
+        [numbers, origins]
+      end
+
+      # Where MRI's parser refuses `tokens`, as the message it gives and the
+      # index of the token it stops at, or nil when it takes all of them.
+      def self.refusal(tokens)
+        require "<internal:parser_tables>"
+        tables = ParserTables
+        numbers, origins = symbols(tokens)
+        return nil if numbers.nil?
+
+        states = [0]
+        at = 0
+        loop do
+          state = states.last
+          return nil if state == tables::FINAL
+
+          symbol = numbers[at]
+          return nil if symbol.nil?
+
+          offset = tables::PACT[state]
+          rule = nil
+          if offset != tables::PACT_NINF
+            index = offset + symbol
+            if index >= 0 && index <= tables::LAST && tables::CHECK[index] == symbol
+              action = tables::TABLE[index]
+              if action.positive?
+                states << action
+                at += 1
+                next
+              end
+              return [message(state, symbol), origins[at]] if action == tables::TABLE_NINF || action.zero?
+
+              rule = -action
+            end
+          end
+          rule ||= tables::DEFACT[state]
+          return [message(state, symbol), origins[at]] if rule.zero?
+
+          states.pop(tables::R2[rule])
+          left = tables::R1[rule] - tables::NTOKENS
+          index = tables::PGOTO[left] + states.last
+          states << if index >= 0 && index <= tables::LAST && tables::CHECK[index] == states.last
+                      tables::TABLE[index]
+                    else
+                      tables::DEFGOTO[left]
+                    end
+        end
+      end
+
+      # The message MRI's parser gives for `symbol` met in `state`: the
+      # token, and the tokens it would take when there are at most four.
+      def self.message(state, symbol)
+        tables = ParserTables
+        expected = []
+        offset = tables::PACT[state]
+        if offset != tables::PACT_NINF
+          first = offset.negative? ? -offset : 0
+          last = [tables::LAST - offset + 1, tables::NTOKENS].min
+          (first...last).each do |candidate|
+            next unless tables::CHECK[candidate + offset] == candidate && candidate != 1
+            next if tables::TABLE[candidate + offset] == tables::TABLE_NINF
+
+            expected << candidate
+          end
+        end
+        expected = [] if expected.size > 4
+        words = [tables::NAMES[symbol], *expected.map { |held| tables::NAMES[held] }]
+        "syntax error, unexpected #{words[0]}" + (words.size > 1 ? ", expecting #{words[1..].join(" or ")}" : "")
+      end
+    end
 
     class Grammar
       BINARY = {
@@ -42,7 +195,7 @@ class Ripper
         string_beg xstring_beg regexp_beg words_beg qwords_beg symbols_beg qsymbols_beg symbeg
         lbrack lparen_arg lparen star dstar amper uminus_num uminus uplus ! ~ colon3 lambda
         bdot2 bdot3 k_def k_if k_unless k_while k_until k_case k_for k_begin k_class k_module
-        k_defined? k_yield k_super k_not k_redo k_retry k_BEGIN k_END
+        k_defined? k_yield k_super k_not k_redo k_retry k_BEGIN k_END k_return k_break k_next
       ] + LITERAL_KEYWORDS).freeze
 
       STATEMENT_ENDS = [
@@ -76,16 +229,70 @@ class Ripper
       # The tree of events for the whole program, not dispatched, with the
       # tokens it was built from in the order they were taken.
       def syntax_tree
-        [program, @taken]
+        tree = checked_program
+        [tree, @taken]
+      rescue SyntaxFailure => failure
+        raise reworded(failure)
       end
 
       def run
-        tree = program
+        tree = checked_program
         emit(tree)
       rescue SyntaxFailure => failure
-        @bridge.parse_error(failure.message, failure.token || @lookahead)
+        failure = reworded(failure)
+        if failure.scanned && !SCANNED_PARSE_ERRORS.include?(failure.message)
+          @bridge.compile_error(failure.message)
+        else
+          @bridge.parse_error(failure.message, failure.token || @lookahead)
+        end
         @scanner.drain
         nil
+      end
+
+      # The program, refused where MRI's parser refuses its tokens though
+      # the grammar read them, and where the grammar fails on input it was
+      # not written for.
+      def checked_program
+        tree = begin
+          program
+        rescue SyntaxFailure
+          raise
+        rescue StandardError => error
+          failure = SyntaxFailure.new("syntax error, unexpected #{error.class}")
+          failure.token = @lookahead
+          refused = reworded(failure)
+          raise error if refused.equal?(failure)
+
+          raise refused
+        end
+        ending = peek
+        found = MriParse.refusal(ending.type == :eof ? @taken + [ending] : @taken)
+        if found
+          failure = SyntaxFailure.new(found[0])
+          failure.token = (@taken + [ending])[found[1]]
+          raise failure
+        end
+        tree
+      end
+
+      # A refusal worded as MRI's parser words it: the tokens read so far,
+      # with the one the grammar stopped at, are run through MRI's parser
+      # tables, which name the token they cannot take and the tokens they
+      # would. A failure the tables do not reach is kept as it was raised.
+      def reworded(failure)
+        met = failure.token || @lookahead
+        tokens = @taken.dup
+        tokens << met if met && !tokens.include?(met)
+        found = MriParse.refusal(tokens)
+        return failure unless found
+        # A refusal of the grammar's own, such as a class named in lower
+        # case, stands unless MRI's parser stops at an earlier token.
+        return failure if !failure.message.start_with?("syntax error, unexpected") && met && found[1] >= tokens.index(met)
+
+        message, at = found
+        reworded = SyntaxFailure.new(message)
+        reworded.token = tokens[at]
+        reworded
       end
 
       def local?(name)
@@ -106,7 +313,11 @@ class Ripper
       def peek
         @lookahead ||= begin
           token = @scanner.next_token
-          raise SyntaxFailure, token.value if token.type == :error
+          if token.type == :error
+            failure = SyntaxFailure.new(token.value)
+            failure.scanned = true
+            raise failure
+          end
 
           token
         end
@@ -174,7 +385,17 @@ class Ripper
       # Scopes
 
       def declare(name)
+        report_error("#{name} is reserved for numbered parameter") if name.match?(/\A_[1-9]\z/)
         @scope.names[name] = true
+      end
+
+      # Declare a parameter the token names, reporting a name the list
+      # already declared. A name starting with `_` may repeat.
+      def declare_parameter(token, name = token.text)
+        if @scope.names.key?(name) && !name.start_with?("_")
+          report_error("duplicated argument name", token.index, after: true)
+        end
+        declare(name)
       end
 
       def method_scope
@@ -187,12 +408,52 @@ class Ripper
       # the indexes of the first and last token the error names, or nil when
       # MRI names none, and the index of the last token taken when it was
       # reported.
-      attr_reader :reported_errors
-      public :reported_errors
+      attr_reader :reported_errors, :taken
+      public :reported_errors, :taken
 
-      def report_error(message, first = nil, last = first, at: last || @taken.size - 1)
-        @bridge.compile_error(message)
-        @reported_errors << [message, first, last, at]
+      # An error the scanner reported at a place on a line, which the
+      # message quotes.
+      def report_scanned_error(message, line, from, to)
+        @bridge.error_event(Grammar.error_event_for(message), message, nil)
+        @reported_errors << [message, nil, nil, nil, false, [line, from, to]]
+      end
+      public :report_scanned_error
+
+      # `after` places the error where the token at `first` ends, with no
+      # width.
+      def report_error(message, first = nil, last = first, at: last || @taken.size - 1, after: false)
+        @bridge.error_event(Grammar.error_event_for(message), message, first && @taken[first])
+        @reported_errors << [message, first, last, at, after]
+      end
+
+      # The Ripper event MRI's parser reports an error through, which its
+      # message decides.
+      PARSE_ERRORS = [
+        /\AInvalid (return|yield|retry|break|next|redo)\b/, /\A(class|module) definition in method body\z/,
+        /\Aduplicated (argument|variable) name\z/, /\Aalternative pattern after variable capture\z/,
+        /\Avariable capture in alternative pattern\z/, /\Asetter method cannot be defined/,
+        /\Avoid value expression\z/, /\ABEGIN is permitted only at toplevel\z/
+      ].freeze
+      ASSIGN_ERRORS = [/\Adynamic constant assignment\z/, /\ACan't (change the value of|assign to|set variable)/].freeze
+
+      # The scanner's errors MRI's lexer reports through `parse_error`.
+      SCANNED_PARSE_ERRORS = [
+        "numeric literal without digits", "Invalid octal digit", "invalid hex escape",
+        "invalid Unicode escape", "unterminated Unicode escape", "unknown type of %string"
+      ].freeze
+
+      def self.error_event_for(message)
+        if PARSE_ERRORS.any? { |pattern| pattern.match?(message) } || SCANNED_PARSE_ERRORS.include?(message)
+          :parse_error
+        elsif ASSIGN_ERRORS.any? { |pattern| pattern.match?(message) }
+          :assign_error
+        elsif message == "can't make alias for the number variables"
+          :alias_error
+        elsif message == "class/module name must be CONSTANT"
+          :class_name_error
+        else
+          :compile_error
+        end
       end
 
       # The indexes of the first and last token a node was written with.
@@ -209,22 +470,37 @@ class Ripper
         report_error(message) unless method_scope.anonymous.include?(kind)
       end
 
-      def numbered_parameter
+      # A numbered parameter the token wrote. The scope records the first
+      # one, and the errors name where it, or an `it` before it, was used.
+      def numbered_parameter(token)
+        outer = @scope.parent
+        outer = outer.parent while outer&.block && !outer.numbered
         if @scope.ordinary_parameters
           report_error("ordinary parameter is defined")
         elsif @scope.it_used
-          report_error("numbered parameters are not allowed when 'it' is already used")
+          earlier_use_error("numbered parameters are not allowed when 'it' is already used",
+                            "'it' is already used here", @scope.it_used)
+        elsif outer&.block && outer.numbered
+          earlier_use_error("numbered parameter is already used in outer block",
+                            "numbered parameter is already used here", outer.numbered)
         end
-        @scope.numbered = true
+        @scope.numbered ||= token
       end
 
-      def it_parameter
+      def it_parameter(token)
         if @scope.ordinary_parameters
           report_error("ordinary parameter is defined")
         elsif @scope.numbered
-          report_error("'it' is not allowed when a numbered parameter is already used")
+          earlier_use_error("'it' is not allowed when a numbered parameter is already used",
+                            "numbered parameter is already used here", @scope.numbered)
         end
-        @scope.it_used = true
+        @scope.it_used ||= token
+      end
+
+      # An error whose second line names the file and line of an earlier
+      # use, which is the line quoted beneath it.
+      def earlier_use_error(message, here, earlier)
+        report_error("#{message}\n#{@bridge.filename}:#{earlier.line}: #{here}", earlier.index)
       end
 
       # A method, class or module body starts with fresh `do` and
@@ -292,12 +568,13 @@ class Ripper
       end
 
       def statements
-        saved = [@command_argument_depth, @command_in_parentheses]
+        saved = [@command_argument_depth, @command_in_parentheses, @statements_depth]
         @command_argument_depth = 0
         @command_in_parentheses = false
+        @statements_depth = (@statements_depth || 0) + 1
         statement_list
       ensure
-        @command_argument_depth, @command_in_parentheses = saved
+        @command_argument_depth, @command_in_parentheses, @statements_depth = saved
       end
 
       def statement_list
@@ -356,18 +633,18 @@ class Ripper
           case peek_type
           when :k_if_mod
             take
-            node = ev(:if_mod, expr_value, node)
+            node = ev(:if_mod, condition_value, node)
           when :k_unless_mod
             take
-            node = ev(:unless_mod, expr_value, node)
+            node = ev(:unless_mod, condition_value, node)
           when :k_while_mod
             take
             @jump_errors.last&.clear
-            node = ev(:while_mod, expr_value, node)
+            node = ev(:while_mod, condition_value, node)
           when :k_until_mod
             take
             @jump_errors.last&.clear
-            node = ev(:until_mod, expr_value, node)
+            node = ev(:until_mod, condition_value, node)
           when :k_rescue_mod
             take
             node = ev(:rescue_mod, node, expression_statement)
@@ -434,8 +711,16 @@ class Ripper
 
       def begin_end_block
         keyword = take
+        if keyword.type == :k_BEGIN && @statements_depth != 1
+          report_error("BEGIN is permitted only at toplevel", keyword.index)
+        end
         expect(:lbrace, :"{", :lbrace_arg)
+        # The statements of a BEGIN block are at the top level, so another
+        # BEGIN may be written among them.
+        saved = @statements_depth
+        @statements_depth = 0 if keyword.type == :k_BEGIN
         stmts = statements
+        @statements_depth = saved
         expect(:"}")
         ev(keyword.text.to_sym, stmts)
       end
@@ -449,6 +734,38 @@ class Ripper
       end
 
       def expr_value = expr(command: true)
+
+      # A condition, with the warnings MRI's parser gives for a literal
+      # written where a test goes.
+      def condition_value
+        node = expr_value
+        literal_condition_warnings(node)
+        node
+      end
+
+      def literal_condition_warnings(node)
+        case node
+        when Token
+          nil
+        when Ev
+          case node.name
+          when :regexp_literal then @bridge.warn("regex literal in condition", @taken[node.last])
+          when :string_literal then @bridge.warn("string literal in condition", @taken[node.last])
+          when :dot2, :dot3
+            node.args.each do |bound|
+              @bridge.warn("integer literal in flip-flop", bound) if bound.is_a?(Token) && bound.type == :int
+            end
+          when :binary
+            if %i[&& || and or].include?(node.args[1])
+              literal_condition_warnings(node.args[0])
+              literal_condition_warnings(node.args[2])
+            end
+          when :paren
+            list = node.args[0]
+            literal_condition_warnings(list.args[1]) if list.is_a?(Ev) && list.name == :stmts_add
+          end
+        end
+      end
 
       def expr(command: false, mlhs: false)
         left = not_expression(command: command, mlhs: mlhs)
@@ -517,7 +834,11 @@ class Ripper
 
             operator = take
             right_precedence = type == :pow ? precedence : precedence + 1
+            value_expression(left)
             right = arg(right_precedence)
+            # `&&` and `||` hand on their right side as it is, so only the
+            # left is a value they test.
+            value_expression(right) unless %i[&& ||].include?(type)
             name = type == :pow ? :** : type
             declare_named_captures(left) if type == :"=~"
             left = ev(:binary, left, name, right)
@@ -640,7 +961,7 @@ class Ripper
       end
 
       def assignment_value(command)
-        value = arg(0, command: command)
+        value = value_expression(arg(0, command: command))
         if value.is_a?(Ev) && value.terminal
           return value unless peek_type == :k_rescue_mod
 
@@ -657,6 +978,12 @@ class Ripper
 
       def splat_rhs
         take
+        # A bare `*` forwards the method's anonymous rest parameter, which
+        # the right of an assignment cannot take on its own.
+        unless argument_start?
+          anonymous_argument(:rest, "no anonymous rest parameter")
+          unexpected
+        end
         list = ev(:mrhs_add_star, ev(:mrhs_new), arg(0))
         while accept(:",")
           if peek_type == :star
@@ -684,13 +1011,15 @@ class Ripper
       end
 
       def assignable?(node)
-        return true if node.is_a?(Token) && %i[ivar gvar cvar const].include?(node.type)
+        return true if node.is_a?(Token) && %i[ivar gvar cvar const backref].include?(node.type)
         return false unless node.is_a?(Ev)
 
         case node.name
         when :vcall, :var_ref
           token = node.args[0]
-          %i[ident ivar gvar cvar const].include?(token.type)
+          # A keyword variable and a match reference read as targets, which
+          # the assignment then refuses.
+          %i[ident ivar gvar cvar const backref].include?(token.type) || LITERAL_KEYWORDS.include?(token.type)
         when :call
           node.args[2].is_a?(Token)
         when :aref, :const_path_ref, :top_const_ref
@@ -700,7 +1029,22 @@ class Ripper
         end
       end
 
+      # Refuse a target that cannot change: `self`, `nil`, `true`, `false`,
+      # `__FILE__`, `__LINE__`, `__ENCODING__` and a match reference.
+      def fixed_target_error(token)
+        case token.type
+        when :k_self then report_error("Can't change the value of self", token.index)
+        when :backref then report_error("Can't set variable #{token.text}")
+        when *LITERAL_KEYWORDS then report_error("Can't assign to #{token.text}", token.index)
+        end
+      end
+
       def assignment_target(node, declare_local: true)
+        if node.is_a?(Token)
+          fixed_target_error(node)
+          return ev(:var_field, node)
+        end
+
         case node.name
         when :vcall, :var_ref
           token = node.args[0]
@@ -708,6 +1052,7 @@ class Ripper
           if token.type == :const && @in_def
             report_error("dynamic constant assignment", token.index)
           end
+          fixed_target_error(token)
           ev(:var_field, token)
         when :call
           receiver, operator, name = node.args
@@ -877,11 +1222,11 @@ class Ripper
         when :k_redo
           keyword = take
           invalid_jump("Invalid redo", keyword) if @loop_depth.zero? && !@in_defined
-          ev(:redo)
+          jump_written(ev(:redo), keyword)
         when :k_retry
           keyword = take
           report_error("Invalid retry without rescue", keyword.index) unless @in_rescue || @in_defined
-          ev(:retry)
+          jump_written(ev(:retry), keyword)
         when :k_yield then yield_expression(command)
         when :k_super then super_expression(command)
         when :k_not
@@ -918,10 +1263,12 @@ class Ripper
           return ev(:var_ref, name) if local?(name.text) && !block_follows?
 
           if @scope.block && name.text.match?(/\A_[1-9]\z/)
-            numbered_parameter
+            numbered_parameter(name)
             return ev(:var_ref, name)
           end
-          it_parameter if @scope.block && name.text == "it" && !block_follows?
+          if @scope.block && name.text == "it" && !block_follows? && !%i[= op_asgn].include?(peek_type)
+            it_parameter(name)
+          end
         end
         if command_follows?(command)
           args = command_args
@@ -1070,7 +1417,7 @@ class Ripper
             expect(:"]")
             node = ev(:aref, node, args)
           when :"{"
-            return node unless block_target?(node)
+            return node unless block_target?(node) && !command_form?(node)
 
             node = ev(:method_add_block, block_receiver(node), brace_block)
           when :k_do
@@ -1109,6 +1456,15 @@ class Ripper
         return terminal(:method_add_arg, call, command_args) if command_follows?(true)
 
         call
+      end
+
+      # A call written with arguments and no parentheses, which a `{`
+      # cannot give a block: `foo 1 { }` is refused where `foo(1) { }` is
+      # not.
+      def command_form?(node)
+        return true if %i[command command_call].include?(node.name)
+
+        node.name == :super && node.args[0].is_a?(Ev) && node.args[0].name != :arg_paren
       end
 
       def block_target?(node)
@@ -1283,7 +1639,7 @@ class Ripper
               skip_newlines
               (assocs ||= []) << ev(:assoc_new, value, arg(0))
             else
-              args = ev(:args_add, args, value)
+              args = ev(:args_add, args, value_expression(value))
             end
           end
           break unless peek_type == :","
@@ -1433,7 +1789,7 @@ class Ripper
           locals = []
           loop do
             name = expect(:ident)
-            declare(name.text)
+            declare_parameter(name)
             locals << name
             break unless accept(:",")
           end
@@ -1460,7 +1816,7 @@ class Ripper
           case peek_type
           when :ident
             name = take
-            declare(name.text)
+            declare_parameter(name)
             if peek_type == :"="
               take
               @scanner.in_argdef = false
@@ -1479,7 +1835,7 @@ class Ripper
           when :star, :*
             take
             name = peek_type == :ident ? take : nil
-            declare(name.text) if name
+            declare_parameter(name) if name
             @scope.anonymous << :rest unless name || block
             rest = ev(:rest_param, name)
           when :dstar, :pow
@@ -1489,19 +1845,19 @@ class Ripper
               keyword_rest = :nil
             else
               name = peek_type == :ident ? take : nil
-              declare(name.text) if name
+              declare_parameter(name) if name
               @scope.anonymous << :keyword_rest unless name || block
               keyword_rest = ev(:kwrest_param, name)
             end
           when :amper, :&
             take
             name = peek_type == :ident ? take : nil
-            declare(name.text) if name
+            declare_parameter(name) if name
             @scope.anonymous << :block unless name || block
             block_arg = ev(:blockarg, name)
           when :label
             label = take
-            declare(label.text.chomp(":"))
+            declare_parameter(label, label.text.chomp(":"))
             if argument_start? && ![:",", closer].include?(peek_type)
               @scanner.in_argdef = false
               keywords << [label, block ? postfix(primary(command: false)) : arg(0)]
@@ -1540,7 +1896,7 @@ class Ripper
           when :star, :*
             take
             name = peek_type == :ident ? take : nil
-            declare(name.text) if name
+            declare_parameter(name) if name
             list = ev(:mlhs_add_star, list, name)
             post = ev(:mlhs_new)
           when :lparen, :"(", :lparen_arg
@@ -1550,7 +1906,7 @@ class Ripper
             list = ev(:mlhs_add, list, ev(:mlhs_paren, inner))
           else
             name = expect(:ident)
-            declare(name.text)
+            declare_parameter(name)
             if post
               post = ev(:mlhs_add, post, name)
             else
@@ -1743,7 +2099,7 @@ class Ripper
 
       def if_expression
         take
-        condition = expr_value
+        condition = condition_value
         then_clause
         body = statements
         node = ev(:if, condition, body, if_tail)
@@ -1755,7 +2111,7 @@ class Ripper
         case peek_type
         when :k_elsif
           take
-          condition = expr_value
+          condition = condition_value
           then_clause
           body = statements
           ev(:elsif, condition, body, if_tail)
@@ -1767,7 +2123,7 @@ class Ripper
 
       def unless_expression
         take
-        condition = expr_value
+        condition = condition_value
         then_clause
         body = statements
         alternative = nil
@@ -1782,7 +2138,7 @@ class Ripper
       def loop_expression(kind)
         take
         @scanner.cond_push(true)
-        condition = expr_value
+        condition = condition_value
         @scanner.cond_pop
         if peek_type == :k_do_cond
           take
@@ -1844,10 +2200,14 @@ class Ripper
         @scanner.state = EXPR_BEG | EXPR_LABEL
         @scanner.command_start = false
         saved = @scanner.in_kwarg
+        saved_pattern = [@pattern_seen, @in_alt_pattern]
         @scanner.in_kwarg = true
+        @pattern_seen = {}
+        @in_alt_pattern = false
         yield
       ensure
         @scanner.in_kwarg = saved
+        @pattern_seen, @in_alt_pattern = saved_pattern
       end
 
       def in_clause
@@ -1902,7 +2262,7 @@ class Ripper
         while peek_type == :"=>"
           take
           name = expect(:ident)
-          bind_pattern_variable(name.text)
+          bind_pattern_variable(name.text, name)
           left = ev(:binary, left, :"=>", ev(:var_field, name))
         end
         left
@@ -1912,14 +2272,18 @@ class Ripper
         saved = @pattern_bindings
         @pattern_bindings = []
         left = pattern_basic
-        alternatives = false
+        captured = @pattern_bindings.any? { |bound| !bound.start_with?("_") }
         while peek_type == :|
-          take
-          alternatives = true
-          left = ev(:binary, left, :|, pattern_basic)
-        end
-        if alternatives && (name = @pattern_bindings.find { |bound| !bound.start_with?("_") })
-          report_error("illegal variable in alternative pattern (#{name})")
+          bar = take
+          saved_alternative = @in_alt_pattern
+          @in_alt_pattern = true
+          right = pattern_basic
+          @in_alt_pattern = saved_alternative
+          # A side that captured a name holds nothing when the other side
+          # matched, so Ruby refuses the alternative.
+          report_error("alternative pattern after variable capture", bar.index) if captured
+          captured ||= @pattern_bindings.any? { |bound| !bound.start_with?("_") }
+          left = ev(:binary, left, :|, right)
         end
         left
       ensure
@@ -1927,7 +2291,15 @@ class Ripper
         @pattern_bindings = saved
       end
 
-      def bind_pattern_variable(name)
+      # Bind a name a pattern captures, which `token` wrote. A name written
+      # twice in one pattern, or captured on a side of an alternative, is
+      # refused unless it starts with `_`.
+      def bind_pattern_variable(name, token = nil)
+        if token && !name.start_with?("_")
+          report_error("duplicated variable name", token.index) if @pattern_seen&.key?(name)
+          report_error("variable capture in alternative pattern", token.index) if @in_alt_pattern
+        end
+        @pattern_seen[name] = true if @pattern_seen
         declare(name)
         @pattern_bindings&.push(name)
       end
@@ -1936,7 +2308,7 @@ class Ripper
         case peek_type
         when :ident
           name = take
-          bind_pattern_variable(name.text)
+          bind_pattern_variable(name.text, name)
           ev(:var_field, name)
         when :const, :colon3
           constant = pattern_constant
@@ -2059,7 +2431,7 @@ class Ripper
           if peek_type == :star
             take
             name = peek_type == :ident ? take : nil
-            bind_pattern_variable(name.text) if name
+            bind_pattern_variable(name.text, name) if name
             splat = ev(:var_field, name)
             if rest
               return finish_find_pattern(constant, closer, rest, post, splat)
@@ -2092,7 +2464,7 @@ class Ripper
           when :label
             label = take
             if pattern_end?(closer) || peek_type == :","
-              bind_pattern_variable(label.text.chomp(":"))
+              bind_pattern_variable(label.text.chomp(":"), label)
               pairs << [label, nil]
             else
               pairs << [label, pattern_expression]
@@ -2110,7 +2482,7 @@ class Ripper
               rest = ev(:var_field, :nil)
             else
               name = peek_type == :ident ? take : nil
-              bind_pattern_variable(name.text) if name
+              bind_pattern_variable(name.text, name) if name
               rest = name ? ev(:var_field, name) : nil
             end
           else
@@ -2210,7 +2582,7 @@ class Ripper
       end
 
       def def_expression
-        take
+        keyword = take
         singleton = nil
         operator = nil
         name = def_name_or_singleton
@@ -2222,7 +2594,6 @@ class Ripper
           @scanner.state = EXPR_ENDFN | EXPR_LABEL
         end
         @scanner.in_argdef = true
-        @bridge.compile_error("dynamic constant assignment") if false
         result = nil
         with_scope(false) do
           in_method_body do
@@ -2251,6 +2622,12 @@ class Ripper
                      end
             @scanner.in_argdef = false
             if peek_type == :"="
+              # A method named `name=` sets an attribute, which an endless
+              # definition cannot answer the value of.
+              if name.is_a?(Token) && (name.text == "[]=" || name.text.match?(/\A[A-Za-z_]\w*=\z/))
+                report_error("setter method cannot be defined in an endless method definition",
+                             keyword.index, name.index)
+              end
               take
               skip_newlines
               value = arg(0, command: true)
@@ -2306,12 +2683,16 @@ class Ripper
           return node
         end
         node = primary(command: false)
-        node = node.args[0] if node.is_a?(Ev) && node.name == :var_ref && peek_type != :colon2
+        node = node.args[0] if node.is_a?(Ev) && %i[var_ref vcall].include?(node.name) && peek_type != :colon2
         if node.is_a?(Token)
-          raise SyntaxFailure, "class/module name must be CONSTANT" unless node.type == :const
+          # A name in lower case is a class name written wrong. Anything
+          # else can only start a path, which `::` has to follow.
+          report_error("class/module name must be CONSTANT", node.index) if node.type == :ident
+          unexpected unless %i[const ident].include?(node.type)
 
           return ev(:const_ref, node)
         end
+        unexpected unless peek_type == :colon2
         while peek_type == :colon2
           take
           node = ev(:const_path_ref, node, expect(:const))
@@ -2373,10 +2754,10 @@ class Ripper
           report_error("Invalid return in class/module body", keyword.index)
         end
         if command_follows?(command) || (command && argument_start?)
-          return command_block(terminal(:return, jump_arguments))
+          return command_block(jump_written(terminal(:return, jump_arguments), keyword))
         end
 
-        ev(:return0)
+        jump_written(ev(:return0), keyword)
       end
 
       def jump_expression(command)
@@ -2385,12 +2766,55 @@ class Ripper
         entry = invalid_jump("Invalid #{name}", keyword) if @loop_depth.zero? && !@in_defined
         if command && argument_start?
           arguments = jump_arguments
-          # The error names the jump with the value it carries.
-          entry[2] = @taken.size - 1 if entry
-          return command_block(terminal(name, arguments))
+          if entry
+            # The error names the jump with the value it carries, and comes
+            # after those of the jumps inside the value.
+            entry[2] = @taken.size - 1
+            pending = @jump_errors.last
+            if pending&.delete_if { |held| held.equal?(entry) }
+              pending << entry
+            end
+          end
+          return command_block(jump_written(terminal(name, arguments), keyword))
         end
 
-        ev(name, ev(:args_new))
+        jump_written(ev(name, ev(:args_new)), keyword)
+      end
+
+      # Note the keyword a jump was written with, which an error about the
+      # jump used as a value names.
+      def jump_written(node, keyword)
+        (@jump_keywords ||= {}.compare_by_identity)[node] = keyword.index
+        node
+      end
+
+      JUMPS = %i[return return0 break next redo retry].freeze
+
+      # The jump a value ends in, which can hand nothing on: the value
+      # itself, or the last statement of a parenthesized one.
+      def void_jump(node)
+        return nil unless node.is_a?(Ev)
+        return node if JUMPS.include?(node.name)
+        # `a && b` and `a || b` answer `a` when it decides them.
+        return void_jump(node.args[0]) if node.name == :binary && %i[&& ||].include?(node.args[1])
+        if node.name == :paren
+          list = node.args[0]
+          return void_jump(list.args[1]) if list.is_a?(Ev) && list.name == :stmts_add
+        end
+
+        nil
+      end
+
+      # A value, refused where it is a jump, whose value Ruby has nothing to
+      # hand on.
+      def value_expression(node)
+        jump = void_jump(node)
+        if jump
+          first = @jump_keywords&.fetch(jump, nil)
+          last = token_bounds(jump)&.last || first
+          report_error("void value expression", first, [last, first].compact.max)
+        end
+        node
       end
 
       def jump_arguments

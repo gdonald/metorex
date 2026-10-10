@@ -135,6 +135,7 @@ impl Class {
     /// methods, so the two keep each other alive. Nothing reads a class after
     /// this, and it is what lets the whole graph be freed.
     pub fn tear_down(&self) {
+        super::methods::method_state_changed();
         self.methods.borrow_mut().clear();
         self.class_variables.borrow_mut().clear();
         self.mixins.borrow_mut().clear();

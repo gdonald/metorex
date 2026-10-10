@@ -34,6 +34,32 @@ impl VirtualMachine {
         }
     }
 
+    /// What Ruby prints after the program's name when the program does not
+    /// parse: the detailed message of a SyntaxError raised from its file,
+    /// which syntax_suggest heads with the lines around a missing or extra
+    /// `end`.
+    pub fn syntax_error_report(&mut self, message: &str, path: &str) -> String {
+        let plain = format!("{} (SyntaxError)", message);
+        let MetorexError::UncaughtException { exception, .. } =
+            crate::vm::errors::syntax_error(message.to_string(), Some(path), Position::default())
+        else {
+            return plain;
+        };
+        let mut keywords = indexmap::IndexMap::new();
+        keywords.insert("__MX_KWARGS__".to_string(), Object::Bool(true));
+        keywords.insert(":highlight".to_string(), Object::Bool(false));
+        let arguments = vec![Object::Dict(Rc::new(RefCell::new(keywords)))];
+        match self.send_to_object(
+            exception,
+            "detailed_message",
+            arguments,
+            Position::default(),
+        ) {
+            Ok(Object::String(text)) => text.as_str().to_string(),
+            _ => plain,
+        }
+    }
+
     /// Call a native method on an Exception object
     pub(crate) fn call_exception_method(
         &mut self,
@@ -270,6 +296,16 @@ impl VirtualMachine {
                     .cloned();
                 Ok(Some(held.unwrap_or(Object::Bool(false))))
             }
+            // Where in the program's own code the error was raised, as the
+            // file, line, column and name error_highlight reads.
+            "__spot_hint__" => Ok(Some(
+                exception
+                    .borrow()
+                    .instance_vars
+                    .get(crate::vm::error_spots::SPOT_HINT_KEY)
+                    .cloned()
+                    .unwrap_or(Object::Nil),
+            )),
             "receiver" => {
                 let details = exception.borrow();
                 if let Some(value) = details.receiver.clone() {
@@ -380,7 +416,7 @@ impl VirtualMachine {
                         if given_locations {
                             let mut details = exception.borrow_mut();
                             details.backtrace_sites = Some(sites);
-                            details.raise_column = None;
+                            details.site_columns = Vec::new();
                             details.backtrace_locations_array = Some(arguments[0].clone());
                         }
                         // Ruby keeps the very Array of Strings it was handed,
@@ -665,7 +701,7 @@ impl VirtualMachine {
                     return Ok(Some(Object::Nil));
                 };
                 let location_class = self.backtrace_location_class();
-                let raise_column = exception.borrow().raise_column;
+                let site_columns = exception.borrow().site_columns.clone();
                 let entries: Vec<Object> = sites
                     .iter()
                     .enumerate()
@@ -681,8 +717,13 @@ impl VirtualMachine {
                                 "absolute_path".to_string(),
                                 Object::string(absolute_path(path)),
                             );
-                            // The raise site knows the column of what raised.
-                            if let (0, Some(column)) = (at, raise_column) {
+                            // The place the exception was raised is the call
+                            // that raised it, outside any call it finished
+                            // before then that starts at the same column.
+                            if at == 0 {
+                                filling.set_var("raised".to_string(), Object::Bool(true));
+                            }
+                            if let Some(column) = site_columns.get(at).copied().flatten() {
                                 filling.set_var("column".to_string(), Object::Int(column as i64));
                             }
                         }
@@ -764,6 +805,25 @@ impl VirtualMachine {
         BY_CLASS.iter().any(|(class, names)| {
             names.contains(&name) && self.exception_descends_from(exception, class)
         })
+    }
+
+    /// The class an exception is an instance of: the one it carries, or the
+    /// one its class name resolves to for an exception the interpreter raised.
+    pub(crate) fn exception_class(&self, receiver: &Object) -> Option<Rc<crate::class::Class>> {
+        let Object::Exception(details) = receiver else {
+            return None;
+        };
+        let details = details.borrow();
+        if let Some(class) = &details.class {
+            return Some(Rc::clone(class));
+        }
+        match self.globals().get(&details.exception_type) {
+            Some(Object::Class(class)) => Some(class),
+            _ => match self.resolve_qualified_constant(&details.exception_type) {
+                Some(Object::Class(class)) => Some(class),
+                _ => None,
+            },
+        }
     }
 
     /// Whether an exception is an instance of the class named `ancestor` or

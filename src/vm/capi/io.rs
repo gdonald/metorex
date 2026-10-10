@@ -485,6 +485,16 @@ fn mode_string(descriptor: i32, mode: i32) -> String {
     format!("{}{}", access, binary)
 }
 
+/// The access `mode` asks for, or None when it names neither side.
+fn asked_access(mode: i32) -> Option<&'static str> {
+    match (mode & FMODE_READABLE != 0, mode & FMODE_WRITABLE != 0) {
+        (true, true) => Some("r+"),
+        (true, false) => Some("r"),
+        (false, true) => Some("w"),
+        (false, false) => None,
+    }
+}
+
 /// A new instance of `klass` over `descriptor`, naming `path`, with the
 /// timeout and encodings given.
 #[unsafe(no_mangle)]
@@ -508,6 +518,18 @@ pub extern "C-unwind" fn rb_io_open_descriptor(
         "instance_variable_set",
         vec![Object::symbol("@path"), call(path, "freeze", Vec::new())],
     );
+    // The IO reads and writes as `mode` says, even where the descriptor was
+    // opened otherwise, and the operating system refuses what it cannot do.
+    if let Some(asked) = asked_access(mode) {
+        call(
+            io.clone(),
+            "instance_variable_set",
+            vec![
+                Object::symbol("@__file_mode"),
+                Object::string(asked.to_string()),
+            ],
+        );
+    }
     if timeout != QNIL {
         call(io.clone(), "timeout=", vec![to_object(timeout)]);
     }

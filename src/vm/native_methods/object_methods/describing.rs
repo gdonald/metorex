@@ -39,6 +39,29 @@ impl VirtualMachine {
                     return Ok(Some(self.memoized_text(slot, text)));
                 }
                 if let Object::Symbol(s) = receiver {
+                    // A name past ASCII in an encoding other than the one the
+                    // answer is written in cannot be shown as it is, so it is
+                    // quoted and escaped the way the String would be.
+                    let named = s.encoding_name();
+                    if method_name != "to_s"
+                        && !matches!(named.as_str(), "UTF-8" | "US-ASCII" | "ASCII-8BIT")
+                        && crate::vm::native_methods::string_methods::encoding_is_ascii_compatible(
+                            &named,
+                        )
+                        && !crate::vm::native_methods::string_methods::binary_bytes(s).is_ascii()
+                    {
+                        let made = crate::object::StringValue::with_encoding(s.to_text(), named);
+                        if s.holds_bytes() {
+                            made.mark_bytes();
+                        }
+                        let text = Object::String(std::rc::Rc::new(made));
+                        let shown = self.send_to_object(text, "inspect", Vec::new(), position)?;
+                        let shown = match shown {
+                            Object::String(held) => held.as_str().to_string(),
+                            _ => String::new(),
+                        };
+                        return Ok(Some(Object::string(format!(":{shown}"))));
+                    }
                     if method_name != "to_s" {
                         return Ok(Some(Object::string(
                             crate::vm::native_methods::string_methods::symbol_inspect_text(s),

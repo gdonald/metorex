@@ -61,7 +61,7 @@ end
 
 #[test]
 fn every_object_answers_respond_to_missing_with_false() {
-    let result = run("Object.new.respond_to_missing?(:anything, true)");
+    let result = run("Object.new.send(:respond_to_missing?, :anything, true)");
     assert_eq!(result, Some(Object::Bool(false)));
 }
 

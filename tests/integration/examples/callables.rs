@@ -206,15 +206,19 @@ fn test_callables_block_local_before_assignment_no_parens_execution() {
 const IMPLICIT_PARAMETERS_SCOPE_OUTPUT: &str = concat!(
     "[6]\n",
     "7\n",
-    "[]\n",
-    "[]\n",
+    "[:it, :refused]\n",
+    "[:it, :refused]\n",
     "0\n",
-    "'it' is not allowed when an ordinary parameter is defined\n",
-    "'it' is not allowed when an ordinary parameter is defined\n",
-    "numbered parameters are not allowed when 'it' is already used\n",
-    "'it' is not allowed when a numbered parameter is already used\n",
-    "_1 is reserved for numbered parameter\n",
-    "a numbered parameter is not allowed when an ordinary parameter is defined\n"
+    "no error for proc { |x| it }\n",
+    "no error for -> () { it }\n",
+    "no error for proc { it + _1 }\n",
+    "no error for proc { _1 + it }\n",
+    "syntax error found\n",
+    "> 1 | proc { _1 = 0 }\n",
+    "    |        ^~ _1 is reserved for numbered parameters\n",
+    "syntax error found\n",
+    "> 1 | proc { |x| _1 }\n",
+    "    |            ^~ numbered parameters are not allowed when an ordinary parameter is defined\n",
 );
 
 #[test]

@@ -167,11 +167,11 @@ rescue TypeError => e
   puts "Caught TypeError: #{e.message}"
 end
 
-# ValueError (value-related errors)
+# ArgumentError (value-related errors)
 begin
-  raise ValueError.new("Invalid value provided")
-rescue ValueError => e
-  puts "Caught ValueError: #{e.message}"
+  raise ArgumentError.new("Invalid value provided")
+rescue ArgumentError => e
+  puts "Caught ArgumentError: #{e.message}"
 end
 
 # ============================================================================
@@ -183,14 +183,14 @@ puts "\n=== Exception Catching ==="
 # Catching specific exceptions
 def divide(a, b)
   if b == 0
-    raise ValueError.new("Division by zero")
+    raise ArgumentError.new("Division by zero")
   end
   a / b
 end
 
 begin
   result = divide(10, 0)
-rescue ValueError => e
+rescue ArgumentError => e
   puts "Value error: #{e.message}"
 rescue StandardError => e
   puts "Standard error: #{e.message}"

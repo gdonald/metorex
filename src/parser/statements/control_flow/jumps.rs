@@ -12,10 +12,7 @@ impl Parser {
             && self.jump_target_depth == 0
             && !self.in_defined_argument
         {
-            return Err(MetorexError::syntax_error(
-                "Invalid break".to_string(),
-                SourceLocation::new(pos.line, pos.column, pos.offset),
-            ));
+            self.unlooped_jumps.push((pos, "Invalid break"));
         }
         // A value only applies when the very next token is an expression on
         // the same line — stop if we hit a statement terminator or an `if`/
@@ -55,10 +52,7 @@ impl Parser {
         // A `next` in a method body, with no loop or block around it, has
         // nothing to jump to.
         if self.def_body_depth > 0 && self.jump_target_depth == 0 && !self.in_defined_argument {
-            return Err(MetorexError::syntax_error(
-                "Invalid next".to_string(),
-                SourceLocation::new(pos.line, pos.column, pos.offset),
-            ));
+            self.unlooped_jumps.push((pos, "Invalid next"));
         }
         let value = if self.is_at_end()
             || self.check(&[
@@ -108,7 +102,28 @@ impl Parser {
         self.assignment_rhs_depth += 1;
         let parsed = self.parse_expression();
         self.assignment_rhs_depth -= 1;
-        let value = parsed?;
+        let mut value = parsed?;
+        // The value can be an assignment: `return x = value`.
+        if self.check(&[TokenKind::Equal])
+            && matches!(
+                value,
+                Expression::Identifier { .. }
+                    | Expression::InstanceVariable { .. }
+                    | Expression::ClassVariable { .. }
+                    | Expression::GlobalVariable { .. }
+                    | Expression::Index { .. }
+            )
+        {
+            let eq_pos = self.advance().position;
+            self.skip_whitespace();
+            let assigned = self.parse_expression()?;
+            value = Expression::BinaryOp {
+                op: crate::ast::BinaryOp::Assign,
+                left: Box::new(value),
+                right: Box::new(assigned),
+                position: eq_pos,
+            };
+        }
         if self.check(&[TokenKind::KeywordAnd, TokenKind::KeywordOr]) {
             return Err(self.error_at_current("void value expression"));
         }
@@ -135,27 +150,28 @@ impl Parser {
     pub(crate) fn parse_redo_statement(&mut self) -> Result<Statement, MetorexError> {
         let pos = self.expect(TokenKind::Redo, "Expected 'redo'")?.position;
         if self.jump_target_depth == 0 && !self.in_defined_argument {
-            self.unlooped_redos.push(pos);
+            self.unlooped_jumps.push((pos, "Invalid redo"));
         }
         self.wrap_with_modifier(Statement::Redo { position: pos })
     }
 
-    /// Refuse a `redo` written from `offset` on that no loop took in.
-    pub(crate) fn refuse_unlooped_redos_after(
+    /// Refuse a `redo`, `break` or `next` written from `offset` on that no
+    /// loop took in.
+    pub(crate) fn refuse_unlooped_jumps_after(
         &mut self,
         offset: usize,
     ) -> Result<(), MetorexError> {
-        let Some(at) = self
-            .unlooped_redos
+        let Some((at, refusal)) = self
+            .unlooped_jumps
             .iter()
-            .find(|at| at.offset >= offset)
+            .find(|(at, _)| at.offset >= offset)
             .copied()
         else {
             return Ok(());
         };
-        self.unlooped_redos.retain(|at| at.offset < offset);
+        self.unlooped_jumps.retain(|(at, _)| at.offset < offset);
         Err(MetorexError::syntax_error(
-            "Invalid redo".to_string(),
+            refusal.to_string(),
             SourceLocation::new(at.line, at.column, at.offset),
         ))
     }
@@ -167,7 +183,7 @@ impl Parser {
             .position;
         self.skip_whitespace();
 
-        let condition = self.parse_condition()?;
+        let condition = self.parse_tested_condition()?;
         self.skip_whitespace();
         // `unless cond then` may hold its body on the following line.
         self.match_token(&[TokenKind::Then]);
@@ -241,28 +257,7 @@ impl Parser {
         {
             None
         } else {
-            let mut first = self.parse_jump_value()?;
-            // Allow assignment in return value: `return x = value`
-            if self.check(&[TokenKind::Equal])
-                && matches!(
-                    first,
-                    Expression::Identifier { .. }
-                        | Expression::InstanceVariable { .. }
-                        | Expression::ClassVariable { .. }
-                        | Expression::GlobalVariable { .. }
-                        | Expression::Index { .. }
-                )
-            {
-                let eq_pos = self.advance().position;
-                self.skip_whitespace();
-                let value = self.parse_expression()?;
-                first = Expression::BinaryOp {
-                    op: crate::ast::BinaryOp::Assign,
-                    left: Box::new(first),
-                    right: Box::new(value),
-                    position: eq_pos,
-                };
-            }
+            let first = self.parse_jump_value()?;
             if self.match_token(&[TokenKind::Comma]) {
                 // Multiple return values: return a, b, c → return [a, b, c]
                 let mut elements = vec![first];

@@ -70,6 +70,22 @@ impl VirtualMachine {
         self.emit_warning_to_stderr(&message, position);
     }
 
+    /// `iterator?`, the old name of `block_given?`, which warns that it is
+    /// deprecated when the `:deprecated` warning category is on.
+    pub(crate) fn iterator_query(&mut self, position: Position) -> Object {
+        if self.warning_category_enabled("deprecated") {
+            let prefix = self.warning_prefix(0, position);
+            self.emit_warning_to_stderr(
+                &format!("{prefix}iterator? is deprecated; use block_given? instead"),
+                position,
+            );
+        }
+        Object::Bool(matches!(
+            self.environment().get("block_given?"),
+            Some(Object::Bool(true))
+        ))
+    }
+
     /// Turn a warning category on, which `-w` does for the deprecation
     /// warnings a plain run keeps quiet.
     pub fn enable_warning_category(&mut self, category: &str) {
@@ -171,7 +187,7 @@ impl VirtualMachine {
             let given = argument.cloned().unwrap_or(Object::Nil);
             let message = format!(
                 "no implicit conversion of {} into Symbol",
-                self.builtins().class_of(&given).name()
+                crate::vm::errors::conversion_subject(&given)
             );
             return Err(MetorexError::UncaughtException {
                 exception: Object::exception("TypeError", message.clone()),

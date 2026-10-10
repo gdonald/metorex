@@ -70,6 +70,9 @@ impl VirtualMachine {
         };
         // Capture stack trace and add source location to exception
         let exception_obj = self.add_stack_trace_to_exception(exception_obj, position);
+        if exception.is_some() {
+            self.note_raise_spot(&exception_obj, position);
+        }
         // The cause is settled where the exception is raised, so raising it
         // again leaves it with the one it was raised with the first time.
         if let Object::Exception(cell) = &exception_obj {
@@ -313,10 +316,21 @@ impl VirtualMachine {
 
     /// Add stack trace and source location to an exception object
     pub(crate) fn add_stack_trace_to_exception(
-        &self,
+        &mut self,
         exception: Object,
         position: Position,
     ) -> Object {
+        // The native methods running are listed between the frames of the
+        // Ruby code around them, each named as MRI names it.
+        let flagged = match &exception {
+            Object::Exception(held) if held.borrow().backtrace.is_none() => {
+                self.frames_with_native_flags()
+            }
+            _ => Vec::new(),
+        };
+        let native_flags: Vec<bool> = flagged.iter().rev().map(|(_, native)| *native).collect();
+        let merged: Vec<crate::vm::CallFrame> =
+            flagged.into_iter().map(|(frame, _)| frame).collect();
         if let Object::Exception(exc_ref) = exception {
             let mut exc = exc_ref.borrow_mut();
 
@@ -360,44 +374,19 @@ impl VirtualMachine {
             // raising code was written in, which is not the file that caught
             // it. Only a location with no file of its own falls back to where
             // the program stands now.
-            let raise_file = exc
-                .location
-                .as_ref()
-                .map(|held| held.file.clone())
+            // A raise in the core library written in Ruby stands where its
+            // caller does, which the `<internal:` sites below are moved to.
+            let raise_file = if position.prelude {
+                Some("<internal:prelude>".to_string())
+            } else {
+                None
+            };
+            let raise_file = raise_file
+                .or_else(|| exc.location.as_ref().map(|held| held.file.clone()))
                 .filter(|named| named != "script")
-                .or_else(|| self.current_source_file.clone())
-                .or_else(|| self.current_file.as_ref().map(|f| f.display().to_string()))
+                .or_else(|| self.file_for_frames())
                 .unwrap_or_default();
-            let frames: Vec<_> = self.call_stack().iter().rev().collect();
-            let raising_method = crate::vm::native_functions::frame_label_at(&frames, 0);
-            // The raise site comes first, then each frame's own call site. A
-            // frame records where it was called from, so its location pairs
-            // with the name of the frame below it: the method that made the
-            // call. The outermost one is the file body itself.
-            let mut sites = vec![(raise_file.clone(), position.line, raising_method)];
-            for (index, frame) in frames.iter().enumerate() {
-                // A frame with no call site was entered from nowhere, such
-                // as a fiber's own block, so it names no place of its own.
-                if frame.location().is_none() {
-                    continue;
-                }
-                let line = frame
-                    .location()
-                    .and_then(|location| {
-                        location
-                            .rsplit(':')
-                            .nth(1)
-                            .and_then(|line| line.parse::<usize>().ok())
-                    })
-                    .unwrap_or(0);
-                let path = frame
-                    .source_file()
-                    .map(|file| file.to_string())
-                    .unwrap_or_else(|| raise_file.clone());
-                let label = crate::vm::native_functions::frame_label_at(&frames, index + 1);
-                sites.push((path, line, label));
-            }
-
+            let (sites, columns) = backtrace_sites(merged, &native_flags, raise_file, position);
             // The raise site reads as the line the source says it is on,
             // which for code counted from a line of its own is shifted from
             // the one the lexer counted.
@@ -420,12 +409,103 @@ impl VirtualMachine {
                     .collect(),
             );
             exc.backtrace_sites = Some(sites);
-            exc.raise_column = Some(position.column.saturating_sub(1));
+            exc.site_columns = columns;
 
             drop(exc); // Release the borrow before returning
             Object::Exception(exc_ref)
         } else {
             exception
+        }
+    }
+
+    /// The call stack with the native frames set in, each frame paired with
+    /// whether it is one of them.
+    pub(crate) fn frames_with_native_flags(&mut self) -> Vec<(crate::vm::CallFrame, bool)> {
+        let call_stack = self.call_stack.clone();
+        let natives = self.native_frames.clone();
+        self.frames_with_native_flags_of(&call_stack, &natives)
+    }
+
+    /// `call_stack` with the native frames of `natives` set in, each frame
+    /// paired with whether it is one of them.
+    pub(crate) fn frames_with_native_flags_of(
+        &mut self,
+        call_stack: &[crate::vm::CallFrame],
+        natives: &[crate::vm::NativeFrame],
+    ) -> Vec<(crate::vm::CallFrame, bool)> {
+        let natives: Vec<(usize, crate::vm::CallFrame)> = natives
+            .iter()
+            .filter_map(|native| {
+                let label = self.native_frame_label(native)?;
+                let frame = crate::vm::CallFrame::boundary(label)
+                    .with_location(Some(format!("{}:{}", native.line, native.column)))
+                    .with_source_file(native.file.clone());
+                Some((native.depth, frame))
+            })
+            .collect();
+        let mut merged = Vec::with_capacity(call_stack.len() + natives.len());
+        for (index, frame) in call_stack.iter().enumerate() {
+            merged.extend(
+                natives
+                    .iter()
+                    .filter(|(depth, _)| *depth == index)
+                    .map(|(_, native)| (native.clone(), true)),
+            );
+            merged.push((frame.clone(), false));
+        }
+        let depth = call_stack.len();
+        merged.extend(
+            natives
+                .iter()
+                .filter(|(at, _)| *at >= depth)
+                .map(|(_, native)| (native.clone(), true)),
+        );
+        merged
+    }
+
+    /// The name a backtrace gives a native frame: the module that defines
+    /// the method and the method's name, `Integer.sqrt` for one called on a
+    /// class, and nothing for a function that is no Kernel method.
+    pub(crate) fn native_frame_label(&mut self, native: &crate::vm::NativeFrame) -> Option<String> {
+        use crate::vm::native_methods::object_methods::nearest_core_owner;
+        match &native.receiver {
+            None => nearest_core_owner(&["Kernel".to_string()], &native.name)
+                .map(|owner| format!("{owner}#{}", native.name)),
+            // A method a class answers as an object, such as `class_eval`,
+            // is named by the module defining it, and one of its own, such
+            // as `Integer.sqrt`, by the class.
+            Some(receiver @ (Object::Class(class) | Object::Module(class))) => {
+                let owners: Vec<String> = match receiver {
+                    Object::Class(_) => ["Class", "Module", "Object", "Kernel", "BasicObject"],
+                    _ => ["Module", "Object", "Kernel", "BasicObject", ""],
+                }
+                .iter()
+                .filter(|owner| !owner.is_empty())
+                .map(|owner| owner.to_string())
+                .collect();
+                // MRI runs `Class#new` without a frame of its own.
+                if matches!(receiver, Object::Class(_)) && native.name == "new" {
+                    return None;
+                }
+                match nearest_core_owner(&owners, &native.name) {
+                    Some(owner) => Some(format!("{owner}#{}", native.name)),
+                    None => Some(format!("{}.{}", class.ruby_name(), native.name)),
+                }
+            }
+            Some(receiver) => {
+                let class = Object::Class(self.builtins().class_of(receiver));
+                let owners = self.ancestor_names(class, Position::default()).ok()?;
+                let owner = nearest_core_owner(&owners, &native.name)
+                    .map(str::to_string)
+                    .or_else(|| owners.first().cloned())?;
+                // MRI writes `yield_self` in Ruby as an alias of `then`, and
+                // a frame of an alias written that way reads as the original.
+                let name = match native.name.as_str() {
+                    "yield_self" => "then",
+                    other => other,
+                };
+                Some(format!("{owner}#{name}"))
+            }
         }
     }
 
@@ -801,14 +881,6 @@ impl VirtualMachine {
             if type_name == "Object" || type_name == "BasicObject" {
                 return Ok(true);
             }
-            // Well-known names below StandardError are placed without
-            // resolving their class. Anything else, a ScriptError among them,
-            // is placed by its class chain below.
-            if (type_name == "StandardError" || type_name == "Exception")
-                && Self::is_standard_exception_name(&exception_type_name)
-            {
-                return Ok(true);
-            }
             // Otherwise place the exception by its class chain.
             // A name in a rescue clause is read where it was written, so one
             // naming a class of the enclosing module is found by its simple
@@ -853,28 +925,6 @@ impl VirtualMachine {
 
         Ok(false)
     }
-
-    fn is_standard_exception_name(name: &str) -> bool {
-        matches!(
-            name,
-            "StandardError"
-                | "RuntimeError"
-                | "TypeError"
-                | "ValueError"
-                | "ArgumentError"
-                | "NameError"
-                | "NoMethodError"
-                | "ZeroDivisionError"
-                | "FloatDomainError"
-                | "IndexError"
-                | "KeyError"
-                | "RangeError"
-                | "StopIteration"
-                | "IOError"
-                | "EOFError"
-                | "FrozenError"
-        ) || name.starts_with("Errno::")
-    }
 }
 
 /// Whether naming `cause` as the cause of `raised` would make the chain of
@@ -907,4 +957,100 @@ fn runtime_error_from(given: &Object) -> Object {
             .insert(crate::vm::MESSAGE_STRING_KEY.to_string(), given.clone());
     }
     made
+}
+
+/// A backtrace's entries as file, line and label, with the column of each
+/// entry's call alongside.
+pub(crate) type BacktraceSites = (Vec<(String, usize, String)>, Vec<Option<usize>>);
+
+/// The entries of a backtrace taken at `position`, each with the column of
+/// the call it stands at: the raise site first, in `raise_file`, then the
+/// place each of `merged`'s frames was called from, innermost first.
+/// `native_flags` says which of the frames, innermost first, are native.
+pub(crate) fn backtrace_sites(
+    merged: Vec<crate::vm::CallFrame>,
+    native_flags: &[bool],
+    raise_file: String,
+    position: Position,
+) -> BacktraceSites {
+    let frames: Vec<_> = merged.iter().rev().collect();
+    let raising_method = crate::vm::native_functions::frame_label_at(&frames, 0);
+    // The raise site comes first, then each frame's own call site. A
+    // frame records where it was called from, so its location pairs
+    // with the name of the frame below it: the method that made the
+    // call. The outermost one is the file body itself.
+    let mut sites = vec![(raise_file.clone(), position.line, raising_method)];
+    let mut columns = vec![Some(position.column.saturating_sub(1))];
+    for (index, frame) in frames.iter().enumerate() {
+        // A frame with no call site was entered from nowhere, such
+        // as a fiber's own block, so it names no place of its own.
+        if frame.location().is_none() {
+            continue;
+        }
+        let line = frame
+            .location()
+            .and_then(|location| {
+                location
+                    .rsplit(':')
+                    .nth(1)
+                    .and_then(|line| line.parse::<usize>().ok())
+            })
+            .unwrap_or(0);
+        let path = frame
+            .source_file()
+            .map(|file| file.to_string())
+            .unwrap_or_else(|| raise_file.clone());
+        let label = crate::vm::native_functions::frame_label_at(&frames, index + 1);
+        sites.push((path, line, label));
+        columns.push(frame.location().and_then(|location| {
+            location
+                .rsplit(':')
+                .next()
+                .and_then(|column| column.parse::<usize>().ok())
+                .map(|column| column.saturating_sub(1))
+        }));
+    }
+
+    // Code the core library is written in Ruby shows only as the
+    // method the program called: a frame it entered is left out
+    // when the frame is native or runs more of that code, while a
+    // block of the program's, such as `tap` runs, stays. A site's
+    // file is that of the code running there, and the site after
+    // it is the frame's caller.
+    let internal = |site: &(String, usize, String)| site.0.starts_with("<internal:");
+    let native_at = |at: usize| native_flags.get(at).copied().unwrap_or(false);
+    let entered_from_core = |at: usize| sites.get(at + 1).is_some_and(internal);
+    let mut kept: Vec<bool> = (0..sites.len())
+        .map(|at| native_at(at) || !(entered_from_core(at) && internal(&sites[at])))
+        .collect();
+    // A native method entered from that code stays when it runs a
+    // block of the program's, as `each` does for `each_slice`: the
+    // nearest frame above it that stays runs the program's code.
+    for at in 0..sites.len() {
+        if native_at(at) && entered_from_core(at) {
+            let above = (0..at).rev().find(|above| kept[*above]);
+            kept[at] = above.is_some_and(|above| !internal(&sites[above]));
+        }
+    }
+    let mut kept_columns = kept.clone().into_iter();
+    columns.retain(|_| kept_columns.next().unwrap_or(true));
+    let mut kept = kept.into_iter();
+    sites.retain(|_| kept.next().unwrap_or(true));
+    // A thread the core library started, as a Ractor runs in, has
+    // no caller below its block in MRI.
+    while sites.len() > 1 && sites.last().is_some_and(internal) {
+        sites.pop();
+        columns.pop();
+    }
+    // A frame running code MRI compiles in, such as `Kernel#tap`,
+    // reads at the place its caller stands, the way MRI shows it.
+    for at in (0..sites.len().saturating_sub(1)).rev() {
+        if sites[at].0.starts_with("<internal:") {
+            let (caller_path, caller_line) = (sites[at + 1].0.clone(), sites[at + 1].1);
+            sites[at].0 = caller_path;
+            sites[at].1 = caller_line;
+            columns[at] = columns[at + 1];
+        }
+    }
+    (sites, columns)
 }

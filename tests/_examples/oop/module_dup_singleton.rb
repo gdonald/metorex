@@ -18,6 +18,6 @@ puts mod.methods(false).inspect
 puts mod.dup.methods(false).inspect
 puts mod.dup.hello.inspect
 puts mod.instance_methods.inspect
-puts NilClass.instance_methods(false).inspect
+puts NilClass.instance_methods(false).sort.inspect
 puts Named.methods(false).inspect
 puts Named.build.inspect

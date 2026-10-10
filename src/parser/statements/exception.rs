@@ -147,7 +147,8 @@ impl Parser {
 
         // Don't skip whitespace yet - we need to check if there's a newline after rescue
         // If there's a newline, then no exception types are specified
-        let has_newline = self.check(&[TokenKind::Newline]);
+        let has_newline = self.check(&[TokenKind::Newline, TokenKind::Semicolon])
+            || matches!(self.peek().kind, TokenKind::Comment(_));
 
         self.skip_whitespace();
 
@@ -162,63 +163,37 @@ impl Parser {
         // `rescue *handled` names the classes through a splat, which is read
         // where the clause is reached rather than written out here.
         let mut splatted_types = Vec::new();
-        while !has_newline && self.check(&[TokenKind::Star]) {
-            self.advance();
-            self.skip_whitespace();
-            // The classes stand on the `rescue` line, so the walk stops at
-            // the end of it rather than reading the body as part of them.
-            splatted_types.push(self.parse_range()?);
-            if !self.match_token(&[TokenKind::Comma]) {
-                break;
-            }
-            self.skip_whitespace();
-        }
-        if !has_newline && self.check(&[TokenKind::Ident(String::new())]) {
-            // Peek ahead to see if this looks like an exception type or an assignment
-            // If the next token after the identifier is '=', it's an assignment, not an exception type
-            let current_pos = self.stream().current_position();
-            let next_is_assignment = if let Some(next) = self.stream().tokens().get(current_pos + 1)
-            {
-                matches!(next.kind, TokenKind::Equal)
-            } else {
-                false
-            };
-
-            if !next_is_assignment {
-                // Parse exception types (may include scope resolution like Errno::ENOENT)
-                while let TokenKind::Ident(name) = &self.peek().kind {
-                    let mut full_name = name.clone();
-                    self.advance();
-                    // Handle scope resolution (Errno::ENOENT)
-                    while self.match_token(&[TokenKind::ColonColon]) {
-                        if let TokenKind::Ident(part) = &self.peek().kind {
-                            full_name.push_str("::");
-                            full_name.push_str(part);
-                            self.advance();
-                        } else {
-                            break;
-                        }
-                    }
-                    exception_types.push(full_name);
+        // An identifier followed by `=` starts an assignment in the body
+        // rather than naming a class.
+        let starts_an_assignment = matches!(self.peek().kind, TokenKind::Ident(_))
+            && matches!(self.peek_ahead(1).kind, TokenKind::Equal);
+        let names_classes = !has_newline
+            && !starts_an_assignment
+            && !self.check(&[TokenKind::FatArrow, TokenKind::Then]);
+        if names_classes {
+            loop {
+                if self.match_token(&[TokenKind::Star]) {
                     self.skip_whitespace();
-
-                    // Check for comma (multiple exception types)
-                    if !self.match_token(&[TokenKind::Comma]) {
-                        break;
-                    }
-                    self.skip_whitespace();
-                    // A splat may follow a name written out, as
-                    // `rescue Held, *handled` does.
-                    while self.check(&[TokenKind::Star]) {
-                        self.advance();
-                        self.skip_whitespace();
-                        splatted_types.push(self.parse_range()?);
-                        if !self.match_token(&[TokenKind::Comma]) {
-                            break;
-                        }
-                        self.skip_whitespace();
-                    }
+                    // The classes stand on the `rescue` line, so the walk stops
+                    // at the end of it rather than reading the body as part of
+                    // them.
+                    splatted_types.push(self.parse_range()?);
+                } else if let Some(name) = self.written_class_name() {
+                    exception_types.push(name);
+                } else {
+                    // Any other expression names one class, read where the
+                    // clause is reached: `defined?(Held) ? Held : IOError`.
+                    let position = self.peek().position;
+                    let element = self.parse_assignment()?;
+                    splatted_types.push(Expression::Array {
+                        elements: vec![element],
+                        position,
+                    });
                 }
+                if !self.match_token(&[TokenKind::Comma]) {
+                    break;
+                }
+                self.skip_whitespace();
             }
         }
 
@@ -239,7 +214,10 @@ impl Parser {
             );
             if names_a_local {
                 match self.advance().kind {
-                    TokenKind::Ident(name) => variable_name = Some(name),
+                    TokenKind::Ident(name) => {
+                        self.declare_local(&name);
+                        variable_name = Some(name)
+                    }
                     _ => unreachable!("only a name reaches here"),
                 }
                 self.skip_whitespace();
@@ -299,6 +277,42 @@ impl Parser {
         })
     }
 
+    /// A class written by name in a rescue list, as `Errno::ENOENT`, taken
+    /// when nothing but the next entry, the variable or the body follows it.
+    fn written_class_name(&mut self) -> Option<String> {
+        let mut offset = 0;
+        let mut full_name = String::new();
+        loop {
+            let TokenKind::Ident(part) = &self.peek_ahead(offset).kind else {
+                return None;
+            };
+            full_name.push_str(part);
+            offset += 1;
+            if !matches!(self.peek_ahead(offset).kind, TokenKind::ColonColon) {
+                break;
+            }
+            full_name.push_str("::");
+            offset += 1;
+        }
+        let ends_the_entry = matches!(
+            self.peek_ahead(offset).kind,
+            TokenKind::Comma
+                | TokenKind::FatArrow
+                | TokenKind::Then
+                | TokenKind::Semicolon
+                | TokenKind::Newline
+                | TokenKind::Comment(_)
+                | TokenKind::EOF
+        );
+        if !ends_the_entry {
+            return None;
+        }
+        for _ in 0..offset {
+            self.advance();
+        }
+        Some(full_name)
+    }
+
     /// Parse a raise statement
     pub(crate) fn parse_raise_statement(&mut self) -> Result<Statement, MetorexError> {
         let start_pos = self.expect(TokenKind::Raise, "Expected 'raise'")?.position;
@@ -344,7 +358,7 @@ impl Parser {
             let handed_over = arguments
                 .iter()
                 .any(|given| matches!(given, Expression::Splat { .. }))
-                || arguments.len() > 2
+                || arguments.len() > 1
                 || arguments
                     .iter()
                     .any(|given| matches!(given, Expression::Dictionary { .. }));
@@ -358,23 +372,12 @@ impl Parser {
                     trailing_block: None,
                     position: start_pos,
                 };
-                return Ok(Statement::Expression {
+                return self.wrap_with_modifier(Statement::Expression {
                     expression: call,
                     position: start_pos,
                 });
             }
-            let mut arguments = arguments.into_iter();
-            match (arguments.next(), arguments.next()) {
-                (None, _) => None,
-                (Some(only), None) => Some(only),
-                (Some(class), Some(message)) => Some(Expression::MethodCall {
-                    receiver: Box::new(class),
-                    method: "new".to_string(),
-                    arguments: vec![message],
-                    trailing_block: None,
-                    position: start_pos,
-                }),
-            }
+            arguments.into_iter().next()
         } else if crate::parser::expressions::primary::groups::keyword_symbol_key(&self.peek().kind)
             .is_some()
             && matches!(self.peek_ahead(1).kind, TokenKind::Colon)
@@ -402,12 +405,10 @@ impl Parser {
             if self.match_token(&[TokenKind::Comma]) {
                 self.skip_whitespace();
                 let rest = self.parse_arguments_without_parens()?;
-                // A backtrace or a `cause:` alongside the message is more than
-                // a class and a message, so Kernel's own `raise` is handed the
-                // whole list rather than building the exception here.
-                let plain_pair =
-                    rest.len() == 1 && !matches!(rest.first(), Some(Expression::Dictionary { .. }));
-                if !plain_pair {
+                // A message, a backtrace or a `cause:` goes to Kernel's own
+                // `raise`, which asks the first argument for the exception
+                // through `exception`, as a class or an exception answers it.
+                {
                     let mut arguments = vec![expr];
                     arguments.extend(rest);
                     let call = Expression::Call {
@@ -424,15 +425,6 @@ impl Parser {
                         position: start_pos,
                     });
                 }
-                let message = rest.into_iter().next().expect("one argument");
-                // Transform to ExceptionClass.new(message)
-                Some(Expression::MethodCall {
-                    receiver: Box::new(expr),
-                    method: "new".to_string(),
-                    arguments: vec![message],
-                    trailing_block: None,
-                    position: start_pos,
-                })
             } else {
                 Some(expr)
             }

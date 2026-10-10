@@ -971,6 +971,7 @@ class Date
   end
 
   def <<(months)
+    raise TypeError, "expected numeric" unless months.is_a?(Numeric)
     self >> -months
   end
 

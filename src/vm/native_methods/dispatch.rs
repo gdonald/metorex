@@ -17,6 +17,21 @@ impl VirtualMachine {
         arguments: &[Object],
         position: Position,
     ) -> Result<Option<Object>, MetorexError> {
+        let entered = self.enter_native_frame(Some(receiver), method_name, position);
+        let answered =
+            self.call_native_method_body(class, receiver, method_name, arguments, position);
+        self.leave_native_call(entered, position, &answered);
+        answered
+    }
+
+    fn call_native_method_body(
+        &mut self,
+        class: &Class,
+        receiver: &Object,
+        method_name: &str,
+        arguments: &[Object],
+        position: Position,
+    ) -> Result<Option<Object>, MetorexError> {
         if let Object::Binding(binding) = receiver
             && let Some(answered) =
                 self.call_binding_methods(binding, method_name, arguments, position)?
@@ -338,6 +353,15 @@ impl VirtualMachine {
             && arguments.is_empty()
         {
             let named = self.pattern_encoding_name(pattern, flags);
+            // A pattern in an encoding other than UTF-8 holds a character
+            // to each of its bytes, which the source holds as those bytes.
+            if !matches!(named.as_str(), "UTF-8" | "US-ASCII")
+                && pattern.chars().all(|held| (held as u32) < 0x100)
+            {
+                let made = crate::object::StringValue::from_bytes(pattern.to_string());
+                made.set_encoding(&named);
+                return Ok(Some(Object::String(Rc::new(made))));
+            }
             let made = crate::object::StringValue::with_encoding(pattern.to_string(), named);
             return Ok(Some(Object::String(Rc::new(made))));
         }
@@ -537,6 +561,16 @@ impl VirtualMachine {
                     self.call_object_method(receiver, method_name, arguments, position)?
                 {
                     return Ok(Some(result));
+                }
+                // Only the names Symbol defines or takes from Comparable are
+                // answered through its characters, so `-@` and the rest of
+                // String's are not.
+                let symbol_defines = crate::vm::native_methods::core_method_names::CORE_METHODS
+                    .iter()
+                    .filter(|row| matches!(row.owner, "Symbol" | "Comparable"))
+                    .any(|row| row.public.contains(&method_name));
+                if !symbol_defines {
+                    return Ok(None);
                 }
                 let as_string = Object::String(Rc::clone(text));
                 let answered =

@@ -351,22 +351,52 @@ pub(super) fn argument_count_error(
     }
 }
 
-/// Produce a type error for invalid method argument type.
+/// How a value that cannot be converted is named in the error: nil, true
+/// and false by their values, and anything else by its class.
+pub(crate) fn conversion_subject(value: &Object) -> String {
+    match value {
+        Object::Nil => "nil".to_string(),
+        Object::Bool(held) => held.to_string(),
+        Object::Instance(held) => held.borrow().class.ruby_name(),
+        other => crate::vm::native_methods::define_method::ruby_class_name(other).to_string(),
+    }
+}
+
+/// The TypeError for a value used where an index or a count is read as an
+/// Integer, which names nil apart.
+pub(crate) fn integer_conversion_error(value: &Object, position: Position) -> MetorexError {
+    let message = match value {
+        Object::Nil => "no implicit conversion from nil to integer".to_string(),
+        other => format!(
+            "no implicit conversion of {} into Integer",
+            conversion_subject(other)
+        ),
+    };
+    simple_exception("TypeError", &message, position)
+}
+
+/// The TypeError for an argument of the wrong kind: one a method converts
+/// to a String, an Integer or the like says it has no implicit conversion,
+/// and any other says which type was wanted.
 pub(super) fn method_argument_type_error(
-    method: &str,
+    _method: &str,
     expected: &str,
     found: &Object,
     position: Position,
 ) -> MetorexError {
-    MetorexError::type_error(
-        format!(
-            "Method '{}' expected argument of type '{}' but found '{}'",
-            method,
-            expected,
-            found.type_name()
+    let message = match expected {
+        "String" | "Integer" | "Array" | "Hash" | "Symbol" | "Float" => format!(
+            "no implicit conversion of {} into {}",
+            conversion_subject(found),
+            expected
         ),
-        position_to_location(position),
-    )
+        _ => format!(
+            "wrong argument type {} (expected {})",
+            conversion_subject(found),
+            expected
+        ),
+    };
+    simple_exception("TypeError", &message, position)
 }
 
 /// Produce a runtime error when attempting to call a non-callable object.
@@ -383,14 +413,26 @@ pub(super) fn not_callable_error(value: &Object, position: Position) -> MetorexE
 
 /// Produce a type error for unary operations.
 pub(super) fn unary_type_error(op: &UnaryOp, value: &Object, position: Position) -> MetorexError {
-    MetorexError::type_error(
-        format!(
-            "Cannot apply unary operator '{:?}' to type '{}'",
-            op,
-            value.type_name()
-        ),
-        position_to_location(position),
-    )
+    // A value without the operator has no such method, which is what Ruby
+    // reports.
+    let named = match op {
+        UnaryOp::Minus => "-@",
+        UnaryOp::Plus => "+@",
+        UnaryOp::Not => "!",
+    };
+    undefined_method_error(named, value, &[], position)
+}
+
+/// How a value a number cannot work with is named in the error: nil, true,
+/// false and a Symbol by their values, and anything else by its class.
+pub(crate) fn coercion_subject(value: &Object) -> String {
+    match value {
+        Object::Nil => "nil".to_string(),
+        Object::Bool(held) => held.to_string(),
+        Object::Symbol(name) => format!(":{name}"),
+        Object::Instance(held) => held.borrow().class.ruby_name(),
+        other => crate::vm::native_methods::define_method::ruby_class_name(other).to_string(),
+    }
 }
 
 /// Produce a type error for binary operations.
@@ -401,17 +443,83 @@ pub(super) fn binary_type_error(
     position: Position,
 ) -> MetorexError {
     // A value with no arithmetic of its own has no such method, which is what
-    // Ruby reports rather than a mismatch of types. Text carries none of the
-    // number operators either, so the same goes for a String.
+    // Ruby reports rather than a mismatch of types. Text and a Float carry
+    // none of the bitwise operators either, so the same goes for them.
     let bitwise = matches!(
         op,
         BinaryOp::BitwiseOr | BinaryOp::BitwiseAnd | BinaryOp::Xor
     );
+    let instance_class = match left {
+        Object::Instance(held) => Some(held.borrow().class.name().to_string()),
+        _ => None,
+    };
+    let numeric_instance = matches!(instance_class.as_deref(), Some("Rational" | "Complex"));
     if (matches!(left, Object::Nil | Object::Bool(_))
-        || (bitwise && matches!(left, Object::String(_))))
+        || (bitwise && (matches!(left, Object::String(_) | Object::Float(_)) || numeric_instance)))
         && let Some(named) = crate::vm::eval::binary_op_method_name(&op)
     {
         return undefined_method_error(named, left, std::slice::from_ref(right), position);
+    }
+    // An Array or a String takes the other side as one of its own kind, or
+    // as a count for `*`, and says when it has no implicit conversion.
+    let wanted = match (left, &op) {
+        (
+            Object::Array(_),
+            BinaryOp::Add | BinaryOp::Subtract | BinaryOp::BitwiseAnd | BinaryOp::BitwiseOr,
+        ) => Some("Array"),
+        (Object::String(_), BinaryOp::Add) => Some("String"),
+        (Object::Array(_) | Object::String(_), BinaryOp::Multiply) => Some("Integer"),
+        _ => None,
+    };
+    if let Some(wanted) = wanted {
+        if wanted == "Integer" {
+            return integer_conversion_error(right, position);
+        }
+        let message = format!(
+            "no implicit conversion of {} into {}",
+            conversion_subject(right),
+            wanted
+        );
+        return simple_exception("TypeError", &message, position);
+    }
+    // A number told to work with something that is not one asks it to
+    // coerce itself, and reports what it was handed by its value when that
+    // is nil, true, false or a Symbol, and by its class otherwise.
+    let left_class = match left {
+        Object::Int(_) | Object::BigInt(_) => Some("Integer"),
+        Object::Float(_) => Some("Float"),
+        _ => match instance_class.as_deref() {
+            Some("Rational") => Some("Rational"),
+            Some("Complex") => Some("Complex"),
+            _ => None,
+        },
+    };
+    if let Some(left_class) = left_class {
+        let described = coercion_subject(right);
+        let raised = match op {
+            BinaryOp::Add
+            | BinaryOp::Subtract
+            | BinaryOp::Multiply
+            | BinaryOp::Divide
+            | BinaryOp::Modulo
+            | BinaryOp::Power
+            | BinaryOp::BitwiseAnd
+            | BinaryOp::BitwiseOr
+            | BinaryOp::Xor => Some((
+                "TypeError",
+                format!("{described} can't be coerced into {left_class}"),
+            )),
+            BinaryOp::Less | BinaryOp::LessEqual | BinaryOp::Greater | BinaryOp::GreaterEqual => {
+                Some((
+                    "ArgumentError",
+                    format!("comparison of {left_class} with {described} failed"),
+                ))
+            }
+            _ => None,
+        };
+        if let Some((class, message)) = raised {
+            return simple_exception(class, &message, position);
+        }
     }
     MetorexError::type_error(
         format!(

@@ -74,7 +74,7 @@ impl VirtualMachine {
                                 "TypeError",
                                 &format!(
                                     "no implicit conversion of {} into String",
-                                    self.builtins().class_of(argument).name()
+                                    crate::vm::errors::conversion_subject(argument)
                                 ),
                                 position,
                             ));
@@ -101,7 +101,7 @@ impl VirtualMachine {
                         "TypeError",
                         &format!(
                             "no implicit conversion of {} into String",
-                            self.builtins().class_of(&arguments[0]).name()
+                            crate::vm::errors::conversion_subject(&arguments[0])
                         ),
                         position,
                     ));

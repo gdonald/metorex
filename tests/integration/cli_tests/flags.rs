@@ -186,7 +186,7 @@ fn cli_v_flag_prints_ruby_version() {
     let output = metorex_cmd().arg("-v").output().expect("failed to execute");
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("4.0.1"));
+    assert!(stdout.contains("4.0.6"));
     assert!(stdout.contains("metorex"));
     assert!(stdout.contains("(ruby-compatible)"));
 }

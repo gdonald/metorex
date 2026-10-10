@@ -8,6 +8,10 @@ pub(crate) const DEFAULT_PROC_KEY: &str = "__MX_DEFAULT_PROC__";
 pub(crate) const DEFAULT_VALUE_KEY: &str = "__MX_DEFAULT__";
 /// Sentinel key for storing original non-primitive key objects
 pub(crate) const KEY_OBJECTS_KEY: &str = "__MX_KEY_OBJECTS__";
+/// Sentinel marking a hash holding a key that is not a primitive but was
+/// placed by how it renders rather than by its `#hash`. Only such a hash has
+/// to walk its keys to find one that is `eql?` to a key it was asked for.
+pub(crate) const RENDERED_OBJECTS_KEY: &str = "__MX_RENDERED_OBJECTS__";
 /// Sentinel marking a hash that `compare_by_identity` was called on.
 pub(crate) const BY_IDENTITY_KEY: &str = "__MX_BY_IDENTITY__";
 /// Sentinel marking a hash gathered from the keyword arguments of a call to a
@@ -22,6 +26,7 @@ pub(crate) fn is_internal_key(key: &str) -> bool {
         || key == RUBY2_KEYWORDS_KEY
         || key == "__MX_KWARGS__"
         || key == KEY_OBJECTS_KEY
+        || key == RENDERED_OBJECTS_KEY
 }
 
 /// Reconstruct the original key Object from its string key, using the sentinel

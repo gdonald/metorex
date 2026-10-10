@@ -62,6 +62,7 @@ mod streams;
 mod visibility;
 
 mod condition_variables;
+pub(crate) mod core_method_names;
 mod dispatch;
 mod enumerators;
 mod fibers;

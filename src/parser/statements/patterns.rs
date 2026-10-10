@@ -78,32 +78,31 @@ impl Parser {
         })
     }
 
-    /// `pattern | pattern | …`, which matches where any one of them does.
+    /// `pattern | pattern | …`, which matches where any one of them does,
+    /// and `pattern => name`, which binds the whole value to the name. The
+    /// `=>` binds looser than `|`, so `A | B => name` names what either
+    /// side matched.
     pub(crate) fn parse_pattern_alternatives(&mut self) -> Result<MatchPattern, MetorexError> {
         let opened_with = self.pattern_names.len();
-        let first = self.parse_pattern_binding()?;
+        let first = self.parse_pattern_unit()?;
         self.skip_pattern_comments();
-        if !self.check(&[TokenKind::Pipe]) {
-            return Ok(first);
-        }
-        let mut choices = vec![first];
-        while self.match_token(&[TokenKind::Pipe]) {
-            self.skip_whitespace();
-            choices.push(self.parse_pattern_binding()?);
-            self.skip_pattern_comments();
-        }
-        // Only one side of an alternative runs, so a name bound in one of
-        // them would hold nothing in the others. Ruby refuses the pattern.
-        if self.pattern_names.len() != opened_with {
-            return Err(self.error_at_current("illegal variable in alternative pattern"));
-        }
-        Ok(MatchPattern::Multiple(choices))
-    }
-
-    /// `pattern => name`, which matches the pattern and binds the whole value
-    /// to the name.
-    pub(crate) fn parse_pattern_binding(&mut self) -> Result<MatchPattern, MetorexError> {
-        let mut held = self.parse_pattern_unit()?;
+        let mut held = if self.check(&[TokenKind::Pipe]) {
+            let mut choices = vec![first];
+            while self.match_token(&[TokenKind::Pipe]) {
+                self.skip_whitespace();
+                choices.push(self.parse_pattern_unit()?);
+                self.skip_pattern_comments();
+            }
+            // Only one side of an alternative runs, so a name bound in one
+            // of them would hold nothing in the others. Ruby refuses the
+            // pattern.
+            if self.pattern_names.len() != opened_with {
+                return Err(self.error_at_current("illegal variable in alternative pattern"));
+            }
+            MatchPattern::Multiple(choices)
+        } else {
+            first
+        };
         loop {
             self.skip_pattern_comments();
             if !self.match_token(&[TokenKind::FatArrow]) {

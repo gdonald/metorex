@@ -400,3 +400,129 @@ fn test_syntax_adjacent_string_literals_no_parens_execution() {
     let output = run_example("syntax/adjacent_string_literals_no_parens.rb");
     assert_eq!(output, ADJACENT_STRING_LITERALS);
 }
+
+const EMBEDDED_DOCUMENTS_OUTPUT: &str = concat!("\"after the first document\"\n", "7\n",);
+
+#[test]
+fn test_basics_embedded_documents_execution() {
+    let output = run_example("basics/embedded_documents.rb");
+    assert_eq!(output, EMBEDDED_DOCUMENTS_OUTPUT);
+}
+
+#[test]
+fn test_basics_embedded_documents_parens_execution() {
+    let output = run_example("basics/embedded_documents_parens.rb");
+    assert_eq!(output, EMBEDDED_DOCUMENTS_OUTPUT);
+}
+
+const KEYWORD_LOGIC_AND_MODIFIERS_OUTPUT: &str = concat!(
+    "7\n",
+    "5\n",
+    "[5, 4]\n",
+    "[9, nil]\n",
+    "[\"constant\", nil, \"constant\", nil]\n",
+    ":audited\n",
+    "\"maintenance window moves to 02:00\\n\"\n",
+    "\"first line\\n\"\n",
+    "2\n",
+);
+
+#[test]
+fn test_basics_keyword_logic_and_modifiers_execution() {
+    let output = run_example("basics/keyword_logic_and_modifiers.rb");
+    assert_eq!(output, KEYWORD_LOGIC_AND_MODIFIERS_OUTPUT);
+}
+
+#[test]
+fn test_basics_keyword_logic_and_modifiers_parens_execution() {
+    let output = run_example("basics/keyword_logic_and_modifiers_parens.rb");
+    assert_eq!(output, KEYWORD_LOGIC_AND_MODIFIERS_OUTPUT);
+}
+
+/// The expected output of both `syntax/local_binding_forms` variants.
+const LOCAL_BINDING_FORMS_OUTPUT: &str = concat!(
+    "[:method, [[1]]]\n",
+    "\"a\"\n",
+    "\"b\"\n",
+    "\"d\"\n",
+    "\"b\"\n",
+    "8\n",
+    "5\n",
+    "[:method, [[0]]]\n",
+    "4\n",
+    "1\n",
+    "\"w\"\n",
+    "9\n",
+    "[1, 2]\n",
+    "1\n",
+);
+
+#[test]
+fn test_syntax_local_binding_forms_execution() {
+    let output = run_example("syntax/local_binding_forms.rb");
+    assert_eq!(output, LOCAL_BINDING_FORMS_OUTPUT);
+}
+
+#[test]
+fn test_syntax_local_binding_forms_no_parens_execution() {
+    let output = run_example("syntax/local_binding_forms_no_parens.rb");
+    assert_eq!(output, LOCAL_BINDING_FORMS_OUTPUT);
+}
+
+/// The expected output of both `syntax/refused_forms` variants.
+const REFUSED_FORMS_OUTPUT: &str = concat!(
+    "refused  \"->(x) x + 1\"\n",
+    "refused  \"-> 42\"\n",
+    "refused  \"add_ten = x -> x + 10\"\n",
+    "refused  \"add = (x, y) -> x + y\"\n",
+    "refused  \"def skipped *\\nend\"\n",
+    "refused  \"def skipped **\\nend\"\n",
+    "refused  \"def skipped &\\nend\"\n",
+    "refused  \"match 1\\nwhen 1\\nend\"\n",
+    "refused  \"-> { |x| x }\"\n",
+    "refused  \"-> do |x| x end\"\n",
+    "read     \"->(x) { x + 1 }\"\n",
+    "read     \"def kept *; end\"\n",
+    "read     \"def kept *\\nrest\\nend\"\n",
+    "1..2\n",
+    "3..\n",
+);
+
+#[test]
+fn test_syntax_refused_forms_execution() {
+    let output = run_example("syntax/refused_forms.rb");
+    assert_eq!(output, REFUSED_FORMS_OUTPUT);
+}
+
+#[test]
+fn test_syntax_refused_forms_no_parens_execution() {
+    let output = run_example("syntax/refused_forms_no_parens.rb");
+    assert_eq!(output, REFUSED_FORMS_OUTPUT);
+}
+
+/// The expected output of both `syntax/literal_condition_warnings` variants.
+const LITERAL_CONDITION_WARNINGS_OUTPUT: &str = concat!(
+    "literal_conditions_fixture.rb:1: warning: integer literal in flip-flop\n",
+    "literal_conditions_fixture.rb:1: warning: integer literal in flip-flop\n",
+    "literal_conditions_fixture.rb:2: warning: regex literal in condition\n",
+    "literal_conditions_fixture.rb:3: warning: string literal in condition\n",
+    "literal_conditions_fixture.rb:4: warning: regex literal in condition\n",
+    "nil\n",
+    "evaluated.rb:7: warning: regex literal in condition\n",
+    "(none):2: warning: integer literal in flip-flop\n",
+    "(none):2: warning: integer literal in flip-flop\n",
+    "(none):3: warning: regex literal in condition\n",
+    "nil\n",
+);
+
+#[test]
+fn test_syntax_literal_condition_warnings_execution() {
+    let output = run_example("syntax/literal_condition_warnings.rb");
+    assert_eq!(output, LITERAL_CONDITION_WARNINGS_OUTPUT);
+}
+
+#[test]
+fn test_syntax_literal_condition_warnings_no_parens_execution() {
+    let output = run_example("syntax/literal_condition_warnings_no_parens.rb");
+    assert_eq!(output, LITERAL_CONDITION_WARNINGS_OUTPUT);
+}

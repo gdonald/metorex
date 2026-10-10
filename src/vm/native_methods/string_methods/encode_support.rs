@@ -93,6 +93,23 @@ pub(crate) fn invalid_utf8_error(
     after: Option<u8>,
     position: Position,
 ) -> MetorexError {
+    let opens_a_character = matches!(broken[0], 0xc2..=0xf4);
+    let incomplete = after.is_none() && opens_a_character;
+    let after = after.filter(|_| opens_a_character);
+    invalid_bytes_error(broken, after, incomplete, "UTF-8", position)
+}
+
+/// The error `encode` raises for bytes of `encoding` that spell nothing:
+/// `incomplete` when the input ends inside a character, and naming the byte
+/// after when that byte cannot go on with the character. It carries the
+/// bytes in `error_bytes` and the byte after in `readagain_bytes`.
+pub(crate) fn invalid_bytes_error(
+    broken: &[u8],
+    after: Option<u8>,
+    incomplete: bool,
+    encoding: &str,
+    position: Position,
+) -> MetorexError {
     let spelled = |bytes: &[u8]| {
         let mut written = String::from("\"");
         for byte in bytes {
@@ -105,19 +122,95 @@ pub(crate) fn invalid_utf8_error(
         written.push('"');
         written
     };
-    let opens_a_character = matches!(broken[0], 0xc2..=0xf4);
     let message = match after {
-        None if opens_a_character => format!("incomplete {} on UTF-8", spelled(broken)),
-        Some(next) if opens_a_character => {
-            format!(
-                "{} followed by {} on UTF-8",
-                spelled(broken),
-                spelled(&[next])
-            )
-        }
-        _ => format!("{} on UTF-8", spelled(broken)),
+        _ if incomplete => format!("incomplete {} on {encoding}", spelled(broken)),
+        Some(next) => format!(
+            "{} followed by {} on {encoding}",
+            spelled(broken),
+            spelled(&[next])
+        ),
+        None => format!("{} on {encoding}", spelled(broken)),
     };
-    crate::vm::errors::simple_exception("Encoding::InvalidByteSequenceError", &message, position)
+    let error = crate::vm::errors::simple_exception(
+        "Encoding::InvalidByteSequenceError",
+        &message,
+        position,
+    );
+    use crate::vm::native_methods::pack_format::bytes_to_string;
+    set_exception_attribute(&error, "error_bytes", bytes_to_string(broken));
+    let again = after.map_or(Object::Nil, |next| bytes_to_string(&[next]));
+    set_exception_attribute(&error, "readagain_bytes", again);
+    set_exception_attribute(&error, "truncated", Object::Bool(incomplete));
+    error
+}
+
+/// Set an instance variable of the exception an error carries.
+pub(crate) fn set_exception_attribute(error: &MetorexError, name: &str, value: Object) {
+    if let MetorexError::UncaughtException {
+        exception: Object::Exception(details),
+        ..
+    } = error
+    {
+        details
+            .borrow_mut()
+            .instance_vars
+            .insert(name.to_string(), value);
+    }
+}
+
+/// Where a run of Shift_JIS or EUC-JP bytes stops spelling characters: the
+/// bytes that spell nothing, the byte after them that cannot go on with a
+/// character, and whether the input ended inside one.
+pub(crate) type BytesProblem = (Vec<u8>, Option<u8>, bool);
+
+pub(crate) fn shift_jis_problem(bytes: &[u8]) -> Option<BytesProblem> {
+    let mut at = 0;
+    while at < bytes.len() {
+        let byte = bytes[at];
+        if byte < 0x80 || (0xa1..=0xdf).contains(&byte) {
+            at += 1;
+            continue;
+        }
+        if !((0x81..=0x9f).contains(&byte) || (0xe0..=0xfc).contains(&byte)) {
+            return Some((vec![byte], None, false));
+        }
+        match bytes.get(at + 1) {
+            None => return Some((vec![byte], None, true)),
+            Some(&trail) if (0x40..=0x7e).contains(&trail) || (0x80..=0xfc).contains(&trail) => {
+                at += 2
+            }
+            Some(&trail) => return Some((vec![byte], Some(trail), false)),
+        }
+    }
+    None
+}
+
+pub(crate) fn euc_jp_problem(bytes: &[u8]) -> Option<BytesProblem> {
+    let mut at = 0;
+    while at < bytes.len() {
+        let byte = bytes[at];
+        if byte < 0x80 {
+            at += 1;
+            continue;
+        }
+        // The bytes that may follow the first: one after SS2, two after
+        // SS3, and one after any other byte that opens a character.
+        let (count, allowed): (usize, fn(u8) -> bool) = match byte {
+            0x8e => (1, |next| (0xa1..=0xdf).contains(&next)),
+            0x8f => (2, |next| (0xa1..=0xfe).contains(&next)),
+            0xa1..=0xfe => (1, |next| (0xa1..=0xfe).contains(&next)),
+            _ => return Some((vec![byte], None, false)),
+        };
+        for offset in 1..=count {
+            match bytes.get(at + offset) {
+                None => return Some((bytes[at..at + offset].to_vec(), None, true)),
+                Some(&next) if allowed(next) => {}
+                Some(&next) => return Some((bytes[at..at + offset].to_vec(), Some(next), false)),
+            }
+        }
+        at += count + 1;
+    }
+    None
 }
 
 /// The text a run of EUC-JP bytes spells, with a byte that opens no character
@@ -324,6 +417,64 @@ impl VirtualMachine {
 impl VirtualMachine {
     /// The text a run of UTF-8 bytes spells. A run that spells nothing is
     /// replaced when `invalid: :replace` asks for that, and refused otherwise.
+    /// The encodings a conversion error names: the step of the conversion
+    /// it stopped at.
+    pub(crate) fn with_conversion_ends(
+        &mut self,
+        error: MetorexError,
+        source: &str,
+        destination: &str,
+    ) -> MetorexError {
+        let source = self.encoding_object(source);
+        let destination = self.encoding_object(destination);
+        set_exception_attribute(&error, "source_encoding", source);
+        set_exception_attribute(&error, "destination_encoding", destination);
+        error
+    }
+
+    /// The error a character the destination cannot spell raises. A
+    /// conversion from an encoding other than UTF-8 passes through UTF-8,
+    /// and the message names every step of it.
+    pub(crate) fn undefined_conversion_error(
+        &mut self,
+        character: char,
+        source: &str,
+        wanted: &str,
+        position: Position,
+    ) -> MetorexError {
+        // The steps MRI's converter takes: through UTF-8 from anything
+        // else, and to ISO-2022-JP through EUC-JP. The character stops at
+        // the step out of UTF-8.
+        let mut path = vec![source];
+        if source != "UTF-8" {
+            path.push("UTF-8");
+        }
+        if wanted == "ISO-2022-JP" {
+            path.extend(["EUC-JP", "stateless-ISO-2022-JP"]);
+        }
+        path.push(wanted);
+        let stopped_at = path[path
+            .iter()
+            .position(|step| *step == "UTF-8")
+            .map_or(1, |at| at + 1)];
+        let code = character as u32;
+        let message = if path.len() == 2 {
+            format!("U+{code:04X} from UTF-8 to {wanted}")
+        } else {
+            format!(
+                "U+{code:04X} to {stopped_at} in conversion from {}",
+                path.join(" to ")
+            )
+        };
+        let error = crate::vm::errors::simple_exception(
+            "Encoding::UndefinedConversionError",
+            &message,
+            position,
+        );
+        set_exception_attribute(&error, "error_char", Object::string(character.to_string()));
+        self.with_conversion_ends(error, "UTF-8", stopped_at)
+    }
+
     pub(crate) fn utf8_text(
         &mut self,
         bytes: &[u8],
@@ -527,11 +678,17 @@ pub(crate) fn binary_text(
         } else {
             format!("{spelled} to UTF-8 in conversion from ASCII-8BIT to UTF-8 to {wanted}")
         };
-        return Err(crate::vm::errors::simple_exception(
+        let error = crate::vm::errors::simple_exception(
             "Encoding::UndefinedConversionError",
             &message,
             position,
-        ));
+        );
+        set_exception_attribute(
+            &error,
+            "error_char",
+            crate::vm::native_methods::pack_format::bytes_to_string(&[*byte]),
+        );
+        return Err(error);
     }
     Ok(written)
 }

@@ -29,7 +29,7 @@ fn int_times_with_continue_skips() {
 sum = 0
 5.times do |i|
   if i == 2
-    continue
+    next
   end
   sum = sum + i
 end

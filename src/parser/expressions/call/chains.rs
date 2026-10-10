@@ -144,6 +144,17 @@ impl Parser {
                     TokenKind::Tilde => "~".to_string(),
                     TokenKind::Match => "=~".to_string(),
                     TokenKind::NotMatch => "!~".to_string(),
+                    // Any other keyword names a method of that name.
+                    other
+                        if crate::parser::expressions::primary::groups::keyword_symbol_key(
+                            &other,
+                        )
+                        .is_some() =>
+                    {
+                        crate::parser::expressions::primary::groups::keyword_symbol_key(&other)
+                            .unwrap_or_default()
+                            .to_string()
+                    }
                     _ => return Err(self.error_at_previous("Expected method name after '.'")),
                 };
 
@@ -418,8 +429,6 @@ impl Parser {
         )
     }
 
-    /// of `parse_call` (e.g. `parse_arrow_lambda`) can still have method chains
-    /// like `-> { ... }.should raise_error(NameError)`.
     /// Whether a `do` here opens a block. Inside a loop's condition it closes
     /// the condition instead, which is what `while x do y end` reads it as.
     /// One argument inside a subscript. A `&` hands `[]` a block, the way it

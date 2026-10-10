@@ -112,7 +112,7 @@ l.call(3, 4)
 #[test]
 fn test_arrow_lambda_zero_params() {
     let source = r#"
-l = -> 42
+l = -> { 42 }
 l.call
 "#;
 
@@ -135,7 +135,7 @@ l.call
 #[test]
 fn test_arrow_lambda_single_param() {
     let source = r#"
-double = x -> x * 2
+double = ->(x) { x * 2 }
 double.call(5)
 "#;
 
@@ -158,7 +158,7 @@ double.call(5)
 #[test]
 fn test_arrow_lambda_with_expression() {
     let source = r#"
-add_ten = x -> x + 10
+add_ten = ->(x) { x + 10 }
 add_ten.call(5)
 "#;
 
@@ -181,7 +181,7 @@ add_ten.call(5)
 #[test]
 fn test_arrow_lambda_multi_params() {
     let source = r#"
-add = (x, y) -> x + y
+add = ->(x, y) { x + y }
 add.call(3, 4)
 "#;
 
@@ -204,7 +204,7 @@ add.call(3, 4)
 #[test]
 fn test_arrow_lambda_three_params() {
     let source = r#"
-sum = (x, y, z) -> x + y + z
+sum = ->(x, y, z) { x + y + z }
 sum.call(1, 2, 3)
 "#;
 
@@ -371,6 +371,21 @@ count
     }
 }
 
+/// The message Ruby's parser gives for a `->` whose body opens with
+/// neither `{` nor `do`.
+const LAMBDA_BODY_UNOPENED: &str = "expected a `do` keyword or a `{` to open the lambda block";
+
+#[test]
+fn stabby_lambda_with_block_parameters_in_its_body_is_refused() {
+    assert!(parse_refusal("f = -> { |x| x * 2 }").contains("unexpected '|'"));
+}
+
+/// What the parser says about a program it refuses.
+fn parse_refusal(code: &str) -> String {
+    let tokens = Lexer::new(code).tokenize();
+    Parser::new(tokens).parse().unwrap_err()[0].to_string()
+}
+
 // Helper for concise tests
 fn run_lambda(code: &str) -> Option<Object> {
     let tokens = Lexer::new(code).tokenize();
@@ -389,7 +404,7 @@ fn stabby_lambda_brace() {
 #[test]
 fn stabby_lambda_with_params() {
     assert_eq!(
-        run_lambda("f = -> { |x| x * 2 }; f.call(5)"),
+        run_lambda("f = ->(x) { x * 2 }; f.call(5)"),
         Some(Object::Int(10))
     );
 }
@@ -427,8 +442,8 @@ fn stabby_lambda_parens_multi() {
 }
 
 #[test]
-fn stabby_lambda_no_body_expr() {
-    assert_eq!(run_lambda("f = -> 42; f.call"), Some(Object::Int(42)));
+fn stabby_lambda_without_a_braced_body_is_refused() {
+    assert!(parse_refusal("f = -> 42; f.call").contains(LAMBDA_BODY_UNOPENED));
 }
 
 #[test]
@@ -456,11 +471,8 @@ fn stabby_lambda_in_parens_arg_with_params() {
 }
 
 #[test]
-fn stabby_lambda_in_parens_arg_expr() {
-    assert_eq!(
-        run_lambda("def r(fn); fn.call; end; r(-> 42)"),
-        Some(Object::Int(42))
-    );
+fn stabby_lambda_argument_without_a_braced_body_is_refused() {
+    assert!(parse_refusal("def r(fn); fn.call; end; r(-> 42)").contains(LAMBDA_BODY_UNOPENED));
 }
 
 #[test]
@@ -472,11 +484,8 @@ fn arrow_lambda_parens_do_end() {
 }
 
 #[test]
-fn arrow_lambda_parens_expr() {
-    assert_eq!(
-        run_lambda("f = -> (x) x * 2; f.call(5)"),
-        Some(Object::Int(10))
-    );
+fn arrow_lambda_parameters_without_a_braced_body_are_refused() {
+    assert!(parse_refusal("f = -> (x) x * 2; f.call(5)").contains(LAMBDA_BODY_UNOPENED));
 }
 
 // ── Lambda [] call ──────────────────────────────────────────────────────────

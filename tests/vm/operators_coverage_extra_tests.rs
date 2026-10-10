@@ -193,9 +193,8 @@ fn bool_bitwise_and_with_other() {
 }
 
 #[test]
-fn other_bitwise_and_with_bool() {
-    let result = run("1 & true");
-    assert_eq!(result, Some(Object::Bool(true)));
+fn other_bitwise_and_with_bool_refuses_to_coerce_it() {
+    assert!(run_err("1 & true").contains("true can't be coerced into Integer"));
 }
 
 #[test]
@@ -351,7 +350,7 @@ fn unary_plus_on_string_identity() {
 #[test]
 fn unary_plus_on_nil_errors() {
     let err = run_err("+nil");
-    assert!(err.contains("TypeError") || err.contains("type") || err.contains("unsupported"));
+    assert!(err.contains("undefined method '+@' for nil"));
 }
 
 #[test]
@@ -369,7 +368,7 @@ fn unary_minus_on_float() {
 #[test]
 fn unary_minus_on_bool_errors() {
     let err = run_err("-true");
-    assert!(err.contains("TypeError") || err.contains("type") || err.contains("unsupported"));
+    assert!(err.contains("undefined method '-@' for true"));
 }
 
 #[test]
@@ -412,7 +411,7 @@ fn array_plus_array_concatenates() {
 #[test]
 fn addition_type_error() {
     let err = run_err("5 + nil");
-    assert!(err.contains("TypeError") || err.contains("type") || err.contains("unsupported"));
+    assert!(err.contains("nil can't be coerced into Integer"));
 }
 
 // ── Division / modulo by zero ────────────────────────────────────────────────

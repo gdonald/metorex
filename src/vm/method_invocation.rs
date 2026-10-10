@@ -922,7 +922,6 @@ impl VirtualMachine {
             "StandardError",
             "RuntimeError",
             "TypeError",
-            "ValueError",
             "LoadError",
             "ArgumentError",
             "NameError",
@@ -1015,7 +1014,7 @@ impl VirtualMachine {
     ) -> MetorexError {
         let message = format!(
             "no implicit conversion of {} into String",
-            self.builtins().class_of(given).ruby_name()
+            crate::vm::errors::conversion_subject(given)
         );
         crate::vm::errors::simple_exception("TypeError", &message, position)
     }

@@ -91,12 +91,10 @@ fn keyword_method_name_ensure() {
 
 #[test]
 fn keyword_method_name_raise() {
-    // `nil.raise` parses as a call and reaches Kernel#raise, which with no
-    // arguments and no `$!` raises RuntimeError. Metorex does not yet enforce
-    // Kernel's private visibility for an explicit receiver, where Ruby raises
-    // NoMethodError instead.
+    // `nil.raise` parses as a call to Kernel#raise, which is private, so a
+    // receiver other than `self` is refused.
     let err = run_err("nil.raise");
-    assert!(err.contains("unhandled exception"));
+    assert!(err.contains("private method 'raise' called for nil"));
 }
 
 #[test]
@@ -119,11 +117,10 @@ fn keyword_method_name_return() {
 
 #[test]
 fn keyword_method_name_lambda() {
-    // `nil.lambda` parses as a call and reaches Kernel#lambda, which needs a
-    // block. Metorex does not yet enforce Kernel's private visibility for an
-    // explicit receiver, where Ruby raises NoMethodError instead.
+    // `nil.lambda` parses as a call to Kernel#lambda, which is private, so a
+    // receiver other than `self` is refused.
     let err = run_err("nil.lambda");
-    assert!(err.contains("tried to create Proc object without a block"));
+    assert!(err.contains("private method 'lambda' called for nil"));
 }
 
 #[test]

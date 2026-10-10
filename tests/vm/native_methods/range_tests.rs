@@ -203,7 +203,7 @@ fn range_each_with_continue_in_block() {
 sum = 0
 (1..5).each do |i|
   if i == 3
-    continue
+    next
   end
   sum = sum + i
 end
@@ -251,7 +251,7 @@ fn range_each_continue_skips_iteration() {
 result = []
 (1..5).each do |i|
   if i == 3
-    continue
+    next
   end
   result.push(i)
 end

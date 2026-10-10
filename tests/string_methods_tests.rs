@@ -51,12 +51,6 @@ fn string_reverse() {
 }
 
 #[test]
-fn string_trim() {
-    let result = run(r#""  hello  ".trim"#);
-    assert_eq!(result, Some(Object::string("hello")));
-}
-
-#[test]
 fn string_strip_alias() {
     let result = run(r#""  hello  ".strip"#);
     assert_eq!(result, Some(Object::string("hello")));
@@ -414,12 +408,6 @@ fn string_upcase_error_with_args() {
 fn string_downcase_error_with_args() {
     let err = run_err(r#""hello".downcase(1)"#);
     assert!(err.contains("invalid option"));
-}
-
-#[test]
-fn string_trim_error_with_args() {
-    let err = run_err(r#""hello".trim(1)"#);
-    assert!(err.contains("argument"));
 }
 
 #[test]

@@ -311,7 +311,10 @@ class Numeric
   end
 
   def coerce(other)
-    return [other, self] if other.instance_of? self.class
+    # The classes compared are the ones the values answer to, a singleton
+    # class when one was given.
+    same = other.equal?(self) || (other.instance_of?(self.class) && !__singleton_given__(self) && !__singleton_given__(other))
+    return [other, self] if same
     [Float(other), Float(self)]
   end
 
@@ -326,7 +329,9 @@ class Numeric
   # Ruby refuses a singleton method on a number, since two numbers of the same
   # value are the same object.
   def singleton_method_added(name)
-    raise TypeError, "can't define singleton"
+    raise TypeError, "can't define singleton" if is_a?(Integer) || is_a?(Float)
+    singleton_class.__send__ :remove_method, name
+    raise TypeError, "can't define singleton method \"#{name}\" for #{self.class}"
   end
 
   def dup

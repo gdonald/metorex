@@ -55,6 +55,9 @@ pub enum Statement {
         position: Position,
         /// For `def (expr).method_name`, the singleton receiver class name
         singleton_class: Option<String>,
+        /// Where the definition closes, its `end` or the end of its body
+        /// for an endless one.
+        end_position: Position,
     },
 
     // Method definition (function within a class)

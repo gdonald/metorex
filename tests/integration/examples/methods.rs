@@ -349,3 +349,113 @@ fn test_methods_yield_in_method_clauses_no_parens_execution() {
     let output = run_example("methods/yield_in_method_clauses_no_parens.rb");
     assert_eq!(output, YIELD_IN_METHOD_CLAUSES);
 }
+
+const KEYWORD_METHOD_NAMES_OUTPUT: &str = concat!(
+    "[\"in\", \"then\", \"do\", \"redo\", \"retry\"]\n",
+    "[\"and\", \"or\", \"not\", \"unless\"]\n",
+    "true\n",
+    "false\n",
+    "false\n",
+);
+
+#[test]
+fn test_methods_keyword_method_names_execution() {
+    let output = run_example("methods/keyword_method_names.rb");
+    assert_eq!(output, KEYWORD_METHOD_NAMES_OUTPUT);
+}
+
+#[test]
+fn test_methods_keyword_method_names_no_parens_execution() {
+    let output = run_example("methods/keyword_method_names_no_parens.rb");
+    assert_eq!(output, KEYWORD_METHOD_NAMES_OUTPUT);
+}
+
+const ASSIGNMENT_AND_CONDITIONS_OUTPUT: &str = concat!(
+    "{hits: 0}\n",
+    "10\n",
+    "\"ADA\"\n",
+    "\"unknown\"\n",
+    ":ok\n",
+    "[42, true]\n",
+    "[:small, :large]\n",
+    ":second\n",
+);
+
+#[test]
+fn test_methods_assignment_and_conditions_execution() {
+    let output = run_example("methods/assignment_and_conditions.rb");
+    assert_eq!(output, ASSIGNMENT_AND_CONDITIONS_OUTPUT);
+}
+
+#[test]
+fn test_methods_assignment_and_conditions_no_parens_execution() {
+    let output = run_example("methods/assignment_and_conditions_no_parens.rb");
+    assert_eq!(output, ASSIGNMENT_AND_CONDITIONS_OUTPUT);
+}
+
+/// The expected output of both `methods/top_level_self_and_calls` variants.
+const TOP_LEVEL_SELF_AND_CALLS_OUTPUT: &str = concat!(
+    "main\n",
+    "main\n",
+    "main\n",
+    "main\n",
+    "Caller\n",
+    "\"local\"\n",
+    ":method\n",
+    "undefined method 'count' for main\n",
+    "\"007\"\n",
+    "5\n",
+);
+
+#[test]
+fn test_methods_top_level_self_and_calls_execution() {
+    let output = run_example("methods/top_level_self_and_calls.rb");
+    assert_eq!(output, TOP_LEVEL_SELF_AND_CALLS_OUTPUT);
+}
+
+#[test]
+fn test_methods_top_level_self_and_calls_no_parens_execution() {
+    let output = run_example("methods/top_level_self_and_calls_no_parens.rb");
+    assert_eq!(output, TOP_LEVEL_SELF_AND_CALLS_OUTPUT);
+}
+
+/// The expected output of both `methods/main_private_methods` variants.
+const MAIN_PRIVATE_METHODS: &str = concat!(
+    "[:define_method, :include, :private, :public, :ruby2_keywords, :using]\n",
+    "[:inspect, :to_s]\n",
+    "[:define_method, :include, :private, :public, :ruby2_keywords, :using]\n",
+    "[false, true]\n",
+    ":hello\n",
+    "false\n",
+    "true\n",
+    "[true, :loud]\n",
+    "\"QUIET\"\n",
+    "\"private method 'define_method' called for main\"\n",
+);
+
+#[test]
+fn test_methods_main_private_methods_execution() {
+    let output = run_example("methods/main_private_methods.rb");
+    assert_eq!(output, MAIN_PRIVATE_METHODS);
+}
+
+#[test]
+fn test_methods_main_private_methods_no_parens_execution() {
+    let output = run_example("methods/main_private_methods_no_parens.rb");
+    assert_eq!(output, MAIN_PRIVATE_METHODS);
+}
+
+/// The expected output of both `methods/alias_of_a_setter` variants.
+const ALIAS_OF_A_SETTER: &str = concat!("\"02:00\"\n", "\"03:00\"\n", ":set_window\n",);
+
+#[test]
+fn test_methods_alias_of_a_setter_execution() {
+    let output = run_example("methods/alias_of_a_setter.rb");
+    assert_eq!(output, ALIAS_OF_A_SETTER);
+}
+
+#[test]
+fn test_methods_alias_of_a_setter_no_parens_execution() {
+    let output = run_example("methods/alias_of_a_setter_no_parens.rb");
+    assert_eq!(output, ALIAS_OF_A_SETTER);
+}

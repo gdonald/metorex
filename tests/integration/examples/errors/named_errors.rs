@@ -163,7 +163,7 @@ fn test_errors_syntax_error_path_execution() {
         "nil\n",
         "SyntaxError\n",
         "\"speccing.rb\"\n",
-        "nil\n",
+        "\"(eval at tests/_examples/errors/syntax_error/path.rb:12)\"\n",
         "SyntaxError\n",
         "true\n"
     );
@@ -178,7 +178,7 @@ fn test_errors_syntax_error_path_parens_execution() {
         "nil\n",
         "SyntaxError\n",
         "\"speccing.rb\"\n",
-        "nil\n",
+        "\"(eval at tests/_examples/errors/syntax_error/path_parens.rb:12)\"\n",
         "SyntaxError\n",
         "true\n"
     );
@@ -248,4 +248,121 @@ fn test_errors_name_and_method_messages_execution() {
 fn test_errors_name_and_method_messages_no_parens_execution() {
     let output = run_example("errors/name_and_method_messages_no_parens.rb");
     assert_eq!(output, NAME_AND_METHOD_MESSAGES_OUTPUT);
+}
+
+const SYNTAX_SUGGEST_REPORTS: &str = concat!(
+    "\"constant\"\n",
+    "--> missing_end.rb\n",
+    "\n",
+    "Unmatched keyword, missing `end' ?\n",
+    "\n",
+    "  2  class Kennel\n",
+    "> 3    def admit(dog)\n",
+    "> 6    def release(dog)\n",
+    "> 8    end\n",
+    "  9  end\n",
+    "true\n",
+    "false\n",
+    "--> extra_end.rb\n",
+    "\n",
+    "Unmatched `end', missing keyword (`do', `def`, `if`, etc.) ?\n",
+    "\n",
+    "  2  def invoice_total(items)\n",
+    "> 3    items.sum(&:price)\n",
+    "> 4    end\n",
+    "  5  end\n",
+    "true\n",
+    "false\n",
+    "true\n",
+    "true\n",
+);
+
+#[test]
+fn test_errors_syntax_suggest_reports_execution() {
+    let output = run_example("errors/syntax_error/syntax_suggest_reports.rb");
+    assert_eq!(output, SYNTAX_SUGGEST_REPORTS);
+}
+
+#[test]
+fn test_errors_syntax_suggest_reports_no_parens_execution() {
+    let output = run_example("errors/syntax_error/syntax_suggest_reports_no_parens.rb");
+    assert_eq!(output, SYNTAX_SUGGEST_REPORTS);
+}
+
+/// What a program that does not parse writes to standard error, and its
+/// exit status, run with `flags` before the program.
+fn unparsable_program_report(path: &str, flags: &[&str]) -> (String, Option<i32>) {
+    let binary = env!("CARGO_BIN_EXE_metorex");
+    // syntax_suggest gives its search one second by default, which a debug
+    // build under a loaded machine can run past, so the report is given
+    // all the time it needs.
+    let output = std::process::Command::new(binary)
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .env("SYNTAX_SUGGEST_TIMEOUT", "60")
+        .args(flags)
+        .arg(format!("{}/{}", EXAMPLES_DIR, path))
+        .output()
+        .expect("failed to execute example");
+    (
+        String::from_utf8(output.stderr).expect("stderr was not utf8"),
+        output.status.code(),
+    )
+}
+
+#[test]
+fn a_program_missing_an_end_reports_the_lines_around_it() {
+    let (stderr, status) = unparsable_program_report("errors/syntax_error/missing_end.rb", &[]);
+    let expected = concat!(
+        "tests/_examples/errors/syntax_error/missing_end.rb: ",
+        "--> tests/_examples/errors/syntax_error/missing_end.rb\n",
+        "\n",
+        "Unmatched keyword, missing `end' ?\n",
+        "\n",
+        "  2  class Kennel\n",
+        "> 3    def admit(dog)\n",
+        "> 6    def release(dog)\n",
+        "> 8    end\n",
+        "  9  end\n",
+        "\n",
+    );
+    assert_eq!(
+        (stderr.starts_with(expected), status),
+        (true, Some(1)),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn a_program_with_an_extra_end_reports_the_lines_around_it() {
+    let (stderr, status) = unparsable_program_report("errors/syntax_error/extra_end.rb", &[]);
+    let expected = concat!(
+        "tests/_examples/errors/syntax_error/extra_end.rb: ",
+        "--> tests/_examples/errors/syntax_error/extra_end.rb\n",
+        "\n",
+        "Unmatched `end', missing keyword (`do', `def`, `if`, etc.) ?\n",
+        "\n",
+        "  2  def invoice_total(items)\n",
+        "> 3    items.sum(&:price)\n",
+        "> 4    end\n",
+        "  5  end\n",
+        "\n",
+    );
+    assert_eq!(
+        (stderr.starts_with(expected), status),
+        (true, Some(1)),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn disabling_syntax_suggest_leaves_the_report_to_the_syntax_error() {
+    for flag in ["--disable=syntax_suggest", "--disable=gems"] {
+        let (stderr, status) =
+            unparsable_program_report("errors/syntax_error/extra_end.rb", &[flag]);
+        assert_eq!(
+            (stderr.contains("-->"), status),
+            (false, Some(1)),
+            "{flag}: {stderr}"
+        );
+    }
 }

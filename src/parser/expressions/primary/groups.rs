@@ -183,16 +183,72 @@ impl Parser {
         ]
         .into_iter()
         .find(|(kind, _)| assignable && self.check(std::slice::from_ref(kind)));
+        // `and` and `or` bind more loosely than an assignment, so the value
+        // stops short of them and they take the whole assignment.
+        self.assignment_rhs_depth += 1;
+        let assigned = self.fold_assignment_value(expr, assignable, compound);
+        self.assignment_rhs_depth -= 1;
+        let assigned = assigned?;
+        if !matches!(
+            assigned,
+            Expression::BinaryOp {
+                op: crate::ast::BinaryOp::Assign,
+                ..
+            }
+        ) {
+            return Ok(assigned);
+        }
+        self.fold_keyword_logic_onto(assigned)
+    }
+
+    /// `assignment and more` and `assignment or more`, where the keywords
+    /// bind: anywhere but inside an argument list written without
+    /// parentheses, another assignment's value or a range's operand.
+    pub(crate) fn fold_keyword_logic_onto(
+        &mut self,
+        mut left: Expression,
+    ) -> Result<Expression, MetorexError> {
+        let keywords_bind = self.paren_less_arg_depth == 0
+            && self.assignment_rhs_depth == 0
+            && self.range_operand_depth == 0;
+        while keywords_bind && self.check(&[TokenKind::KeywordAnd, TokenKind::KeywordOr]) {
+            let keyword = self.advance();
+            self.skip_whitespace();
+            let op = if matches!(keyword.kind, TokenKind::KeywordAnd) {
+                crate::ast::BinaryOp::And
+            } else {
+                crate::ast::BinaryOp::Or
+            };
+            let right = self.parse_expression_with_assignment()?;
+            left = Expression::BinaryOp {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+                position: keyword.position,
+            };
+        }
+        Ok(left)
+    }
+
+    /// The assignment `fold_assignment` reads, or the expression as it was
+    /// when nothing assigns to it.
+    fn fold_assignment_value(
+        &mut self,
+        expr: Expression,
+        assignable: bool,
+        compound: Option<(TokenKind, crate::ast::BinaryOp)>,
+    ) -> Result<Expression, MetorexError> {
         let expr = if let Some((_, operation)) = compound {
             let operator_position = self.advance().position;
             self.skip_whitespace();
             let value = self.parse_expression()?;
+            let reading = crate::parser::statements::or_assign_reading(&operation, expr.clone());
             Expression::BinaryOp {
                 op: crate::ast::BinaryOp::Assign,
-                left: Box::new(expr.clone()),
+                left: Box::new(expr),
                 right: Box::new(Expression::BinaryOp {
                     op: operation,
-                    left: Box::new(expr),
+                    left: Box::new(reading),
                     right: Box::new(value),
                     position: operator_position,
                 }),
@@ -502,6 +558,18 @@ pub(crate) fn keyword_symbol_key(kind: &TokenKind) -> Option<&str> {
         TokenKind::Case => Some("case"),
         TokenKind::When => Some("when"),
         TokenKind::Alias => Some("alias"),
+        TokenKind::Redo => Some("redo"),
+        TokenKind::Retry => Some("retry"),
+        TokenKind::Continue => Some("next"),
+        TokenKind::Raise => Some("raise"),
+        TokenKind::Include => Some("include"),
+        TokenKind::Extend => Some("extend"),
+        TokenKind::KeywordAnd => Some("and"),
+        TokenKind::KeywordOr => Some("or"),
+        TokenKind::NotKeyword => Some("not"),
+        TokenKind::AttrReader => Some("attr_reader"),
+        TokenKind::AttrWriter => Some("attr_writer"),
+        TokenKind::AttrAccessor => Some("attr_accessor"),
         _ => None,
     }
 }

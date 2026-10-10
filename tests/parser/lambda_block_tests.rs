@@ -24,32 +24,23 @@ fn run(code: &str) -> Option<Object> {
 
 // ── Arrow lambda ────────────────────────────────────────────────────────────
 
+/// The message Ruby's parser gives for a `->` whose body opens with
+/// neither `{` nor `do`.
+const LAMBDA_BODY_UNOPENED: &str = "expected a `do` keyword or a `{` to open the lambda block";
+
 #[test]
-fn arrow_lambda_grouped_single_param() {
-    let result = run("f = (x) -> x + 1\nf.call(5)");
-    assert_eq!(result, Some(Object::Int(6)));
+fn a_lambda_written_after_its_grouped_parameter_is_refused() {
+    assert!(parse_err("f = (x) -> x + 1").contains(LAMBDA_BODY_UNOPENED));
 }
 
 #[test]
-fn arrow_lambda_grouped_non_ident_parse_error() {
-    let err = parse_err("(1 + 2) -> 42");
-    assert!(
-        err.contains("parameter")
-            || err.contains("identifier")
-            || err.contains("arrow")
-            || err.contains("Identifier")
-    );
+fn a_lambda_body_written_without_braces_after_an_expression_is_refused() {
+    assert!(parse_err("(1 + 2) -> 42").contains(LAMBDA_BODY_UNOPENED));
 }
 
 #[test]
-fn arrow_lambda_non_ident_lhs_parse_error() {
-    let err = parse_err(r#""hello" -> 42"#);
-    assert!(
-        err.contains("parameter")
-            || err.contains("identifier")
-            || err.contains("Left")
-            || err.contains("arrow")
-    );
+fn a_lambda_body_written_without_braces_after_a_string_is_refused() {
+    assert!(parse_err(r#""hello" -> 42"#).contains(LAMBDA_BODY_UNOPENED));
 }
 
 #[test]
@@ -185,19 +176,18 @@ fn lambda_param_with_default_value() {
 // ── Stabby lambda with parens and expression body ────────────────────────────
 
 #[test]
-fn stabby_lambda_with_parens_and_expression_body() {
-    // blocks.rs lines 244-252: stabby lambda with (params) and expression body
-    // -> (x) expr (no brace block)
-    let result = run("f = -> (x) x + 1\nf.call(5)");
-    assert_eq!(result, Some(Object::Int(6)));
+fn a_lambda_with_parameters_and_an_unbraced_body_is_refused() {
+    assert!(parse_err("f = -> (x) x + 1").contains(LAMBDA_BODY_UNOPENED));
 }
 
 #[test]
-fn stabby_lambda_as_primary_expression_in_array() {
-    // blocks.rs lines 244-252: stabby_lambda_with_params via parse_primary (Arrow token
-    // inside an array literal goes through parse_primary -> parse_stabby_lambda).
-    // This differs from statement-level `f = -> (x) ...` which uses parse_arrow_lambda.
-    let result = run("[-> (x) x + 1][0].call(5)");
+fn a_lambda_in_an_array_with_an_unbraced_body_is_refused() {
+    assert!(parse_err("[-> (x) x + 1]").contains(LAMBDA_BODY_UNOPENED));
+}
+
+#[test]
+fn a_lambda_in_an_array_with_a_braced_body_runs() {
+    let result = run("[-> (x) { x + 1 }][0].call(5)");
     assert_eq!(result, Some(Object::Int(6)));
 }
 

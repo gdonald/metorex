@@ -62,6 +62,7 @@ impl VirtualMachine {
         );
         block.defining_owner = self.enclosing_method_owner().and_then(|(owner, _)| owner);
         block.outer_locals = Rc::new(outer_locals.clone());
+        block.reserved_names = Rc::new(self.visible_local_names());
         // The block's body belongs to the file it was written in,
         // wherever it is later called from.
         // A block the core library opens stands in for Ruby's C code,
@@ -591,6 +592,13 @@ impl VirtualMachine {
                         &value,
                         *position,
                     )?;
+                    return Ok(value);
+                }
+                // A name registered as an autoload at the top level is loaded
+                // the first time it is written out with `::`.
+                if let Some(Object::Class(object_class)) = self.globals().get("Object")
+                    && let Some(value) = self.try_autoload_constant(&object_class, name)?
+                {
                     return Ok(value);
                 }
                 let message = format!("uninitialized constant {}", name);

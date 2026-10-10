@@ -158,7 +158,7 @@ fn hash_each_with_continue_in_block() {
     let result = run(r#"
 count = 0
 {"a" => 1, "b" => 2}.each do |k, v|
-  continue
+  next
 end
 count
 "#);
@@ -256,7 +256,7 @@ fn hash_each_continue_skips_iteration() {
     let result = run(r#"
 h = {"a" => 1}
 h.each do |k, v|
-  continue
+  next
 end
 "#);
     assert!(result.is_some());

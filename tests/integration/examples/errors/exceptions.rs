@@ -11,7 +11,7 @@ fn test_advanced_exception_handling_execution() {
 
 #[test]
 fn test_errors_exception_hierarchy_execution() {
-    let expected = "Example 1: Different exception types\nCaught RuntimeError: Runtime error occurred\nCaught TypeError: Type mismatch\nCaught ValueError: Invalid value\n\nExample 2: Catching StandardError\nCaught as StandardError: A runtime error\nCaught as StandardError: A type error\n\nExample 3: Specific to general exception handling\nSpecific handler for RuntimeError: Runtime issue\nSpecific handler for TypeError: Type issue\nGeneral handler for StandardError: Value issue\n\nExample 4: Exception type checking\nRuntimeError is a StandardError: true\nError message: Test error\n";
+    let expected = "Example 1: Different exception types\nCaught RuntimeError: Runtime error occurred\nCaught TypeError: Type mismatch\nCaught ArgumentError: Invalid value\n\nExample 2: Catching StandardError\nCaught as StandardError: A runtime error\nCaught as StandardError: A type error\n\nExample 3: Specific to general exception handling\nSpecific handler for RuntimeError: Runtime issue\nSpecific handler for TypeError: Type issue\nGeneral handler for StandardError: Value issue\n\nExample 4: Exception type checking\nRuntimeError is a StandardError: true\nError message: Test error\n";
     let output = run_example("errors/exception_hierarchy.rb");
     assert_eq!(output, expected);
 }
@@ -344,4 +344,267 @@ fn test_errors_name_error_details_execution() {
 fn test_errors_name_error_details_no_parens_execution() {
     let output = run_example("errors/name_error_details_no_parens.rb");
     assert_eq!(output, NAME_ERROR_DETAILS);
+}
+
+const PRIVATE_KERNEL_CALLS: &str = concat!(
+    "[NoMethodError, \"private method 'puts' called for an instance of Object\"]\n",
+    "[NoMethodError, \"private method 'raise' called for nil\"]\n",
+    "[NoMethodError, \"private method 'format' called for an instance of Array\"]\n",
+    "spoken\n",
+    "nil\n",
+    "\"forwarded puts with [\\\"anything\\\"]\"\n",
+    "nil\n",
+    "[ArgumentError, \"wrong number of arguments (given 1, expected 0)\"]\n",
+    "[NoMethodError, \"private method 'initialize' called for an instance of Object\"]\n",
+    "nil\n",
+    "[NoMethodError, \"private method 'absent' called for an instance of Object\"]\n",
+    "[ArgumentError, \"no method name given\"]\n",
+    "[ArgumentError, \"method name must be a Symbol but String is given\"]\n",
+    "true\n",
+    "false\n",
+    "true\n",
+    "[false, true]\n",
+    "nil\n",
+    "nil\n",
+);
+
+#[test]
+fn test_errors_private_kernel_calls_execution() {
+    let output = run_example("errors/private_kernel_calls.rb");
+    assert_eq!(output, PRIVATE_KERNEL_CALLS);
+}
+
+#[test]
+fn test_errors_private_kernel_calls_no_parens_execution() {
+    let output = run_example("errors/private_kernel_calls_no_parens.rb");
+    assert_eq!(output, PRIVATE_KERNEL_CALLS);
+}
+
+const ERROR_HIGHLIGHT_SPOTS: &str = concat!(
+    "undefined local variable or method 'totl' for main (NameError)\n",
+    "\n",
+    "report { total = totl + 1 }\n",
+    "                 ^^^^\n",
+    "Did you mean?  total\n",
+    "--\n",
+    "undefined method 'length' for nil (NoMethodError)\n",
+    "\n",
+    "report { order = nil; order.length }\n",
+    "                           ^^^^^^^\n",
+    "--\n",
+    "String can't be coerced into Integer (TypeError)\n",
+    "\n",
+    "report { sum = 1 + \"2\" }\n",
+    "                   ^^^\n",
+    "--\n",
+    "wrong number of arguments (given 1, expected 2) (ArgumentError)\n",
+    "\n",
+    "    caller: FILE:18\n",
+    "    | report { shipping_cost(4) }\n",
+    "               ^^^^^^^^^^^^^\n",
+    "    callee: FILE:8\n",
+    "    | def shipping_cost(weight, zone) = weight * zone\n",
+    "          ^^^^^^^^^^^^^\n",
+    "--\n",
+    "undefined method '[]' for nil (NoMethodError)\n",
+    "\n",
+    "report { rows = nil; rows[0] }\n",
+    "                         ^^^\n",
+    "--\n",
+    "undefined method 'label=' for nil (NoMethodError)\n",
+    "\n",
+    "report { nil.label = \"fragile\" }\n",
+    "            ^^^^^^^^\n",
+    "--\n",
+    "undefined method 'nope' for an instance of Integer (NoMethodError)\n",
+    "\n",
+    "report { [1].map(&:nope) }\n",
+    "            ^^^^\n",
+    "--\n",
+    "undefined method 'round' for nil (NoMethodError)\n",
+    "\n",
+    "report { Parcel.new.weight.round(nil) }\n",
+    "                          ^^^^^^\n",
+    "--\n",
+    "no receiver given (ArgumentError)\n",
+    "--\n",
+    "comparison of String with 2 failed (ArgumentError)\n",
+    "\n",
+    "report { Comparable.instance_method(:clamp).bind_call(1, \"x\", 2) }\n",
+    "                                                      ^^^^^^^^^\n",
+    "--\n",
+    "[27, 12, 27, 19]\n",
+    "\"  Parcel.new.volume\\n\"\n",
+);
+
+#[test]
+fn test_errors_error_highlight_spots_execution() {
+    let output = run_example("errors/error_highlight_spots.rb");
+    assert_eq!(output, ERROR_HIGHLIGHT_SPOTS);
+}
+
+const ERROR_HIGHLIGHT_SPOTS_NO_PARENS: &str = concat!(
+    "undefined local variable or method 'totl' for main (NameError)\n",
+    "\n",
+    "report { total = totl + 1 }\n",
+    "                 ^^^^\n",
+    "Did you mean?  total\n",
+    "--\n",
+    "undefined method 'length' for nil (NoMethodError)\n",
+    "\n",
+    "report { order = nil; order.length }\n",
+    "                           ^^^^^^^\n",
+    "--\n",
+    "String can't be coerced into Integer (TypeError)\n",
+    "\n",
+    "report { sum = 1 + \"2\" }\n",
+    "                   ^^^\n",
+    "--\n",
+    "wrong number of arguments (given 1, expected 2) (ArgumentError)\n",
+    "\n",
+    "    caller: FILE:20\n",
+    "    | report { shipping_cost 4 }\n",
+    "               ^^^^^^^^^^^^^\n",
+    "    callee: FILE:8\n",
+    "    | def shipping_cost weight, zone\n",
+    "          ^^^^^^^^^^^^^\n",
+    "--\n",
+    "undefined method '[]' for nil (NoMethodError)\n",
+    "\n",
+    "report { rows = nil; rows[0] }\n",
+    "                         ^^^\n",
+    "--\n",
+    "undefined method 'label=' for nil (NoMethodError)\n",
+    "\n",
+    "report { nil.label = \"fragile\" }\n",
+    "            ^^^^^^^^\n",
+    "--\n",
+    "undefined method 'nope' for an instance of Integer (NoMethodError)\n",
+    "\n",
+    "report { [1].map &:nope }\n",
+    "            ^^^^\n",
+    "--\n",
+    "undefined method 'round' for nil (NoMethodError)\n",
+    "\n",
+    "report { Parcel.new.weight.round nil }\n",
+    "                          ^^^^^^\n",
+    "--\n",
+    "no receiver given (ArgumentError)\n",
+    "--\n",
+    "comparison of String with 2 failed (ArgumentError)\n",
+    "\n",
+    "report { Comparable.instance_method(:clamp).bind_call 1, \"x\", 2 }\n",
+    "                                                      ^^^^^^^^^\n",
+    "--\n",
+    "[29, 12, 29, 19]\n",
+    "\"  Parcel.new.volume\\n\"\n",
+);
+
+#[test]
+fn test_errors_error_highlight_spots_no_parens_execution() {
+    let output = run_example("errors/error_highlight_spots_no_parens.rb");
+    assert_eq!(output, ERROR_HIGHLIGHT_SPOTS_NO_PARENS);
+}
+
+/// Run an example that ends on an uncaught error, answering what it printed
+/// to standard output and to standard error, and its exit status.
+fn run_failing_example(path: &str) -> (String, String, Option<i32>) {
+    let binary = env!("CARGO_BIN_EXE_metorex");
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let output = Command::new(binary)
+        .current_dir(manifest_dir)
+        .arg(format!("{}/{}", EXAMPLES_DIR, path))
+        .output()
+        .expect("failed to execute example");
+    (
+        String::from_utf8(output.stdout).expect("stdout was not utf8"),
+        String::from_utf8(output.stderr).expect("stderr was not utf8"),
+        output.status.code(),
+    )
+}
+
+/// The report of an uncaught error past its first line, which names the
+/// file and line the error was raised on.
+fn report_past_header(stderr: &str) -> (&str, &str) {
+    let (header, rest) = stderr.split_once('\n').expect("a report line");
+    let message = header
+        .split_once(": ")
+        .map_or(header, |(_, message)| message);
+    (message, rest)
+}
+
+#[test]
+fn test_errors_error_highlight_uncaught_execution() {
+    let (stdout, stderr, status) = run_failing_example("errors/error_highlight_uncaught.rb");
+    assert_eq!(
+        (stdout.as_str(), report_past_header(&stderr), status),
+        (
+            "packing\n",
+            (
+                "undefined method 'length' for nil (NoMethodError)",
+                "\nputs(order.length)\n          ^^^^^^^\n"
+            ),
+            Some(1)
+        )
+    );
+}
+
+#[test]
+fn test_errors_error_highlight_uncaught_no_parens_execution() {
+    let (stdout, stderr, status) =
+        run_failing_example("errors/error_highlight_uncaught_no_parens.rb");
+    assert_eq!(
+        (stdout.as_str(), report_past_header(&stderr), status),
+        (
+            "packing\n",
+            (
+                "undefined method 'length' for nil (NoMethodError)",
+                "\nputs order.length\n          ^^^^^^^\n"
+            ),
+            Some(1)
+        )
+    );
+}
+
+const EVAL_AND_INTERNAL_FRAMES_OUTPUT: &str = concat!(
+    "\"FILE:7:in 'Object#run_snippet'\"\n",
+    "[\"FILE:10:in 'block in <main>'\", \"FILE:10:in 'Kernel#tap'\", \"FILE:10:in '<main>'\"]\n",
+    "#<NameError: method 'secret' for class 'Vault' is private>\n",
+    "#<NameError: method 'guarded' for class 'Vault' is protected>\n",
+    "#<NameError: method 'exit' for class 'Object' is private>\n",
+);
+
+#[test]
+fn test_errors_eval_and_internal_frames_execution() {
+    let output = run_example("errors/eval_and_internal_frames.rb");
+    assert_eq!(output, EVAL_AND_INTERNAL_FRAMES_OUTPUT);
+}
+
+const EVAL_AND_INTERNAL_FRAMES_NO_PARENS_OUTPUT: &str = concat!(
+    "\"FILE:7:in 'Object#run_snippet'\"\n",
+    "[\"FILE:12:in 'block in <main>'\", \"FILE:12:in 'Kernel#tap'\", \"FILE:12:in '<main>'\"]\n",
+    "#<NameError: method 'secret' for class 'Vault' is private>\n",
+    "#<NameError: method 'guarded' for class 'Vault' is protected>\n",
+    "#<NameError: method 'exit' for class 'Object' is private>\n",
+);
+
+#[test]
+fn test_errors_eval_and_internal_frames_no_parens_execution() {
+    let output = run_example("errors/eval_and_internal_frames_no_parens.rb");
+    assert_eq!(output, EVAL_AND_INTERNAL_FRAMES_NO_PARENS_OUTPUT);
+}
+
+/// The expected output of both `errors/builtin_error_ancestry` variants.
+const BUILTIN_ERROR_ANCESTRY: &str = concat!("nil\n", "true\n", "true\n", "NotImplementedError\n");
+
+#[test]
+fn test_errors_builtin_error_ancestry_execution() {
+    let output = run_example("errors/builtin_error_ancestry.rb");
+    assert_eq!(output, BUILTIN_ERROR_ANCESTRY);
+}
+
+#[test]
+fn test_errors_builtin_error_ancestry_no_parens_execution() {
+    let output = run_example("errors/builtin_error_ancestry_no_parens.rb");
+    assert_eq!(output, BUILTIN_ERROR_ANCESTRY);
 }

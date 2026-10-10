@@ -2,7 +2,6 @@
 
 use super::*;
 
-/// Report whether source parses, the way `ruby -c` does, and end there.
 /// The Ruby inside a file that opens with something else. `asked` says the
 /// `-x` option was written; a first line naming another interpreter asks for
 /// the same reading on its own.
@@ -32,21 +31,65 @@ pub(crate) fn embedded_script(source: &str, asked: bool) -> Result<String, Strin
     Ok(held)
 }
 
-pub(crate) fn check_syntax(source: &str, name: &str) -> ! {
+/// Report whether source parses, the way `ruby -c` does, and end there.
+pub(crate) fn check_syntax(source: &str, name: &str, cli: &Cli) -> ! {
     let lexer = Lexer::new(source);
     let mut parser = Parser::new(lexer.tokenize());
-    match parser.parse() {
-        Ok(_) => {
+    let errors = parser.parse().err().unwrap_or_default();
+    let mut vm = VirtualMachine::new();
+    match refused_program_messages(&mut vm, source, name, cli, &errors) {
+        None => {
             println!("Syntax OK");
             process::exit(0)
         }
-        Err(errors) => {
-            for err in errors {
-                eprintln!("{}: {} (SyntaxError)", name, err);
+        Some(messages) => {
+            for message in messages {
+                let (first, rest) = message.split_once('\n').unwrap_or((&message, ""));
+                eprintln!("{}: {} (SyntaxError)\n{}", program_name(), first, rest);
             }
             process::exit(1)
         }
     }
+}
+
+/// The switches that wrap a program in a loop, spelled as prism's options
+/// name them.
+fn wrapping_switches(cli: &Cli) -> String {
+    let mut switches = String::new();
+    if cli.split_lines {
+        switches.push('a');
+    }
+    if cli.chomp_lines {
+        switches.push('l');
+    }
+    if cli.each_line {
+        switches.push('n');
+    }
+    if cli.print_loop {
+        switches.push('p');
+    }
+    switches
+}
+
+/// The SyntaxError messages for a program MRI refuses, given the errors the
+/// interpreter's own parser found, or None when the program reads.
+pub(crate) fn refused_program_messages<E: ToString>(
+    vm: &mut VirtualMachine,
+    source: &str,
+    named: &str,
+    cli: &Cli,
+    parse_errors: &[E],
+) -> Option<Vec<String>> {
+    if parse_errors.is_empty() && !vm.prism_refuses_program(source, &wrapping_switches(cli)) {
+        return None;
+    }
+    if let Some(message) = vm.program_syntax_message(source, named, 1) {
+        return Some(vec![message]);
+    }
+    if parse_errors.is_empty() {
+        return None;
+    }
+    Some(parse_errors.iter().map(ToString::to_string).collect())
 }
 
 /// The encoding a `-K` letter stands for. Ruby reads the first letter alone
@@ -82,13 +125,19 @@ pub(crate) fn apply_encoding_flags(vm: &mut VirtualMachine, cli: &Cli) {
             } else {
                 "-E"
             };
-            eprintln!("metorex: extra argument for {}: {}", named, extra);
+            eprintln!(
+                "{}: extra argument for {}: {}",
+                program_name(),
+                named,
+                extra
+            );
             process::exit(1);
         }
         if !after.is_empty() {
             if cli.utf8_internal > 0 {
                 eprintln!(
-                    "metorex: -U and -E option ({}) conflicts (RuntimeError)",
+                    "{}: -U and -E option ({}) conflicts (RuntimeError)",
+                    program_name(),
                     after
                 );
                 process::exit(1);
@@ -124,9 +173,6 @@ pub(crate) fn apply_cli_flags(vm: &mut VirtualMachine, cli: &Cli) {
     // A feature turned on leaves a module behind under the name Ruby gives
     // it, which is what `defined?` finds.
     let features = Features::read(cli);
-    if features.gems {
-        vm.define_feature_module("Gem");
-    }
     // Ruby's `-w` turns on the deprecation warnings a plain run keeps quiet,
     // and `-d` and `-v` turn them on the same way.
     // `-W` with a number says how loud a run is: 0 quiet, 1 the default, and
@@ -213,11 +259,22 @@ pub(crate) fn apply_cli_flags(vm: &mut VirtualMachine, cli: &Cli) {
     for path in installed_library_paths() {
         vm.append_installed_load_path(path);
     }
-    // Ruby loads did_you_mean before the libraries `-r` names, once the
-    // load path it suggests features from is settled.
+    // Ruby loads RubyGems, error_highlight, did_you_mean and syntax_suggest
+    // before the libraries `-r` names, once the load path did_you_mean
+    // suggests features from is settled.
+    let rubygems = features.gems.then_some("rubygems");
+    let error_highlight = features.error_highlight.then_some("error_highlight");
     let did_you_mean = features.did_you_mean.then_some("did_you_mean");
-    for lib in did_you_mean
+    // Ruby loads syntax_suggest's hook through RubyGems, so turning gems off
+    // leaves it out too. The rest of the library loads when a SyntaxError is
+    // reported.
+    let syntax_suggest =
+        (features.gems && features.syntax_suggest).then_some("syntax_suggest/core_ext");
+    for lib in rubygems
         .into_iter()
+        .chain(error_highlight)
+        .chain(did_you_mean)
+        .chain(syntax_suggest)
         .chain(cli.require_libs.iter().map(String::as_str))
     {
         if let Err(err) = vm.require_startup_library(lib) {

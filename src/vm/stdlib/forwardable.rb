@@ -82,9 +82,10 @@ module Forwardable
     METHOD
   end
 
-  # Whether `method` can be written as a call after a dot.
+  # Whether `method` can be written as a call after a dot. A setter cannot,
+  # since `_.name=(*args)` reads as an assignment.
   def self._valid_method?(method)
-    method.to_s.match?(/\A(?:[A-Za-z_][A-Za-z0-9_]*[?!=]?|\[\]=?|[-+]@|[-+*\/%<>=!~^&|]+|\*\*)\z/)
+    method.to_s.match?(/\A(?:[A-Za-z_][A-Za-z0-9_]*[?!]?|\[\]=?|[-+]@|[-+*\/%<>=!~^&|]+|\*\*|`)\z/)
   end
   private_class_method :_valid_method?
 end

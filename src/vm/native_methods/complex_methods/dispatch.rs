@@ -85,6 +85,15 @@ impl VirtualMachine {
                 let Some(other) = arguments.first() else {
                     return Err(method_argument_error(method_name, 1, 0, position));
                 };
+                // Text reads as a number only where `Complex()` parses it,
+                // never as an operand of the arithmetic.
+                if matches!(other, Object::String(_)) {
+                    return Err(crate::vm::errors::simple_exception(
+                        "TypeError",
+                        "String can't be coerced into Complex",
+                        position,
+                    ));
+                }
                 // A number written in Ruby says whether it stands on the
                 // real line, which decides how it joins the arithmetic.
                 if matches!(other, Object::Instance(_))
@@ -241,6 +250,15 @@ impl VirtualMachine {
                 let Some(other) = arguments.first() else {
                     return Err(method_argument_error(method_name, 1, 0, position));
                 };
+                // Text reads as a number only where `Complex()` parses it,
+                // never as an operand of the arithmetic.
+                if matches!(other, Object::String(_)) {
+                    return Err(crate::vm::errors::simple_exception(
+                        "TypeError",
+                        "String can't be coerced into Complex",
+                        position,
+                    ));
+                }
                 self.complex_power(&real, &imaginary, other, position)
                     .map(Some)
             }

@@ -258,7 +258,7 @@ fn array_each_with_continue() {
 sum = 0
 [1, 2, 3, 4, 5].each do |n|
   if n == 3
-    continue
+    next
   end
   sum = sum + n
 end

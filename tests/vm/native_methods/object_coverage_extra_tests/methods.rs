@@ -4,10 +4,8 @@ use super::*;
 // ── =~ / !~ ──────────────────────────────────────────────────────────────────
 
 #[test]
-fn regex_match_on_non_regex_non_string_returns_nil() {
-    // e.g. symbol =~ int — not a regex pair, falls into `_ => Ok(Some(Nil))`.
-    let result = run(":foo =~ 1");
-    assert_eq!(result, Some(Object::Nil));
+fn a_symbol_matched_against_an_integer_asks_the_integer() {
+    assert!(run_err(":foo =~ 1").contains("undefined method '=~' for an instance of Integer"));
 }
 
 #[test]

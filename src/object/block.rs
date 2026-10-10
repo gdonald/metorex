@@ -59,6 +59,10 @@ pub struct BlockStatement {
     /// Captured variables from outer scope (shared mutable references),
     /// shared by every call of the block rather than copied into each.
     pub captured_vars: Rc<indexmap::IndexMap<String, Rc<RefCell<Object>>>>,
+    /// The locals listed where the block was written, in the order listed
+    /// there, including the ones assigned after the block, which
+    /// `local_variables` in the block lists though the block cannot read them.
+    pub reserved_names: Rc<Vec<String>>,
     /// Lexical class/module nesting at the moment the block was defined.
     /// Restored during invocation so a bare `Foo = 1` inside the body lands
     /// on the same enclosing module that an unbroken straight-line statement
@@ -140,6 +144,7 @@ impl BlockStatement {
             parameter_defaults: Vec::new(),
             body,
             captured_vars: Rc::new(captured_vars),
+            reserved_names: Rc::new(Vec::new()),
             captured_def_scope: Vec::new(),
             captured_nesting: Vec::new(),
             defining_method: None,
@@ -176,6 +181,7 @@ impl BlockStatement {
             parameter_defaults,
             body,
             captured_vars: Rc::new(captured_vars),
+            reserved_names: Rc::new(Vec::new()),
             captured_def_scope,
             captured_nesting: Vec::new(),
             defining_method,
@@ -217,13 +223,15 @@ impl BlockStatement {
             return true;
         }
         // Only the positional parameters count: a block taking `|*a, **kw|`
-        // has one place for its arguments, so a lone array stays whole.
+        // has one place for its arguments, so a lone array stays whole. A
+        // block-local after the `;` takes no argument.
         self.parameters
             .iter()
             .filter(|name| {
                 !name.starts_with('&')
                     && !name.starts_with(KEYWORD_PARAM_PREFIX)
                     && !name.starts_with("**")
+                    && !name.starts_with(BLOCK_LOCAL_PREFIX)
             })
             .count()
             > 1

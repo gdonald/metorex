@@ -389,8 +389,8 @@ fn test_introspection_protected_methods_no_parens() {
 fn test_introspection_public_method() {
     let expected = concat!(
         ":opened\n:built\n",
-        "NameError: undefined method 'hidden' for class 'Vault'\n",
-        "NameError: undefined method 'guarded' for class 'Vault'\n",
+        "NameError: method 'hidden' for class 'Vault' is private\n",
+        "NameError: method 'guarded' for class 'Vault' is protected\n",
         "called publicly_handled\ncalled privately_handled\nNameError\n"
     );
     let output = run_example("introspection/public_method.rb");
@@ -401,8 +401,8 @@ fn test_introspection_public_method() {
 fn test_introspection_public_method_no_parens() {
     let expected = concat!(
         ":opened\n:built\n",
-        "NameError: undefined method 'hidden' for class 'Vault'\n",
-        "NameError: undefined method 'guarded' for class 'Vault'\n",
+        "NameError: method 'hidden' for class 'Vault' is private\n",
+        "NameError: method 'guarded' for class 'Vault' is protected\n",
         "called publicly_handled\ncalled privately_handled\nNameError\n"
     );
     let output = run_example("introspection/public_method_no_parens.rb");
@@ -901,4 +901,171 @@ fn test_introspection_local_variables_in_blocks_execution() {
 fn test_introspection_local_variables_in_blocks_no_parens_execution() {
     let output = run_example("introspection/local_variables_in_blocks_no_parens.rb");
     assert_eq!(output, LOCAL_VARIABLES_IN_BLOCKS);
+}
+
+const BUILTIN_METHOD_LISTINGS: &str = concat!(
+    "true\n",
+    "true\n",
+    "true\n",
+    "true\n",
+    "true\n",
+    "false\n",
+    "true\n",
+    "[:&, :===, :=~, :^, :blank?, :inspect, :nil?, :rationalize, :to_a, :to_c, :to_f, :to_h, :to_i, :to_r, :to_s, :|]\n",
+    "[:<, :<=, :==, :>, :>=, :between?, :clamp]\n",
+    "true\n",
+    "true\n",
+    "true\n",
+    "false\n",
+    "false\n",
+    "true\n",
+    "true\n",
+    "true\n",
+    "true\n",
+    "true\n",
+    "true\n",
+    "[:first]\n",
+    "[:to_proc]\n",
+);
+
+#[test]
+fn test_introspection_builtin_method_listings_execution() {
+    let output = run_example("introspection/builtin_method_listings.rb");
+    assert_eq!(output, BUILTIN_METHOD_LISTINGS);
+}
+
+#[test]
+fn test_introspection_builtin_method_listings_no_parens_execution() {
+    let output = run_example("introspection/builtin_method_listings_no_parens.rb");
+    assert_eq!(output, BUILTIN_METHOD_LISTINGS);
+}
+
+const NESTED_INSPECT_OUTPUT: &str = concat!(
+    "#<Customer:0x0 @name=\"Ada\", @address=#<Address:0x0 @city=\"Austin\">, @self_reference=#<Customer:0x0 ...>>\n",
+    "\"[#<Address:0x0 @city=\\\"Boise\\\">]\"\n",
+    "[1, 2]\n",
+    "[:on_ident]\n",
+);
+
+#[test]
+fn test_introspection_nested_inspect_execution() {
+    let output = run_example("introspection/nested_inspect.rb");
+    assert_eq!(output, NESTED_INSPECT_OUTPUT);
+}
+
+#[test]
+fn test_introspection_nested_inspect_no_parens_execution() {
+    let output = run_example("introspection/nested_inspect_no_parens.rb");
+    assert_eq!(output, NESTED_INSPECT_OUTPUT);
+}
+
+/// The expected output of both `introspection/class_own_methods` variants.
+const CLASS_OWN_METHODS: &str = concat!(
+    "[true, true, true, true, true]\n",
+    "[true, true, true, true, true]\n",
+    "[false, false, false, false, false]\n",
+    "[:allocate, :attached_object, :new, :subclasses, :superclass]\n",
+    "[:allocate, :attached_object, :new, :subclasses, :superclass]\n",
+    "[:inherited, :initialize]\n",
+    "true\n",
+    "BasicObject\n",
+);
+
+#[test]
+fn test_introspection_class_own_methods_execution() {
+    let output = run_example("introspection/class_own_methods.rb");
+    assert_eq!(output, CLASS_OWN_METHODS);
+}
+
+#[test]
+fn test_introspection_class_own_methods_no_parens_execution() {
+    let output = run_example("introspection/class_own_methods_no_parens.rb");
+    assert_eq!(output, CLASS_OWN_METHODS);
+}
+
+/// The expected output of both `introspection/value_class_methods` variants.
+const VALUE_CLASS_METHODS: &str = concat!(
+    "[:&, :===, :=~, :^, :inspect, :nil?, :rationalize, :to_a, :to_c, :to_f, :to_h, :to_i, :to_r, :to_s, :|]\n",
+    "[NilClass]\n",
+    "[:&, :===, :^, :inspect, :to_s, :|]\n",
+    "[TrueClass]\n",
+    "[:&, :===, :^, :inspect, :to_s, :|]\n",
+    "[FalseClass]\n",
+    "[]\n",
+    "false\n",
+    "\"false\"\n",
+    "Kernel\n",
+);
+
+#[test]
+fn test_introspection_value_class_methods_execution() {
+    let output = run_example("introspection/value_class_methods.rb");
+    assert_eq!(output, VALUE_CLASS_METHODS);
+}
+
+#[test]
+fn test_introspection_value_class_methods_no_parens_execution() {
+    let output = run_example("introspection/value_class_methods_no_parens.rb");
+    assert_eq!(output, VALUE_CLASS_METHODS);
+}
+
+/// The expected output of both `introspection/locals_assigned_later` variants.
+const LOCALS_ASSIGNED_LATER: &str = concat!(
+    "[:first, :later, :last]\n",
+    "[:item, :inner, :first, :later, :last]\n",
+    "[:item, :inner, :first, :later, :last]\n",
+    "[:first, :later, :last]\n",
+    "NameError\n",
+    "1\n",
+    "[:top]\n",
+    "[:top]\n",
+);
+
+#[test]
+fn test_introspection_locals_assigned_later_execution() {
+    let output = run_example("introspection/locals_assigned_later.rb");
+    assert_eq!(output, LOCALS_ASSIGNED_LATER);
+}
+
+#[test]
+fn test_introspection_locals_assigned_later_no_parens_execution() {
+    let output = run_example("introspection/locals_assigned_later_no_parens.rb");
+    assert_eq!(output, LOCALS_ASSIGNED_LATER);
+}
+
+/// The expected output of both `introspection/set_trace_func_events`
+/// variants, with `FILE` standing for the example's own name.
+const SET_TRACE_FUNC_EVENTS: &str = concat!(
+    "true\n",
+    "[\"line\", \"FILE\", 22, nil, nil, Binding]\n",
+    "[\"call\", \"FILE\", 10, :add_one, Object, Binding]\n",
+    "[\"line\", \"FILE\", 11, :add_one, Object, Binding]\n",
+    "[\"line\", \"FILE\", 12, :add_one, Object, Binding]\n",
+    "[\"return\", \"FILE\", 13, :add_one, Object, Binding]\n",
+    "[\"line\", \"FILE\", 23, nil, nil, Binding]\n",
+    "[\"call\", \"FILE\", 15, :refuse, Object, Binding]\n",
+    "[\"line\", \"FILE\", 16, :refuse, Object, Binding]\n",
+    "[\"raise\", \"FILE\", 16, :refuse, Object, Binding]\n",
+    "[\"line\", \"FILE\", 18, :refuse, Object, Binding]\n",
+    "[\"return\", \"FILE\", 19, :refuse, Object, Binding]\n",
+    "[\"line\", \"FILE\", 24, nil, nil, Binding]\n",
+    "\"trace_func needs to be Proc\"\n",
+);
+
+#[test]
+fn test_introspection_set_trace_func_events_execution() {
+    let output = run_example("introspection/set_trace_func_events.rb");
+    assert_eq!(
+        output,
+        SET_TRACE_FUNC_EVENTS.replace("FILE", "set_trace_func_events.rb")
+    );
+}
+
+#[test]
+fn test_introspection_set_trace_func_events_no_parens_execution() {
+    let output = run_example("introspection/set_trace_func_events_no_parens.rb");
+    assert_eq!(
+        output,
+        SET_TRACE_FUNC_EVENTS.replace("FILE", "set_trace_func_events_no_parens.rb")
+    );
 }

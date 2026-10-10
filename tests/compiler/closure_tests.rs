@@ -159,6 +159,7 @@ fn captured_variable_emits_close_upvalue() {
                 }],
                 position: pos(),
                 singleton_class: None,
+                end_position: Default::default(),
             },
         ],
         position: pos(),

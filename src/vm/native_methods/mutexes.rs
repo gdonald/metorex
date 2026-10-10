@@ -35,7 +35,7 @@ impl VirtualMachine {
                     ));
                 };
                 self.call_mutex_method(receiver, "lock", &[], position)?;
-                let answer = self.execute_block_body(&body, vec![]);
+                let answer = body.call(self, vec![], position);
                 self.call_mutex_method(receiver, "unlock", &[], position)?;
                 Ok(Some(answer?))
             }

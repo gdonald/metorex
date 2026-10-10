@@ -175,6 +175,7 @@ class StringIO
   # The cursor is reported in bytes, so a character made of several bytes
   # moves it by that many.
   def pos
+    return @position if single_byte_characters?
     beyond = @position - @string.length
     beyond = 0 if beyond < 0
     @string[0, @position].bytesize + beyond
@@ -186,6 +187,11 @@ class StringIO
 
   def pos=(offset)
     raise Errno::EINVAL if offset < 0
+    if single_byte_characters?
+      @position = offset
+      @misaligned = false
+      return offset
+    end
     @position = characters_before offset
     # An offset that lands inside a character leaves the cursor between
     # two of them, which only a reader of code points minds.
@@ -207,6 +213,13 @@ class StringIO
     at
   end
   private :characters_before
+
+  # Whether each character of the buffer is one byte, so a byte offset is a
+  # character position.
+  def single_byte_characters?
+    @string.bytesize == @string.length
+  end
+  private :single_byte_characters?
 
   def lineno
     @lineno
@@ -372,13 +385,16 @@ class StringIO
   # a string of its own.
   def read(length = nil, buffer = nil)
     reading_allowed
-    remaining = @string[@position..-1] || ""
     if length.nil?
+      remaining = @string[@position..-1] || ""
       @position = @string.length
       return filled(buffer, remaining)
     end
     wanted = StringIO.whole_number length
     raise ArgumentError, "negative length #{wanted} given" if wanted < 0
+    # Every character takes at least one byte, so the next `wanted`
+    # characters hold the bytes this read can take.
+    remaining = @string[@position, wanted] || ""
     if remaining.empty? && wanted > 0
       filled buffer, "" unless buffer.nil?
       return nil
@@ -475,9 +491,8 @@ class StringIO
 
   def getbyte
     reading_allowed
-    bytes = @string.bytes
-    return nil if @position >= bytes.length
-    byte = bytes[@position]
+    byte = @string.getbyte(@position)
+    return nil if byte.nil?
     @position = @position + 1
     byte
   end

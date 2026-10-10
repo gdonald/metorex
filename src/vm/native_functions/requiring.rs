@@ -189,11 +189,15 @@ impl VirtualMachine {
             Some(p) => p,
             None => {
                 // A name with no ending of its own counts too once
-                // there is no file of that name to be found.
-                if require_candidates(&require_name)
-                    .iter()
-                    .any(|candidate| self.feature_is_listed(&candidate.to_string_lossy()))
-                {
+                // there is no file of that name to be found. A C extension
+                // listed under the name does not stand in for the Ruby
+                // library metorex carries under it, as `pathname.so` does not
+                // for `pathname`.
+                let carried = crate::vm::stdlib::embedded_library(&require_name).is_some();
+                if require_candidates(&require_name).iter().any(|candidate| {
+                    let named = candidate.to_string_lossy();
+                    self.feature_is_listed(&named) && (!carried || named.ends_with(".rb"))
+                }) {
                     return Ok(Object::Bool(false));
                 }
                 // A library metorex carries is used when the load path
@@ -201,6 +205,10 @@ impl VirtualMachine {
                 if let Some(source) = crate::vm::stdlib::embedded_library(&require_name) {
                     let already = self.run_embedded_library(&require_name, source)?;
                     return Ok(Object::Bool(already));
+                }
+                if let Some(init) = crate::vm::capi::static_extension(&require_name) {
+                    let first = self.run_static_extension(&require_name, init, position)?;
+                    return Ok(Object::Bool(first));
                 }
                 // Raise a LoadError exception so Ruby-level rescue LoadError catches it.
                 let exc = if named_a_native_extension {

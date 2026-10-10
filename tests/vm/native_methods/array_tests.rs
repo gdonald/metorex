@@ -140,7 +140,7 @@ fn array_each_with_continue_in_block() {
 result = []
 [1, 2, 3, 4, 5].each do |x|
   if x == 3
-    continue
+    next
   end
   result.push(x)
 end

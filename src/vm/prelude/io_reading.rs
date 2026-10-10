@@ -448,7 +448,7 @@ pub(super) const SOURCE: &str = r##"
       end
       return __fill_buffer__(target, __take_ready__(wanted))
     end
-    unless IO.__stream__("ready?", __stream_handle__, "", 0)
+    unless IO.__stream__("ready?", __stream_handle__, "nonblock", 0)
       return :wait_readable unless exception
       raise IO::EAGAINWaitReadable, "read would block"
     end
@@ -587,18 +587,20 @@ pub(super) const SOURCE: &str = r##"
   # The encodings named alongside the mode, as `"r:UTF-8:ISO-8859-1"` or as
   # an `encoding:` keyword. The first is what the stream is read as and the
   # second what its text is carried into.
+  # The encodings are read without `to_s` on nil, which a program may have
+  # redefined.
   def __named_encodings__
-    written = @__file_encoding.to_s
+    written = @__file_encoding.nil? ? "" : @__file_encoding.to_s
     if written.empty?
       # A stream told to follow the program's own encodings names none of
       # its own any more, whatever its mode was opened with.
       return [] if @__encodings_reset
-      written = @__file_mode.to_s.split(":", 2)[1].to_s
+      written = @__file_mode.nil? ? "" : (@__file_mode.to_s.split(":", 2)[1] || "")
     end
     held = written.split(":")
     # `BOM|utf-8` names the encoding to fall back on where the stream opens
     # with no mark of its own.
-    first = held[0].to_s
+    first = held[0] || ""
     held[0] = first[4..-1] if first.length > 4 && first[0, 4].casecmp("BOM|").zero?
     held
   end

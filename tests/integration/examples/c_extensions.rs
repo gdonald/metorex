@@ -1267,7 +1267,7 @@ fn test_c_extensions_c_flags_no_parens_execution() {
 
 /// The expected output of both `c_extensions/c_debug` variants.
 const C_DEBUG_OUTPUT: &str = concat!(
-    "[CDebug, CDebug, nil, nil, nil, \"frames\", 9]\n",
+    "[CDebug, CDebug, nil, nil, nil, \"CDebug#frames\", 0]\n",
     "[Reporter, Reporter, [:debug, :marker], :report_frames, [RubyVM::InstructionSequence, \"report_frames\", 7], \"Reporter#report_frames\", 9]\n",
     "[Object, nil, [:debug, :outer], nil, [RubyVM::InstructionSequence, \"<main>\", 0], \"<main>\", 25]\n",
     "[true, CDebug, nil]\n",
@@ -1276,7 +1276,7 @@ const C_DEBUG_OUTPUT: &str = concat!(
     "true\n",
     "\"inside report_frames\"\n",
     "Reporter\n",
-    "[nil, \"<main>\"]\n",
+    "[Kernel, \"Kernel#require\"]\n",
 );
 
 #[test]
@@ -1524,6 +1524,7 @@ const C_IO_OUTPUT: &str = concat!(
     "[nil, true]\n",
     "false\n",
     "File\n",
+    "Errno::EBADF\n",
 );
 
 #[test]

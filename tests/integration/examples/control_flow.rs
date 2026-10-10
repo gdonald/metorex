@@ -348,8 +348,7 @@ fn test_control_flow_post_test_loops_no_parens_execution() {
 
 /// The expected output of both `control_flow/case_when_forms` variants, which differ only
 /// in whether the calls are written with parentheses.
-const CASE_WHEN_FORMS_OUTPUT: &str =
-    "\"second\"\n\"even\"\n\"small and odd\"\n\"large and odd\"\n[]\n[1, 2]\n42\n[2, 2, 6]\n";
+const CASE_WHEN_FORMS_OUTPUT: &str = "\"second\"\n\"even\"\n\"small and odd\"\n\"large and odd\"\n[]\n[1, 2]\n42\n[2, 2, 6]\n\"before\"\n\"same\"\n\"after\"\n";
 
 #[test]
 fn test_control_flow_case_when_forms_execution() {
@@ -505,4 +504,43 @@ fn test_control_flow_break_inside_expression_execution() {
 fn test_control_flow_break_inside_expression_no_parens_execution() {
     let output = run_example("control_flow/break_inside_expression_no_parens.rb");
     assert_eq!(output, BREAK_INSIDE_EXPRESSION_OUTPUT);
+}
+
+const DO_WHILE_JUMPS_AND_CASE_CONSTANTS_OUTPUT: &str = concat!(
+    "14\n",
+    "19\n",
+    "\"invoice 1042\"\n",
+    "\"small\"\n",
+    "\"limit\"\n",
+    "\"other\"\n",
+    ":whole\n",
+    ":float\n",
+    ":fraction\n",
+);
+
+#[test]
+fn test_control_flow_do_while_jumps_and_case_constants_execution() {
+    let output = run_example("control_flow/do_while_jumps_and_case_constants.rb");
+    assert_eq!(output, DO_WHILE_JUMPS_AND_CASE_CONSTANTS_OUTPUT);
+}
+
+#[test]
+fn test_control_flow_do_while_jumps_and_case_constants_no_parens_execution() {
+    let output = run_example("control_flow/do_while_jumps_and_case_constants_no_parens.rb");
+    assert_eq!(output, DO_WHILE_JUMPS_AND_CASE_CONSTANTS_OUTPUT);
+}
+
+/// The expected output of both `control_flow/jump_assignments` variants.
+const JUMP_ASSIGNMENTS_OUTPUT: &str = "8\n[2, 4]\n4\n4\n";
+
+#[test]
+fn test_control_flow_jump_assignments_execution() {
+    let output = run_example("control_flow/jump_assignments.rb");
+    assert_eq!(output, JUMP_ASSIGNMENTS_OUTPUT);
+}
+
+#[test]
+fn test_control_flow_jump_assignments_no_parens_execution() {
+    let output = run_example("control_flow/jump_assignments_no_parens.rb");
+    assert_eq!(output, JUMP_ASSIGNMENTS_OUTPUT);
 }

@@ -129,8 +129,11 @@ impl VirtualMachine {
                             last_value = self.evaluate_expression(expression)?;
                             continue;
                         }
+                        // A statement that answers a value, such as an
+                        // assignment, goes on to the next one.
                         match self.execute_statement(statement)? {
                             ControlFlow::Next => {}
+                            ControlFlow::Value(value) => last_value = value,
                             flow => {
                                 return Ok(flow);
                             }

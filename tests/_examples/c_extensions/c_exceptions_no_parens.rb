@@ -20,7 +20,7 @@ class Looping
 end
 
 class Pretender
-  def exception *
+  def exception *;
     "not an exception"
   end
 end

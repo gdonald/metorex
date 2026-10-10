@@ -169,3 +169,27 @@ fn test_globals_reassigned_standard_stream_parens_execution() {
     let output = run_example("globals/reassigned_standard_stream_parens.rb");
     assert_eq!(output, "true\ntrue\nfalse\nfalse\n");
 }
+
+const OUTPUT_STREAM_NAMES_OUTPUT: &str = concat!(
+    "\"through $>\\n\"\n",
+    "true\n",
+    "true\n",
+    "#<ArgumentError: unknown keyword: :unknown_option>\n",
+    "true\n",
+    "[]\n",
+    "\"READY!\"\n",
+    ":low\n",
+    "4\n",
+);
+
+#[test]
+fn test_globals_output_stream_names_execution() {
+    let output = run_example("globals/output_stream_names.rb");
+    assert_eq!(output, OUTPUT_STREAM_NAMES_OUTPUT);
+}
+
+#[test]
+fn test_globals_output_stream_names_no_parens_execution() {
+    let output = run_example("globals/output_stream_names_no_parens.rb");
+    assert_eq!(output, OUTPUT_STREAM_NAMES_OUTPUT);
+}

@@ -184,6 +184,23 @@ impl Parser {
         }
     }
 
+    /// Declare the locals an assignment target names, at the `=` just
+    /// read, inside a group or a splat as well.
+    pub(crate) fn declare_target(&mut self, target: &Expression) {
+        match target {
+            Expression::Identifier { name, .. } if !name.starts_with(char::is_uppercase) => {
+                self.declare_local(name)
+            }
+            Expression::Splat { expression, .. } => self.declare_target(expression),
+            Expression::Array { elements, .. } => {
+                for element in elements {
+                    self.declare_target(element);
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// One target in a multiple assignment, which may carry a leading `*`
     /// marking it as the one that takes everything the others leave.
     pub(crate) fn parse_assignment_target(&mut self) -> Result<Expression, MetorexError> {
@@ -281,6 +298,9 @@ impl Parser {
             self.refuse_dynamic_constant_assignment(target)?;
         }
         self.expect(TokenKind::Equal, "Expected '=' in multiple assignment")?;
+        for target in &targets {
+            self.declare_target(target);
+        }
         self.skip_whitespace();
         let mut values = vec![self.parse_expression_with_lambda()?];
         while self.match_token(&[TokenKind::Comma]) {

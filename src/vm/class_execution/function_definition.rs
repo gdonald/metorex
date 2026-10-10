@@ -11,6 +11,7 @@ impl VirtualMachine {
         body: &[Statement],
         position: crate::lexer::Position,
         singleton_class: Option<&str>,
+        end_line: usize,
     ) -> Result<ControlFlow, MetorexError> {
         // Extract positional parameter names (exclude named keyword and block params)
         let param_names: Vec<String> = parameters
@@ -46,9 +47,10 @@ impl VirtualMachine {
         // running when the location is asked for.
         let mut source_location =
             crate::error::SourceLocation::new(position.line, position.column, position.offset);
-        source_location.filename = self
-            .reported_current_file()
-            .map(|file| file.display().to_string());
+        source_location.filename = self.loading_embedded_library.clone().or_else(|| {
+            self.reported_current_file()
+                .map(|file| file.display().to_string())
+        });
 
         // Extract variadic parameter info
         let variadic_param = parameters
@@ -65,6 +67,7 @@ impl VirtualMachine {
             body.to_vec(),
             source_location,
         );
+        function.end_line = Some(end_line);
         function.default_parameters = default_parameters;
         function.keyword_parameters = keyword_parameters;
         function.keyword_rest_parameter = parameters

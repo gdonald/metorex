@@ -52,6 +52,15 @@ impl VirtualMachine {
         if class_rc.name() == "Encoding" && method_name == "__charmap__" {
             return Ok(Answered(Object::string(crate::vm::locale_charmap_name())));
         }
+        // Every name and alias of an encoding Ruby defines, in the order it
+        // registered them.
+        if class_rc.name() == "Encoding" && method_name == "__name_list__" {
+            let named = crate::vm::init::ENCODING_NAME_LIST
+                .iter()
+                .map(|name| Object::string(name.to_string()))
+                .collect();
+            return Ok(Answered(Object::array(named)));
+        }
         if class_rc.name() == "Socket" && method_name == "__net__" {
             return self.socket_net(arguments, position).map(Answered);
         }

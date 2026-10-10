@@ -147,11 +147,7 @@ fn continue_outside_loop_produces_runtime_error() {
 
     match vm.execute_program(&[continue_stmt]) {
         Err(MetorexError::RuntimeError { message, .. }) => {
-            assert!(
-                message.contains("continue"),
-                "unexpected message: {}",
-                message
-            );
+            assert!(message.contains("next"), "unexpected message: {}", message);
         }
         other => panic!("expected runtime error, got {:?}", other),
     }

@@ -7,6 +7,17 @@ impl VirtualMachine {
     /// responds to `write` / `<<` (e.g. mspec's `IOStub` for the `complain`
     /// matcher), route the message there so tests can capture it. Otherwise
     /// fall back to writing the line directly to the process's stderr.
+    /// Write the warnings reading `named` gave, each with its line, unless
+    /// `-W0` turned warnings off.
+    pub fn report_parse_warnings(&mut self, named: &str, warnings: &[(Position, String)]) {
+        if matches!(self.globals().get("VERBOSE"), Some(Object::Nil)) {
+            return;
+        }
+        for (at, warning) in warnings {
+            self.emit_warning_to_stderr(&format!("{named}:{}: warning: {warning}", at.line), *at);
+        }
+    }
+
     pub(crate) fn emit_warning_to_stderr(&mut self, msg: &str, position: Position) {
         // Re-running an already-required file to satisfy an autoload repeats
         // assignments Ruby would have run once, so the warnings they produce

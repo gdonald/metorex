@@ -271,6 +271,9 @@ impl VirtualMachine {
                 "super_method" => {
                     return Ok(Some(self.method_defined_above(method_obj)));
                 }
+                // The namespace a method was defined in, which MRI answers
+                // nil for while namespaces are not turned on.
+                "box" if arguments.is_empty() => return Ok(Some(Object::Nil)),
                 "unbind" => {
                     let mut unbound = (**method_obj).clone();
                     unbound.receiver = None;
@@ -589,6 +592,7 @@ impl VirtualMachine {
 pub(crate) const NATIVE_METHOD_OBJECT_METHODS: &[&str] = &[
     "arity",
     "bind",
+    "box",
     "bind_call",
     "call",
     "[]",

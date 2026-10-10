@@ -60,18 +60,7 @@ pub(crate) fn register_singletons(globals: &mut GlobalRegistry) {
         "RUBY_DESCRIPTION",
         Object::string(crate::ruby_description()),
     );
-    // The patch number the version carries, which Ruby reports apart from
-    // the version itself.
-    globals.set(
-        "RUBY_PATCHLEVEL",
-        Object::Int(
-            crate::reported_ruby_version()
-                .split('.')
-                .nth(2)
-                .and_then(|held| held.parse::<i64>().ok())
-                .unwrap_or(0),
-        ),
-    );
+    globals.set("RUBY_PATCHLEVEL", Object::Int(crate::RUBY_PATCHLEVEL));
     globals.set(
         "RUBY_ENGINE_VERSION",
         Object::string(crate::reported_ruby_version()),
@@ -85,7 +74,7 @@ pub(crate) fn register_singletons(globals: &mut GlobalRegistry) {
     );
     globals.set(
         "RUBY_RELEASE_DATE",
-        Object::string("2026-09-15".to_string()),
+        Object::string(crate::RUBY_RELEASE_DATE.to_string()),
     );
     globals.set("RUBY_REVISION", Object::string("metorex".to_string()));
     // Every one of these names a string that does not change, and Ruby holds

@@ -102,6 +102,12 @@ pub extern "C-unwind" fn rb_obj_class(object: Value) -> Value {
     send(object, "class", Vec::new())
 }
 
+/// The singleton class of `object`, made if it has none yet.
+#[unsafe(no_mangle)]
+pub extern "C-unwind" fn rb_singleton_class(object: Value) -> Value {
+    send(object, "singleton_class", Vec::new())
+}
+
 #[unsafe(no_mangle)]
 pub extern "C-unwind" fn rb_obj_classname(object: Value) -> *const c_char {
     let name = class_name_of(to_object(object));

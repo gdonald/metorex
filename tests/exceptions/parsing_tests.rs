@@ -26,11 +26,12 @@ fn test_raise_with_expression() {
 #[test]
 fn test_raise_with_call() {
     let stmt = Statement::Raise {
-        exception: Some(Expression::Call {
-            callee: Box::new(Expression::Identifier {
+        exception: Some(Expression::MethodCall {
+            receiver: Box::new(Expression::Identifier {
                 name: "StandardError".to_string(),
                 position: pos(1, 7),
             }),
+            method: "new".to_string(),
             arguments: vec![Expression::StringLiteral {
                 value: "Something went wrong".to_string(),
                 position: pos(1, 21),

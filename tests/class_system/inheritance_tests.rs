@@ -21,7 +21,7 @@ fn test_basic_inheritance_method_lookup() {
     // end
     // class Dog < Animal
     // end
-    // d = Dog()
+    // d = Dog.new
     // result = d.speak()
     let program = vec![
         Statement::ClassDef {
@@ -58,11 +58,12 @@ fn test_basic_inheritance_method_lookup() {
                 name: "d".to_string(),
                 position: pos(8, 1),
             },
-            value: Expression::Call {
-                callee: Box::new(Expression::Identifier {
+            value: Expression::MethodCall {
+                receiver: Box::new(Expression::Identifier {
                     name: "Dog".to_string(),
                     position: pos(8, 5),
                 }),
+                method: "new".to_string(),
                 arguments: vec![],
                 trailing_block: None,
                 position: pos(8, 5),
@@ -108,7 +109,7 @@ fn test_method_overriding() {
     //     "Woof!"
     //   end
     // end
-    // d = Dog()
+    // d = Dog.new
     // result = d.speak()
     let program = vec![
         Statement::ClassDef {
@@ -158,11 +159,12 @@ fn test_method_overriding() {
                 name: "d".to_string(),
                 position: pos(11, 1),
             },
-            value: Expression::Call {
-                callee: Box::new(Expression::Identifier {
+            value: Expression::MethodCall {
+                receiver: Box::new(Expression::Identifier {
                     name: "Dog".to_string(),
                     position: pos(11, 5),
                 }),
+                method: "new".to_string(),
                 arguments: vec![],
                 trailing_block: None,
                 position: pos(11, 5),
@@ -213,7 +215,7 @@ fn test_inheritance_chain_method_lookup() {
     //     "C"
     //   end
     // end
-    // c = Child()
+    // c = Child.new
     // result = c.method_a() # Should find in GrandParent
     let program = vec![
         Statement::ClassDef {
@@ -284,11 +286,12 @@ fn test_inheritance_chain_method_lookup() {
                 name: "c".to_string(),
                 position: pos(16, 1),
             },
-            value: Expression::Call {
-                callee: Box::new(Expression::Identifier {
+            value: Expression::MethodCall {
+                receiver: Box::new(Expression::Identifier {
                     name: "Child".to_string(),
                     position: pos(16, 5),
                 }),
+                method: "new".to_string(),
                 arguments: vec![],
                 trailing_block: None,
                 position: pos(16, 5),
@@ -334,7 +337,7 @@ fn test_inherited_initialize_method() {
     // end
     // class Dog < Animal
     // end
-    // d = Dog("Buddy")
+    // d = Dog.new("Buddy")
     // result = d.get_name()
     let program = vec![
         Statement::ClassDef {
@@ -391,11 +394,12 @@ fn test_inherited_initialize_method() {
                 name: "d".to_string(),
                 position: pos(11, 1),
             },
-            value: Expression::Call {
-                callee: Box::new(Expression::Identifier {
+            value: Expression::MethodCall {
+                receiver: Box::new(Expression::Identifier {
                     name: "Dog".to_string(),
                     position: pos(11, 5),
                 }),
+                method: "new".to_string(),
                 arguments: vec![Expression::StringLiteral {
                     value: "Buddy".to_string(),
                     position: pos(11, 9),
@@ -449,7 +453,7 @@ fn test_overriding_with_instance_variables() {
     //     @sound = "Woof!"
     //   end
     // end
-    // d = Dog("Buddy")
+    // d = Dog.new("Buddy")
     // result = d.speak() # Should return "Woof!" due to overridden initialize
     let program = vec![
         Statement::ClassDef {
@@ -549,11 +553,12 @@ fn test_overriding_with_instance_variables() {
                 name: "d".to_string(),
                 position: pos(16, 1),
             },
-            value: Expression::Call {
-                callee: Box::new(Expression::Identifier {
+            value: Expression::MethodCall {
+                receiver: Box::new(Expression::Identifier {
                     name: "Dog".to_string(),
                     position: pos(16, 5),
                 }),
+                method: "new".to_string(),
                 arguments: vec![Expression::StringLiteral {
                     value: "Buddy".to_string(),
                     position: pos(16, 9),
@@ -665,11 +670,12 @@ fn test_multiple_inheritance_levels() {
                 name: "c".to_string(),
                 position: pos(16, 1),
             },
-            value: Expression::Call {
-                callee: Box::new(Expression::Identifier {
+            value: Expression::MethodCall {
+                receiver: Box::new(Expression::Identifier {
                     name: "Child".to_string(),
                     position: pos(16, 5),
                 }),
+                method: "new".to_string(),
                 arguments: vec![],
                 trailing_block: None,
                 position: pos(16, 5),

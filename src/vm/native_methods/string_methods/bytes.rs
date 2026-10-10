@@ -187,13 +187,10 @@ impl VirtualMachine {
                         position,
                     ));
                 };
-                let bytes = binary_bytes(string_value);
-                let length = bytes.len() as i64;
-                let resolved = if *index < 0 { index + length } else { *index };
-                if resolved < 0 || resolved >= length {
-                    return Ok(Some(Object::Nil));
-                }
-                Ok(Some(Object::Int(bytes[resolved as usize] as i64)))
+                Ok(Some(
+                    byte_at(string_value, *index)
+                        .map_or(Object::Nil, |byte| Object::Int(i64::from(byte))),
+                ))
             }
             // The first character, or an empty String when there is none.
             "chr" => {
@@ -252,4 +249,47 @@ impl VirtualMachine {
             _ => Ok(None),
         }
     }
+}
+
+/// The byte at `index` of a string, counting back from the end for a
+/// negative index, read without spelling out the bytes before it.
+fn byte_at(string_value: &crate::object::StringValue, index: i64) -> Option<u8> {
+    let text = string_value.as_str();
+    if !bytes_are_characters(string_value) || text.is_ascii() {
+        let length = text.len() as i64;
+        let resolved = if index < 0 { index + length } else { index };
+        return (0..length)
+            .contains(&resolved)
+            .then(|| text.as_bytes()[resolved as usize]);
+    }
+    // Each character below 256 stands for one byte, and any other for the
+    // bytes of its UTF-8 form, as the bytes of such a string are spelled.
+    let spelled = |character: char| -> ([u8; 4], usize) {
+        let mut buffer = [0u8; 4];
+        if (character as u32) < 256 {
+            buffer[0] = character as u8;
+            (buffer, 1)
+        } else {
+            let width = character.encode_utf8(&mut buffer).len();
+            (buffer, width)
+        }
+    };
+    let resolved = if index < 0 {
+        let length: usize = text.chars().map(|character| spelled(character).1).sum();
+        index + length as i64
+    } else {
+        index
+    };
+    if resolved < 0 {
+        return None;
+    }
+    let mut remaining = resolved as usize;
+    for character in text.chars() {
+        let (buffer, width) = spelled(character);
+        if remaining < width {
+            return Some(buffer[remaining]);
+        }
+        remaining -= width;
+    }
+    None
 }

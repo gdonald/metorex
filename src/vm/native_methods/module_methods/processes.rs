@@ -373,7 +373,7 @@ impl VirtualMachine {
                 return Ok(Some(match self.reap_child(requested, flags, position)? {
                     Some((0, _)) => Object::Nil,
                     Some((_, status)) => status,
-                    None => self.build_process_status(Object::Nil, Object::Nil, -1),
+                    None => self.build_process_status(0, -1),
                 }));
             }
             // `wait` and `waitpid` answer the child's process id, and

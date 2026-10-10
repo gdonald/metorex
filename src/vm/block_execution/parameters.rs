@@ -572,6 +572,13 @@ pub(crate) fn strict_arity_check(
     if found >= required && (splat || found <= expected) {
         return Ok(());
     }
+    if block.from_symbol.is_some() {
+        return Err(crate::vm::errors::simple_exception(
+            "ArgumentError",
+            "no receiver given",
+            position,
+        ));
+    }
     if splat {
         return Err(crate::vm::errors::argument_count_error(
             crate::vm::errors::Arity::AtLeast(required),

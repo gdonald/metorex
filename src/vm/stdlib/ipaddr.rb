@@ -1,15 +1,9 @@
 # An IPv4 or IPv6 address, held as the number it stands for together with the
 # mask that says how much of it names the network.
 
-# The address families IPAddr reads and reports. Ruby takes these from the
-# socket library, which is where a program that has one will find them.
-unless defined?(Socket)
-  module Socket
-    AF_UNSPEC = 0
-    AF_INET = 2
-    AF_INET6 = 30
-  end
-end
+# The address families IPAddr reads and reports come from the socket
+# library, as MRI's ipaddr takes them.
+require "socket"
 
 class IPAddr
   include Comparable

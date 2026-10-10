@@ -86,6 +86,14 @@ impl Parser {
                 }
                 return Ok("[]".to_string());
             }
+            other
+                if crate::parser::expressions::primary::groups::keyword_symbol_key(&other)
+                    .is_some() =>
+            {
+                crate::parser::expressions::primary::groups::keyword_symbol_key(&other)
+                    .unwrap_or_default()
+                    .to_string()
+            }
             _ => return Err(self.error_at_previous("Expected method name after '.'")),
         };
         if self.writer_equal_follows(&method_name) {
@@ -270,6 +278,15 @@ impl Parser {
                 };
                 method_name
             }
+            // Any other keyword names a method of that name.
+            other
+                if crate::parser::expressions::primary::groups::keyword_symbol_key(&other)
+                    .is_some() =>
+            {
+                crate::parser::expressions::primary::groups::keyword_symbol_key(&other)
+                    .unwrap_or_default()
+                    .to_string()
+            }
             _ => return Err(self.error_at_previous("Expected function name")),
         };
 
@@ -314,7 +331,7 @@ impl Parser {
             self.method_anonymous_block.pop();
             self.def_body_depth -= 1;
             self.jump_target_depth = enclosing_jump_targets;
-            self.refuse_unlooped_redos_after(redo_scope_start)?;
+            self.refuse_unlooped_jumps_after(redo_scope_start)?;
             let value = value?;
             let body = vec![Statement::Expression {
                 expression: value,
@@ -345,6 +362,7 @@ impl Parser {
                     body,
                     position: start_pos,
                     singleton_class: _singleton_receiver,
+                    end_position: self.previous().position,
                 },
                 receiver_setup,
                 start_pos,
@@ -380,12 +398,13 @@ impl Parser {
         self.method_anonymous_block.pop();
         self.def_body_depth -= 1;
         self.jump_target_depth = enclosing_jump_targets;
-        self.refuse_unlooped_redos_after(redo_scope_start)?;
+        let refused = self.refuse_unlooped_jumps_after(redo_scope_start);
         let body = wrapped?;
 
         let closing = self
             .expect(TokenKind::End, "Expected 'end' after function body")?
             .position;
+        refused?;
 
         // A receiver written out names the object it says rather than the
         // class the body opens, so it stays a FunctionDef carrying that name
@@ -414,6 +433,7 @@ impl Parser {
                     body,
                     position: start_pos,
                     singleton_class: _singleton_receiver,
+                    end_position: closing,
                 },
                 receiver_setup,
                 start_pos,
@@ -495,6 +515,14 @@ impl Parser {
     /// Parse a paren-less parameter list: `arg1, *rest, &block`. Mirrors
     /// `parse_parameters` but stops at the statement terminator (Newline /
     /// Semicolon) instead of expecting a closing RParen.
+    /// Step over the line breaks after a `*`, `**` or `&` in a parameter
+    /// list written without parentheses, which Ruby reads past to the name.
+    fn skip_parameter_newlines(&mut self) {
+        while self.check(&[TokenKind::Newline]) {
+            self.advance();
+        }
+    }
+
     pub(crate) fn parse_parameters_no_parens(&mut self) -> Result<Vec<Parameter>, MetorexError> {
         let mut params = Vec::new();
 
@@ -502,13 +530,18 @@ impl Parser {
             let param_pos = self.peek().position;
 
             if self.match_token(&[TokenKind::Ampersand]) {
+                self.skip_parameter_newlines();
                 let name = match self.advance().kind {
-                    TokenKind::Ident(name) => name,
+                    TokenKind::Ident(name) => {
+                        self.declare_local(&name);
+                        name
+                    }
                     _ => return Err(self.error_at_previous("Expected parameter name after '&'")),
                 };
                 params.push(Parameter::block(name, param_pos));
             } else if self.match_token(&[TokenKind::StarStar]) {
-                if self.check(&[TokenKind::Comma, TokenKind::Newline, TokenKind::Semicolon]) {
+                self.skip_parameter_newlines();
+                if self.check(&[TokenKind::Comma, TokenKind::Semicolon]) {
                     params.push(Parameter::keyword(ANONYMOUS_KWREST.to_string(), param_pos));
                 } else if self.match_token(&[TokenKind::Nil]) {
                     // `**nil` says the method takes no keyword arguments at
@@ -520,7 +553,10 @@ impl Parser {
                     ));
                 } else {
                     let name = match self.advance().kind {
-                        TokenKind::Ident(name) => name,
+                        TokenKind::Ident(name) => {
+                            self.declare_local(&name);
+                            name
+                        }
                         _ => {
                             return Err(
                                 self.error_at_previous("Expected parameter name after '**'")
@@ -530,11 +566,15 @@ impl Parser {
                     params.push(Parameter::keyword(name, param_pos));
                 }
             } else if self.match_token(&[TokenKind::Star]) {
-                if self.check(&[TokenKind::Comma, TokenKind::Newline, TokenKind::Semicolon]) {
+                self.skip_parameter_newlines();
+                if self.check(&[TokenKind::Comma, TokenKind::Semicolon]) {
                     params.push(Parameter::variadic(ANONYMOUS_SPLAT.to_string(), param_pos));
                 } else {
                     let name = match self.advance().kind {
-                        TokenKind::Ident(name) => name,
+                        TokenKind::Ident(name) => {
+                            self.declare_local(&name);
+                            name
+                        }
                         _ => {
                             return Err(self.error_at_previous("Expected parameter name after '*'"));
                         }
@@ -551,10 +591,16 @@ impl Parser {
                 ));
             } else {
                 let name = match self.advance().kind {
-                    TokenKind::Ident(name) => name,
+                    TokenKind::Ident(name) => {
+                        self.declare_local(&name);
+                        name
+                    }
                     // `lambda` is a method rather than a keyword, so a
                     // parameter may take its name.
-                    TokenKind::Lambda => "lambda".to_string(),
+                    TokenKind::Lambda => {
+                        self.declare_local("lambda");
+                        "lambda".to_string()
+                    }
                     _ => return Err(self.error_at_previous("Expected parameter name")),
                 };
 
@@ -623,7 +669,10 @@ impl Parser {
                     params.push(Parameter::block(ANONYMOUS_BLOCK.to_string(), param_pos));
                 } else {
                     let name = match self.advance().kind {
-                        TokenKind::Ident(name) => name,
+                        TokenKind::Ident(name) => {
+                            self.declare_local(&name);
+                            name
+                        }
                         _ => {
                             return Err(self.error_at_previous("Expected parameter name after '&'"));
                         }
@@ -646,7 +695,10 @@ impl Parser {
                     ));
                 } else {
                     let name = match self.advance().kind {
-                        TokenKind::Ident(name) => name,
+                        TokenKind::Ident(name) => {
+                            self.declare_local(&name);
+                            name
+                        }
                         _ => {
                             return Err(
                                 self.error_at_previous("Expected parameter name after '**'")
@@ -663,7 +715,10 @@ impl Parser {
                     params.push(Parameter::variadic(ANONYMOUS_SPLAT.to_string(), param_pos));
                 } else {
                     let name = match self.advance().kind {
-                        TokenKind::Ident(name) => name,
+                        TokenKind::Ident(name) => {
+                            self.declare_local(&name);
+                            name
+                        }
                         _ => {
                             return Err(self.error_at_previous("Expected parameter name after '*'"));
                         }
@@ -680,10 +735,16 @@ impl Parser {
                 ));
             } else {
                 let name = match self.advance().kind {
-                    TokenKind::Ident(name) => name,
+                    TokenKind::Ident(name) => {
+                        self.declare_local(&name);
+                        name
+                    }
                     // `lambda` is a method rather than a keyword, so a
                     // parameter may take its name.
-                    TokenKind::Lambda => "lambda".to_string(),
+                    TokenKind::Lambda => {
+                        self.declare_local("lambda");
+                        "lambda".to_string()
+                    }
                     _ => return Err(self.error_at_previous("Expected parameter name")),
                 };
 
